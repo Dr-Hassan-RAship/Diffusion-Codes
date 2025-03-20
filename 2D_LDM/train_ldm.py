@@ -90,7 +90,7 @@ def train_one_epoch(model, dae_image, dae_mask, train_loader, optimizer, inferer
         scaler.step(optimizer)
         scaler.update()
         
-        # cumulate losses and log.
+        # cumulate losses and log for later debugging
         epoch_loss += loss.item()
         logging.info(f'[train] epoch: {epoch}\tbatch: {step}\tloss: {loss.item()}')
         # progress_bar.set_postfix({"Loss": epoch_loss / (step + 1)})

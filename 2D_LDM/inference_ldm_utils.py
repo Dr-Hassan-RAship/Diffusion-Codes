@@ -50,8 +50,9 @@ def load_autoencoder(device, train_loader, image=True, mask=True, epoch_mask = 5
     """Load a pre-trained autoencoder model (for image and mask) and get scale factor."""
     tup_image, tup_mask = None, None
     if image:
-        if epoch_image == N_EPOCHS: joint_dir = f'final_model.pth'
-        else                      : joint_dir = f'autoencoder_epoch_{epoch_image}.pth'
+        # if epoch_image == N_EPOCHS: joint_dir = f'final_model.pth'
+        # else                      : joint_dir = f'autoencoder_epoch_{epoch_image}.pth'
+        joint_dir = f'autoencoder_epoch_{epoch_image}.pth'
         
         autoencoder_path = os.path.join(
             DAE_IMAGE_SNAPSHOT_DIR + "/models", joint_dir

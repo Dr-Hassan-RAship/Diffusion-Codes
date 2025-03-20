@@ -44,7 +44,7 @@ IMAGE_AUGMENTATION_OPTION = "option_1"  # Change to "option_2" for swapping patc
 # ------------------------------------------------------------------------------#
 # Training configuration
 SEED                = 1337          # Random seed for reproducibility
-N_EPOCHS            = 250           # Number of training epochs
+N_EPOCHS            = 1000           # Number of training epochs
 LR                  = 1.0e-4        # Learning rate for the optimizer
 VAL_INTERVAL        = 1             # Validate every n epochs (can reduce)
 MODEL_SAVE_INTERVAL = 1             # Save model every n epochs

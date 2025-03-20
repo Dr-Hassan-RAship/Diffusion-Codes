@@ -91,10 +91,11 @@ def train_one_epoch(
             # 3. Get timesteps corresponding to latent masks
             # 4. Call inferer with latent_images as conditioning and mode as 'concat' and autoencoder model as dae_mask
 
-            latent_images, latent_masks = dae_image.encode_stage_2_inputs(clean_image), dae_mask.encode_stage_2_inputs(clean_mask)
+            latent_images               = dae_image.encode_stage_2_inputs(clean_image).to(device)
+            latent_masks                = dae_mask.encode_stage_2_inputs(clean_mask).to(device)
             noise                       = torch.randn_like(latent_masks).to(device) # (B, C, H, W)
             timesteps                   = torch.randint(0, scheduler.num_train_timesteps, (latent_masks.size(0),), device = device).long()
-            z_t                         = scheduler.add_noise(original_samples = latent_masks, noise = noise, timesteps = timesteps)
+            z_T                         = scheduler.add_noise(original_samples = latent_masks, noise = noise, timesteps = timesteps)
             
             #[talha] Make sure z_t is same as the z_t we could have returned from inferer. 
             noise_pred                  = inferer(inputs        = clean_mask,
@@ -108,9 +109,9 @@ def train_one_epoch(
             # Then calculate L1 loss between z_o_tilde (gotten from Eq(2) of paper) and latent_masks
             loss_noise             = F.l1_loss(noise_pred.float(), noise.float())
             
-            alpha_bar_t = scheduler.alphas_cumprod[timesteps]
-            z_o_tilde              = (1 / torch.sqrt(alpha_bar_t)) * (z_t - (torch.sqrt(1 - alpha_bar_t) * noise_pred))
-            loss_latent            = F.l1_loss(z_t.float(), latent_masks.float())
+            alpha_bar_T = scheduler.alphas_cumprod[timesteps][:, None, None, None]
+            z_0_pred              = (1 / torch.sqrt(alpha_bar_T)) * (z_T - (torch.sqrt(1 - alpha_bar_T) * noise_pred))
+            loss_latent            = F.l1_loss(z_0_pred.float(), latent_masks.float())
 
             # Then add both losses and backpropogate.
             loss                   = loss_noise + loss_latent
@@ -122,7 +123,7 @@ def train_one_epoch(
 
         # cumulate losses and log for later debugging
         epoch_loss += loss.item()
-        logging.info(f"[train] epoch: {epoch}\tbatch: {step}\tloss: {loss.item()}")
+        logging.info(f"[train] epoch: {epoch}\tbatch: {step}\tl_noise: {loss_noise.item()}\tl_latent: {loss_latent.item()}\tloss: {loss.item()}")
         # progress_bar.set_postfix({"Loss": epoch_loss / (step + 1)})
         writer.add_scalar(
             "Loss/Train Iteration", loss.item(), epoch * len(train_loader) + step
@@ -148,9 +149,10 @@ def validate_one_epoch(
             # noisy_image, noisy_mask = batch["noisy_image"].to(device), batch["noisy_mask"].to(device)
 
             with autocast("cuda", enabled = True):
-                latent_images, latent_masks = dae_image.encode_stage_2_inputs(clean_image), dae_mask.encode_stage_2_inputs(clean_mask)
+                latent_images, latent_masks = dae_image.encode_stage_2_inputs(clean_image).to(device), dae_mask.encode_stage_2_inputs(clean_mask).to(device)
                 noise                       = torch.randn_like(latent_masks).to(device)
                 timesteps                   = torch.randint(0, scheduler.num_train_timesteps, (latent_masks.size(0),), device = device).long()
+                z_T                         = scheduler.add_noise(original_samples = latent_masks, noise = noise, timesteps = timesteps)
                 noise_pred                  = inferer(inputs            = clean_mask,
                                                       noise             = noise,
                                                       diffusion_model   = model,
@@ -158,10 +160,17 @@ def validate_one_epoch(
                                                       autoencoder_model = dae_mask,
                                                       condition         = latent_images,
                                                       mode              = "concat")
-                loss                        = F.l1_loss(noise_pred.float(), noise.float())
+                loss_noise             = F.l1_loss(noise_pred.float(), noise.float())
+            
+                alpha_bar_T = scheduler.alphas_cumprod[timesteps][:, None, None, None]
+                z_0_pred              = (1 / torch.sqrt(alpha_bar_T)) * (z_T - (torch.sqrt(1 - alpha_bar_T) * noise_pred))
+                loss_latent            = F.l1_loss(z_0_pred.float(), latent_masks.float())
+
+                # Then add both losses and backpropogate.
+                loss                   = loss_noise + loss_latent
                 val_loss                    += loss.item()
 
-            logging.info(f"[val] epoch: {epoch}\tbatch: {step}\tloss: {loss.item()}")
+            logging.info(f"[val] epoch: {epoch}\tbatch: {step}\tl_noise: {loss_noise.item()}\tl_latent: {loss_latent.item()}loss: {loss.item()}")
             writer.add_scalar(
                 "Loss/Val Iteration", loss.item(), epoch * len(val_loader) + step
             )
@@ -214,15 +223,15 @@ def main():
     tup_image, tup_mask = load_autoencoder(
         device, train_loader, image=True, mask=True, epoch_image=250, epoch_mask=200
     )
-    unet = DiffusionModelUNet(**MODEL_PARAMS)
+    unet = DiffusionModelUNet(**MODEL_PARAMS).to(device)
 
-    if RESUME_PATH:
-        epoch_add = int(RESUME_PATH.split("_")[-1][:-4])
-        writer = SummaryWriter(f"{snapshot_dir}/log")
-        unet.load_state_dict(
-            torch.load(RESUME_PATH, map_location=device, weights_only=True)
-        )
-        unet.to(device)
+    # if RESUME_PATH:
+    #     epoch_add = int(RESUME_PATH.split("_")[-1][:-4])
+    #     writer = SummaryWriter(f"{snapshot_dir}/log")
+    #     unet.load_state_dict(
+    #         torch.load(RESUME_PATH, map_location=device, weights_only=True)
+    #     )
+    #     unet.to(device)
 
     scheduler = (
         DDIMScheduler(num_train_timesteps=NUM_TRAIN_TIMESTEPS, schedule=NOISE_SCHEDULER)
@@ -233,6 +242,7 @@ def main():
     )
     dae_image, _ = tup_image  # scale_image compressed
     dae_mask, scale_mask = tup_mask
+    dae_image, dae_mask = dae_image.to(device), dae_mask.to(device)
     inferer = LatentDiffusionInferer(scheduler=scheduler, scale_factor=scale_mask)
     optimizer = torch.optim.AdamW(
         unet.parameters(), lr=LR, betas=(0.9, 0.999), weight_decay=0.0001
@@ -247,8 +257,8 @@ def main():
     writer.add_custom_scalars(layout)
 
     for epoch in range(N_EPOCHS):  # Training Loop
-        if RESUME_PATH:
-            epoch += epoch_add + 1
+        # if RESUME_PATH:
+        #     epoch += epoch_add + 1
 
         train_loss, val_loss = None, None
 

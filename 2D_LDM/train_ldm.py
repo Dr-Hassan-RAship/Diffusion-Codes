@@ -66,13 +66,13 @@ def train_one_epoch(model, dae_image, dae_mask, train_loader, optimizer, inferer
             # 3. Get timesteps corresponding to latent masks
             # 4. Call inferer with latent_images as conditioning and mode as 'concat' and autoencoder model as dae_mask
 
-            z_mu, z_sigma           = dae_image.encode(clean_image) # frozen tau_theta.
-            latent_images           = dae_image.sampling(z_mu, z_sigma)
-            z_mu_mask, z_sigma_mask = dae_mask.encode(clean_mask) # epsilon in SDSeg
-            latent_masks            = dae_mask.sampling(z_mu_mask, z_sigma_mask)
-            noise                   = torch.randn_like(latent_masks).to(device)
-            timesteps               = torch.randint(0, scheduler.num_train_timesteps, (latent_masks.size(0),), device = device).long()
-            noise_pred              = inferer(inputs            = clean_mask,
+            latent_images, latent_masks = dae_image.encode_stage_2_inputs(clean_image), dae_mask.encode_stage_2_inputs(clean_mask)
+            noise                       = torch.randn_like(latent_masks).to(device) # (B, C, H, W)
+            timesteps                   = torch.randint(0, scheduler.num_train_timesteps, (latent_masks.size(0),), device = device).long()
+            z_t                         = scheduler.add_noise(original_samples = latent_masks, noise = noise, timesteps = timesteps)
+            
+            #[talha] Make sure z_t is same as the z_t we could have returned from inferer. 
+            noise_pred                  = inferer(inputs        = clean_mask,
                                               noise             = noise,
                                               diffusion_model   = model,
                                               timesteps         = timesteps,
@@ -81,10 +81,15 @@ def train_one_epoch(model, dae_image, dae_mask, train_loader, optimizer, inferer
                                               mode              = "concat")
             # Batchify loss_latent by making sure inferer returns noise_pred, z_t and the timesteps for it
             # Then calculate L1 loss between z_o_tilde (gotten from Eq(2) of paper) and latent_masks
-            loss                    = F.l1_loss(noise_pred.float(), noise.float())
+            loss_noise             = F.l1_loss(noise_pred.float(), noise.float())
+            
+            alpha_bar_t = scheduler.alphas_cumprod[timesteps]
+            z_o_tilde              = (1 / torch.sqrt(alpha_bar_t)) * (z_t - (torch.sqrt(1 - alpha_bar_t) * noise_pred))
+            loss_latent            = F.l1_loss(z_t.float(), latent_masks.float())
 
             # Then add both losses and backpropogate.
-        
+            loss                   = loss_noise + loss_latent
+
         # Using Monai Scaler for better precision training and better gradient calculation
         scaler.scale(loss).backward()
         scaler.step(optimizer)
@@ -109,21 +114,18 @@ def validate_one_epoch(model, dae_image, dae_mask, val_loader, inferer, schedule
             # noisy_image, noisy_mask = batch["noisy_image"].to(device), batch["noisy_mask"].to(device)
 
             with autocast("cuda", enabled = True):
-                z_mu, z_sigma            = dae_image.encode(clean_image) # frozen tau_theta.
-                latent_images            = dae_image.sampling(z_mu, z_sigma)
-                z_mu_mask, z_sigma_mask  = dae_mask.encode(clean_mask) # dont use autoencoderkl.
-                latent_masks             = dae_mask.sampling(z_mu_mask, z_sigma_mask)
-                noise                    = torch.randn_like(latent_masks).to(device)
-                timesteps                = torch.randint(0, scheduler.num_train_timesteps, (latent_masks.size(0),), device = device).long()
-                noise_pred               = inferer(inputs            = clean_mask,
-                                                   noise             = noise,
-                                                   diffusion_model   = model,
-                                                   timesteps         = timesteps,
-                                                   autoencoder_model = dae_mask,
-                                                   condition         = latent_images,
-                                                   mode              = "concat")
-                loss                     = F.l1_loss(noise_pred.float(), noise.float())
-                val_loss                += loss.item()
+                latent_images, latent_masks = dae_image.encode_stage_2_inputs(clean_image), dae_mask.encode_stage_2_inputs(clean_mask)
+                noise                       = torch.randn_like(latent_masks).to(device)
+                timesteps                   = torch.randint(0, scheduler.num_train_timesteps, (latent_masks.size(0),), device = device).long()
+                noise_pred                  = inferer(inputs            = clean_mask,
+                                                      noise             = noise,
+                                                      diffusion_model   = model,
+                                                      timesteps         = timesteps,
+                                                      autoencoder_model = dae_mask,
+                                                      condition         = latent_images,
+                                                      mode              = "concat")
+                loss                        = F.l1_loss(noise_pred.float(), noise.float())
+                val_loss                    += loss.item()
 
             logging.info(f'[val] epoch: {epoch}\tbatch: {step}\tloss: {loss.item()}')
             writer.add_scalar("Loss/Val Iteration", loss.item(), epoch * len(val_loader) + step)

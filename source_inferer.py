@@ -112,7 +112,9 @@ class DiffusionInferer(Inferer):
         if mode not in ["crossattn", "concat"]:
             raise NotImplementedError(f"{mode} condition is not supported")
         
+        # Batch size = 12 --> 12 uniformally chosen timesteps for each image and their corresponding forward noise
         noisy_image: torch.Tensor = self.scheduler.add_noise(original_samples=inputs, noise=noise, timesteps=timesteps) # assume this is for now eq (1) of sdseg paper
+        # z_t                       = noisy_image.clone()
         if mode == "concat":
             if condition is None:
                 raise ValueError("Conditioning is required for concat condition")
@@ -129,7 +131,8 @@ class DiffusionInferer(Inferer):
         
         # 
         # random_timestep chosen = random.randint(timesteps)
-        return prediction, noisy_image[random_timestep, :, 0, :, :], random_timestep # which is n_tilde, and z_t (for calculation of L_latent)
+        # prediction is of the same shape as noisy_image i.e. (B, C, H, W), 
+        return prediction # which is n_tilde
 
     @torch.no_grad()
     def sample(

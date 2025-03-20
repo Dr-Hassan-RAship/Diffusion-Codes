@@ -71,13 +71,17 @@ def inference(unet, dae_image, dae_mask, inferer, test_loader, device, output_di
                                                                         conditioning      = z_c,
                                                                         mode              = "concat") for z_t in z_t_list]), dim = 0)
             
+            #[talha] --> try to see if we can not only visualize the final predicted mask but also z_T and z_c before it goes to the UNET
+            # and also see if we can get the noise predictions (aka z_0) before it goes to the decoder. But note that z_0 is of 4 channels 
+            #  so we might need to visualize it channel wise like in paper. 
+
             # binarize predicted_mask
-            # predicted_mask    = (torch.sigmoid(predicted_mask) > 0.5).float().cpu().numpy().squeeze()
-            predicted_mask      = predicted_mask.float().cpu().numpy().squeeze()
+            predicted_mask    = (torch.sigmoid(predicted_mask) > 0.5).float().cpu().numpy().squeeze()
             # Save results
             patient_folder = os.path.join(output_dir, f"{int(patient_id.item())}")
             check_or_create_folder(patient_folder)
             
+
             save_groundtruth_image(groundtruth_image, patient_folder, "Image_groundtruth.jpg", mode = 'image')
             save_groundtruth_image(groundtruth_mask, patient_folder, "Mask_groundtruth.jpg", mode = 'mask')
             save_groundtruth_image(predicted_mask, patient_folder, "Mask_predicted.jpg", mode = 'mask')

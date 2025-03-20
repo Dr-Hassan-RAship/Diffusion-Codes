@@ -79,8 +79,11 @@ def train_one_epoch(model, dae_image, dae_mask, train_loader, optimizer, inferer
                                               autoencoder_model = dae_mask,
                                               condition         = latent_images,
                                               mode              = "concat")
-            # Batchify loss_latent by making sure inferer returns noise_pred, z_o_tilde and the timesteps for it
+            # Batchify loss_latent by making sure inferer returns noise_pred, z_t and the timesteps for it
+            # Then calculate L1 loss between z_o_tilde (gotten from Eq(2) of paper) and latent_masks
             loss                    = F.l1_loss(noise_pred.float(), noise.float())
+
+            # Then add both losses and backpropogate.
 
         scaler.scale(loss).backward()
         scaler.step(optimizer)

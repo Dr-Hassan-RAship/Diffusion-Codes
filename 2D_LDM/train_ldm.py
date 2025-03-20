@@ -85,7 +85,7 @@ def train_one_epoch(model, dae_image, dae_mask, train_loader, optimizer, inferer
 
             # Then add both losses and backpropogate.
         
-        # Using Monai Scaler for better precision training
+        # Using Monai Scaler for better precision training and better gradient calculation
         scaler.scale(loss).backward()
         scaler.step(optimizer)
         scaler.update()

@@ -84,12 +84,12 @@ def train_one_epoch(model, dae_image, dae_mask, train_loader, optimizer, inferer
             loss                    = F.l1_loss(noise_pred.float(), noise.float())
 
             # Then add both losses and backpropogate.
-        
-        # Using Monai Scaler for backpropogation
+
         scaler.scale(loss).backward()
         scaler.step(optimizer)
         scaler.update()
-
+        
+        # cumulate losses and log.
         epoch_loss += loss.item()
         logging.info(f'[train] epoch: {epoch}\tbatch: {step}\tloss: {loss.item()}')
         # progress_bar.set_postfix({"Loss": epoch_loss / (step + 1)})

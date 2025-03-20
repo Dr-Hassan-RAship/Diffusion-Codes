@@ -1,0 +1,11 @@
+# Ignore png, jpeg, jpg, files
+*.png
+*.jpeg
+*.jpg
+
+# Ignore .zip, .h5, .pth, .csv, .txt files
+*.zip
+*.h5
+*.pth
+*.csv
+*.txt

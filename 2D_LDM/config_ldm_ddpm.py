@@ -51,7 +51,7 @@ MODEL_SAVE_INTERVAL = 1             # Save model every n epochs
 NUM_TRAIN_TIMESTEPS = 1000          # i.e., diffusion steps (T)
 NOISE_SCHEDULER     = "linear_beta" # {linear_beta, cosine_beta}
 SCHEDULER           = 'DDIM'        # {DDPM, DDIM}
-RESUME_PATH         = 'results/01_/ldm-2d-binary-machine--B4-E500-V1-T1000-SDDIM/models/model_epoch_499.pth'
+# RESUME_PATH         = LDM_SNAPSHOT_DIR + f'/models/model_epoch_499.pth'
 
 NUM_INFERENCE_TIMESTEPS = NUM_TRAIN_TIMESTEPS // 10 if SCHEDULER == 'DDIM' else NUM_TRAIN_TIMESTEPS
 

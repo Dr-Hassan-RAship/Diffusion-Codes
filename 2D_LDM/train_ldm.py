@@ -98,19 +98,19 @@ def train_one_epoch(
             z_T                         = scheduler.add_noise(original_samples = latent_masks, noise = noise, timesteps = timesteps)
             
             #[talha] Make sure z_t is same as the z_t we could have returned from inferer. 
-            noise_pred                  = inferer(inputs        = clean_mask,
-                                              noise             = noise,
-                                              diffusion_model   = model,
-                                              timesteps         = timesteps,
-                                              autoencoder_model = dae_mask,
-                                              condition         = latent_images,
-                                              mode              = "concat")
+            noise_pred                  = inferer(inputs            = clean_mask,
+                                                  noise             = noise,
+                                                  diffusion_model   = model,
+                                                  timesteps         = timesteps,
+                                                  autoencoder_model = dae_mask,
+                                                  condition         = latent_images,
+                                                  mode              = "concat")
             # Batchify loss_latent by making sure inferer returns noise_pred, z_t and the timesteps for it
             # Then calculate L1 loss between z_o_tilde (gotten from Eq(2) of paper) and latent_masks
             loss_noise             = F.l1_loss(noise_pred.float(), noise.float())
             
-            alpha_bar_T = scheduler.alphas_cumprod[timesteps][:, None, None, None]
-            z_0_pred              = (1 / torch.sqrt(alpha_bar_T)) * (z_T - (torch.sqrt(1 - alpha_bar_T) * noise_pred))
+            alpha_bar_T            = scheduler.alphas_cumprod[timesteps][:, None, None, None]
+            z_0_pred               = (1 / torch.sqrt(alpha_bar_T)) * (z_T - (torch.sqrt(1 - alpha_bar_T) * noise_pred))
             loss_latent            = F.l1_loss(z_0_pred.float(), latent_masks.float())
 
             # Then add both losses and backpropogate.
@@ -149,7 +149,8 @@ def validate_one_epoch(
             # noisy_image, noisy_mask = batch["noisy_image"].to(device), batch["noisy_mask"].to(device)
 
             with autocast("cuda", enabled = True):
-                latent_images, latent_masks = dae_image.encode_stage_2_inputs(clean_image).to(device), dae_mask.encode_stage_2_inputs(clean_mask).to(device)
+                latent_images               = dae_image.encode_stage_2_inputs(clean_image).to(device), 
+                latent_masks                = dae_mask.encode_stage_2_inputs(clean_mask).to(device)
                 noise                       = torch.randn_like(latent_masks).to(device)
                 timesteps                   = torch.randint(0, scheduler.num_train_timesteps, (latent_masks.size(0),), device = device).long()
                 z_T                         = scheduler.add_noise(original_samples = latent_masks, noise = noise, timesteps = timesteps)
@@ -162,13 +163,13 @@ def validate_one_epoch(
                                                       mode              = "concat")
                 loss_noise             = F.l1_loss(noise_pred.float(), noise.float())
             
-                alpha_bar_T = scheduler.alphas_cumprod[timesteps][:, None, None, None]
-                z_0_pred              = (1 / torch.sqrt(alpha_bar_T)) * (z_T - (torch.sqrt(1 - alpha_bar_T) * noise_pred))
+                alpha_bar_T            = scheduler.alphas_cumprod[timesteps][:, None, None, None]
+                z_0_pred               = (1 / torch.sqrt(alpha_bar_T)) * (z_T - (torch.sqrt(1 - alpha_bar_T) * noise_pred))
                 loss_latent            = F.l1_loss(z_0_pred.float(), latent_masks.float())
 
                 # Then add both losses and backpropogate.
                 loss                   = loss_noise + loss_latent
-                val_loss                    += loss.item()
+                val_loss               += loss.item()
 
             logging.info(f"[val] epoch: {epoch}\tbatch: {step}\tl_noise: {loss_noise.item()}\tl_latent: {loss_latent.item()}loss: {loss.item()}")
             writer.add_scalar(

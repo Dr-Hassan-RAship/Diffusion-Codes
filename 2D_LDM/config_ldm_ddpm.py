@@ -57,12 +57,14 @@ NUM_INFERENCE_TIMESTEPS = NUM_TRAIN_TIMESTEPS // 10 if SCHEDULER == 'DDIM' else 
 
 # ------------------------------------------------------------------------------#
 # Experiment configuration
-OPTIONAL_INFO   = ""
+OPTIONAL_INFO   = "with_sdseg_settings"
 EXPERIMENT_NAME = f'machine--B{BATCH_SIZE}-E{N_EPOCHS}-V{VAL_INTERVAL}-T{NUM_TRAIN_TIMESTEPS}-S{SCHEDULER}'
-RUN             = '01_' + OPTIONAL_INFO
+RUN             = '02_' + OPTIONAL_INFO
 
 # ------------------------------------------------------------------------------#
 # Autoencoder configuration (for both dae image and masks)
+
+# [talha] --> make sure latent dim is 32 ! not 64 x 64
 
 DAE_IMAGE_SNAPSHOT_DIR = "./results/" + RUN + "/dae-image"
 DAE_MASK_SNAPSHOT_DIR  = "./results/" + RUN + "/dae-mask"
@@ -70,9 +72,9 @@ DAE_IMAGE_PARAMS       = {"spatial_dims"              : 2,
                           "in_channels"               : 3,
                           "latent_channels"           : 4, # (= Z in SDSeg paper)
                           "out_channels"              : 3,
-                          "channels"                  : (128, 128, 256),
+                          "channels"                  : (128, 256, 512, 512), # to match SDSeg paper i.e. 32 latent dim
                           "num_res_blocks"            : 2,
-                          "attention_levels"          : (False, False, False),
+                          "attention_levels"          : (False, False, False, False),
                           "with_encoder_nonlocal_attn": True, # (as per SDSeg paper to ensure middle block of encoder is as required)
                           "with_decoder_nonlocal_attn": True, # (as per SDSeg paper to ensure middle block of decoder is as required)
                           "use_flash_attention"       : True}
@@ -80,9 +82,9 @@ DAE_MASK_PARAMS        = {"spatial_dims"              : 2,
                           "in_channels"               : 1,
                           "latent_channels"           : 4, # (= Z in SDSeg paper)
                           "out_channels"              : 1,
-                          "channels"                  : (128, 128, 256),
+                          "channels"                  : (128, 256, 512, 512), # to match SDSeg paper i.e. 32 latent dim
                           "num_res_blocks"            : 2,
-                          "attention_levels"          : (False, False, False),
+                          "attention_levels"          : (False, False, False, False),
                           "with_encoder_nonlocal_attn": True, # (as per SDSeg paper to ensure middle block of encoder is as required)
                           "with_decoder_nonlocal_attn": True, # (as per SDSeg paper to ensure middle block of decoder is as required)
                           "use_flash_attention"       : True}
@@ -105,14 +107,15 @@ ADV_WEIGHT        = 0.01  # Weight for adversarial loss
 WARM_UP_EPOCHS    = 10    # Warm-up epochs before applying adversarial loss
 
 # ------------------------------------------------------------------------------#
-# Model configuration for Diffusion i.e., UNET
+# Model configuration for Diffusion i.e., UNET --> [talha] try to modify the params to match SDSeg params config
 MODEL_PARAMS = {"spatial_dims"     : 2 if DIMENSION == "2d" else 3,
                 "in_channels"      : 8,  # Using latent space input (z = 4 + concatenation), so latent dimensions match autoencoder
                 "out_channels"     : 4,  # Latent space output before decoder
-                "num_channels"     : (128, 256, 512),
-                "attention_levels" : (False, True, True),
+                "num_channels"     : (192, 384, 384, 768, 768), # (192, 384, 384, 768, 768)
+                "attention_levels" : (True, True, True, True, True),
                 "num_res_blocks"   : 2,
-                "num_head_channels": (0, 256, 512)}
+                "num_head_channels": 24} # num_head_channels = model_channels (192) // num_heads (8)
+
 
 # ------------------------------------------------------------------------------#
 LDM_SNAPSHOT_DIR     = "./results/" + RUN + f"/ldm-{DIMENSION}-{CLASSIFICATION_TYPE}-" + EXPERIMENT_NAME

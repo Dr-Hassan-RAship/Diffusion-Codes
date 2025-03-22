@@ -249,12 +249,6 @@ def main():
     writer       = SummaryWriter(f"{snapshot_dir}/log")
     autoencoderkl, discriminator, dice_loss, perceptual_loss, adv_loss, optimizer_g, optimizer_d, scaler_g, scaler_d = initialize_components(device, snapshot_dir)
 
-    if RESUME_PATH:
-        epoch_add = int(RESUME_PATH.split('_')[-1][:-4])
-        writer = SummaryWriter(f"{snapshot_dir}/log2")
-        autoencoderkl.load_state_dict(torch.load(RESUME_PATH, map_location=device, weights_only=True))
-        autoencoderkl.to(device)
-
     logging.basicConfig(filename = os.path.join(snapshot_dir, 'logs.txt'),
                         level    = logging.INFO,                            # Log message with level INFO  or higher
                         format   = "[%(asctime)s.%(msecs)03d] %(message)s", # Format of the log message
@@ -277,9 +271,6 @@ def main():
     writer.add_custom_scalars(layout)
         
     for epoch in range(N_EPOCHS): # Training loop
-        if RESUME_PATH:
-            epoch += epoch_add + 1
-
         train_total_loss, train_gen_loss, train_disc_loss, val_total_loss = None, None, None, None
 
         with open(os.path.join(snapshot_dir, 'logs.csv'), 'a') as csvfile:

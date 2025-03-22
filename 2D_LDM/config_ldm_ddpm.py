@@ -15,7 +15,7 @@
 BASE_DIR            = "/media/ee/DATA/Talha_Nehal/Datasets/Kvasir-SEG"        # Path to the dataset root directory
 DIMENSION           = '2d'                  # '2d' or '3d'
 TRAINSIZE           = 256                   # Target size for resizing images and masks
-BATCH_SIZE          = 4                     # Batch size for dataloaders
+BATCH_SIZE          = 5                     # Batch size for dataloaders
 SPLIT_RATIOS        = (600, 200, 200)       # Train, validation, test split ratios
 FORMAT              = True                  # If True, train/val/test subdirectories already exist
 CLASSIFICATION_TYPE = 'binary'              # 'binary' or 'multiclass'
@@ -44,7 +44,7 @@ IMAGE_AUGMENTATION_OPTION = "option_1"  # Change to "option_2" for swapping patc
 # ------------------------------------------------------------------------------#
 # Training configuration
 SEED                = 1337          # Random seed for reproducibility
-N_EPOCHS            = 1000           # Number of training epochs
+N_EPOCHS            = 250           # Number of training epochs
 LR                  = 1.0e-4        # Learning rate for the optimizer
 VAL_INTERVAL        = 1             # Validate every n epochs (can reduce)
 MODEL_SAVE_INTERVAL = 1             # Save model every n epochs

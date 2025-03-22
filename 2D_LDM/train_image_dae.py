@@ -237,6 +237,7 @@ def main():
     writer       = SummaryWriter(f"{snapshot_dir}/log")
     autoencoderkl, discriminator, perceptual_loss, adv_loss, optimizer_g, optimizer_d, scaler_g, scaler_d = initialize_components(device, snapshot_dir)
 
+    RESUME_PATH = False
     if RESUME_PATH:
         epoch_add = int(RESUME_PATH.split('_')[-1][:-4])
         writer = SummaryWriter(f"{snapshot_dir}/log2")

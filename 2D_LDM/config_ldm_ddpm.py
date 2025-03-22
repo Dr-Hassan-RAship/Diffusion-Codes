@@ -126,8 +126,8 @@ LDM_SCHEDULER_PARAMS = {"schedule"           : NOISE_SCHEDULER}
 class InferenceConfig:
     # TEST_FOLDER         = os.path.join(BASE_DIR, "Test")
     N_PREDS             = 1
-    AUGMENT             = True
-    MODEL_EPOCH         = -1                # Epoch of the model to load (-1 for final model)
+    AUGMENT             = False
+    MODEL_EPOCH         = 700                # Epoch of the model to load (-1 for final model)
     NUM_SAMPLES         = 10                # Number of samples 
     SAVE_FOLDER         = LDM_SNAPSHOT_DIR + f"/inference-A{AUGMENT}-M{MODEL_EPOCH if MODEL_EPOCH != -1 else N_EPOCHS}-E{N_EPOCHS}-t{NUM_TRAIN_TIMESTEPS}-S{SCHEDULER}-SP{NUM_SAMPLES}"  # Save folder for inference results
     TRAIN_TIMESTEPS     = NUM_TRAIN_TIMESTEPS

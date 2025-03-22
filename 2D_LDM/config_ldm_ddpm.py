@@ -79,9 +79,9 @@ DAE_IMAGE_PARAMS       = {"spatial_dims"              : 2,
                           "with_decoder_nonlocal_attn": True, # (as per SDSeg paper to ensure middle block of decoder is as required)
                           "use_flash_attention"       : True}
 DAE_MASK_PARAMS        = {"spatial_dims"              : 2,
-                          "in_channels"               : 1,
+                          "in_channels"               : 3,
                           "latent_channels"           : 4, # (= Z in SDSeg paper)
-                          "out_channels"              : 1,
+                          "out_channels"              : 3,
                           "channels"                  : (128, 256, 512, 512), # to match SDSeg paper i.e. 32 latent dim
                           "num_res_blocks"            : 2,
                           "attention_levels"          : (False, False, False, False),

@@ -44,8 +44,8 @@ IMAGE_AUGMENTATION_OPTION = "option_1"  # Change to "option_2" for swapping patc
 # ------------------------------------------------------------------------------#
 # Training configuration
 SEED                = 1337          # Random seed for reproducibility
-N_EPOCHS            = 250           # Number of training epochs
-LR                  = 1.0e-4        # Learning rate for the optimizer
+N_EPOCHS            = 200           # Number of training epochs
+LR                  = 1.0e-4        # Learning rate for the optimizer # change it to be -5
 VAL_INTERVAL        = 1             # Validate every n epochs (can reduce)
 MODEL_SAVE_INTERVAL = 1             # Save model every n epochs
 NUM_TRAIN_TIMESTEPS = 1000          # i.e., diffusion steps (T)
@@ -79,9 +79,9 @@ DAE_IMAGE_PARAMS       = {"spatial_dims"              : 2,
                           "with_decoder_nonlocal_attn": True, # (as per SDSeg paper to ensure middle block of decoder is as required)
                           "use_flash_attention"       : True}
 DAE_MASK_PARAMS        = {"spatial_dims"              : 2,
-                          "in_channels"               : 3,
+                          "in_channels"               : 1,
                           "latent_channels"           : 4, # (= Z in SDSeg paper)
-                          "out_channels"              : 3,
+                          "out_channels"              : 1,
                           "channels"                  : (128, 256, 512, 512), # to match SDSeg paper i.e. 32 latent dim
                           "num_res_blocks"            : 2,
                           "attention_levels"          : (False, False, False, False),
@@ -104,7 +104,7 @@ MASK_DISCRIM_PARAMS    = {"spatial_dims": 2,
 KL_WEIGHT         = 1e-6  # Weight for KL loss
 PERCEPTUAL_WEIGHT = 0.001 # Weight for perceptual loss
 ADV_WEIGHT        = 0.01  # Weight for adversarial loss
-WARM_UP_EPOCHS    = 10    # Warm-up epochs before applying adversarial loss
+WARM_UP_EPOCHS    = N_EPOCHS + 1    # Warm-up epochs before applying adversarial loss
 
 # ------------------------------------------------------------------------------#
 # Model configuration for Diffusion i.e., UNET --> [talha] try to modify the params to match SDSeg params config

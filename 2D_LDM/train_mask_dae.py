@@ -106,14 +106,17 @@ def train_one_epoch(autoencoderkl, discriminator, dice_loss, perceptual_loss, ad
     # progress_bar.set_description(f"Epoch {epoch + 1}/{N_EPOCHS}")
 
     for step, batch in enumerate(train_loader): # Training loop
-        clean_mask, noisy_mask = batch["clean_mask"].to(device), batch["noisy_mask"].to(device)
+        # clean_mask = batch['clean_mask'].to(device)
+        # noisy_mask = batch["noisy_mask"].to(device)
 
         # ----------------------------------------------------------------------#
         # Train Autoencoder
         # ----------------------------------------------------------------------#
         autoencoderkl.train(); discriminator.eval(); optimizer_g.zero_grad(set_to_none = True)
         with autocast('cuda', enabled = True): 
-            reconstruction, z_mu, z_sigma = autoencoderkl(noisy_mask) # reconstruction is logits
+            # reconstruction = autoencoderkl.decode_stage_2_outputs(autoencoderkl.encode_stage_2_inputs(noisy_mask)) # reconstruction is logits
+            clean_mask, noisy_mask = batch["clean_mask"].to(device), batch["noisy_mask"].to(device)
+            reconstruction, z_mu, z_sigma = autoencoderkl(noisy_mask) # reconstruction is logitsreconstruction, z_mu, z_sigma = autoencoderkl(noisy_mask) # reconstruction is logitsreconstruction, z_mu, z_sigma = autoencoderkl(noisy_mask) # reconstruction is logitsreconstruction, z_mu, z_sigma = autoencoderkl(noisy_mask) # reconstruction is logits
             recon_sig                     = torch.sigmoid(reconstruction.to(device))
            
             with torch.no_grad(): # Compute Signed Distance Maps (SDMs) of the reconstruction and the original image

@@ -222,34 +222,34 @@ def random_patch_swap(tensor, patch_size, num_swaps):
 # ------------------------------------------------------------------------------#
 def apply_augmentations(img, mask):
     """Apply selected augmentations dynamically based on config."""
-    # if AUGMENTATION_CONFIG['image'][IMAGE_AUGMENTATION_OPTION]["random_flip"]:
-    #     img, mask    = cv_random_flip(img, mask)
+    if AUGMENTATION_CONFIG['image'][IMAGE_AUGMENTATION_OPTION]["random_flip"]:
+        img, mask    = cv_random_flip(img, mask)
 
-    # if AUGMENTATION_CONFIG['image'][IMAGE_AUGMENTATION_OPTION]["random_crop"]:
-    #     img, mask    = randomCrop(img, mask)
+    if AUGMENTATION_CONFIG['image'][IMAGE_AUGMENTATION_OPTION]["random_crop"]:
+        img, mask    = randomCrop(img, mask)
 
-    # if AUGMENTATION_CONFIG['image'][IMAGE_AUGMENTATION_OPTION]["random_rotation"]:
-    #     img, mask    = random_rotation(img, mask)
+    if AUGMENTATION_CONFIG['image'][IMAGE_AUGMENTATION_OPTION]["random_rotation"]:
+        img, mask    = random_rotation(img, mask)
 
     # Tap out the clean image and the clean mask here!
     clean_img, clean_mask = img.copy(), mask.copy() 
 
     # assert clean mask should be a binary image and should contain unique values equal to the num_classes
 
-    # if AUGMENTATION_CONFIG['image'][IMAGE_AUGMENTATION_OPTION]["color_enhance"]:
-    #     img          = colorEnhance(img)
+    if AUGMENTATION_CONFIG['image'][IMAGE_AUGMENTATION_OPTION]["color_enhance"]:
+        img          = colorEnhance(img)
 
-    # if AUGMENTATION_CONFIG['image'][IMAGE_AUGMENTATION_OPTION]["swap_patches"]:
-    #     img          = random_patch_swap(img, patch_size=5, num_swaps=10)
+    if AUGMENTATION_CONFIG['image'][IMAGE_AUGMENTATION_OPTION]["swap_patches"]:
+        img          = random_patch_swap(img, patch_size=5, num_swaps=10)
 
-    # if AUGMENTATION_CONFIG["mask"]["random_pepper"]:
-    #     mask         = randomPeper(mask)
+    if AUGMENTATION_CONFIG["mask"]["random_pepper"]:
+        mask         = randomPeper(mask)
 
-    # if AUGMENTATION_CONFIG["mask"]["swap_pixels"]:
-    #     mask         = swap_pixels(mask)
+    if AUGMENTATION_CONFIG["mask"]["swap_pixels"]:
+        mask         = swap_pixels(mask)
 
-    # if AUGMENTATION_CONFIG["mask"]["morph"]:
-    #     mask         = morph_mask(mask)
+    if AUGMENTATION_CONFIG["mask"]["morph"]:
+        mask         = morph_mask(mask)
 
     return clean_img, clean_mask, img, mask
 

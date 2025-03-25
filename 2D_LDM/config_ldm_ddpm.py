@@ -77,7 +77,7 @@ class InferenceConfig:
     N_PREDS             = 1
     MODEL_EPOCH         = -1                # Epoch of the model to load (-1 for final model)
     NUM_SAMPLES         = 10                # Number of samples 
-    SAVE_FOLDER         = LDM_SNAPSHOT_DIR + f"/inference-A{AUGMENT}-M{MODEL_EPOCH if MODEL_EPOCH != -1 else N_EPOCHS}-E{N_EPOCHS}-t{NUM_TRAIN_TIMESTEPS}-S{SCHEDULER}-SP{NUM_SAMPLES}"  # Save folder for inference results
+    SAVE_FOLDER         = LDM_SNAPSHOT_DIR + f"/inference-M{MODEL_EPOCH if MODEL_EPOCH != -1 else N_EPOCHS}-E{N_EPOCHS}-t{NUM_TRAIN_TIMESTEPS}-S{SCHEDULER}-SP{NUM_SAMPLES}"  # Save folder for inference results
     TRAIN_TIMESTEPS     = NUM_TRAIN_TIMESTEPS
     INFERENCE_TIMESTEPS = NUM_INFERENCE_TIMESTEPS
     SAVE_INTERMEDIATES  = True

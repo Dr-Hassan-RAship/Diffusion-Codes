@@ -6,9 +6,9 @@
 # Authors                   : Talha Ahmed, Nehal Ahmed Shaikh, Hassan Mohy-ud-Din
 # Email                     : 24100033@lums.edu.pk, 202410001@lums.edu.pk, hassan.mohyuddin@lums.edu.pk
 #
-# Last Date                 : March 11, 2025
+# Last Date                 : March 24, 2025
 #-------------------------------------------------------------------------------#
-import torch, os, csv
+import torch, os, csv, sys, logging
 
 import numpy                as np
 
@@ -177,3 +177,40 @@ def prepare_writer_layout():
     }
     
     return layout
+#-------------------------------------------------------------------------------#
+def setup_logging(snapshot_dir, log_filename="logs.txt", level=logging.INFO, console=True):
+    """
+    Sets up logging to file and optionally to stdout.
+
+    Args:
+        snapshot_dir (str): Path to directory where log file will be saved.
+        log_filename (str): Name of the log file.
+        level (int): Logging level (e.g., logging.INFO).
+        console (bool): If True, also log to stdout.
+    """
+    os.makedirs(snapshot_dir, exist_ok=True)
+    log_path = os.path.join(snapshot_dir, log_filename)
+
+    logging.basicConfig(
+        filename=log_path,
+        level=level,
+        format="[%(asctime)s.%(msecs)03d] %(message)s",
+        datefmt="%H:%M:%S"
+    )
+
+    if console:
+        logging.getLogger().addHandler(logging.StreamHandler(sys.stdout))
+#---------------------------------------------------------------------------------#
+def utilize_transformation(img, mask, transforms_op):
+    """
+    Applying transformations to img and mask with same random seed
+    """
+    
+    state = torch.get_rng_state()
+    mask  = transforms_op(mask)
+    torch.set_rng_state(state)
+    img   = transforms_op(img)
+    
+    return img, mask
+    
+#----------------------------------------------------------------------------------#

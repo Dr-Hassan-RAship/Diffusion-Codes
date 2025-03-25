@@ -7,17 +7,19 @@
 # Authors                   : Talha Ahmed, Nehal Ahmed Shaikh, Hassan Mohy-ud-Din
 # Email                     : 24100033@lums.edu.pk, 202410001@lums.edu.pk, hassan.mohyuddin@lums.edu.pk
 #
-# Last Date                 : March 13, 2025
+# Last Date                 : March 25, 2025
 #
 # ------------------------------------------------------------------------------#
 
-import os, random, shutil
+import os, random, shutil, cv2, torch, PIL
 
+import numpy            as np
+
+from PIL                import Image
 from torchvision        import transforms
 from torch.utils.data   import DataLoader, Dataset
-from custom_transforms  import *
 from config_ldm_ddpm    import *
-from custom_transforms  import *
+from utils              import *
 
 # ------------------------------------------------------------------------------#
 def split_dataset(base_dir, split_ratios=(600, 200, 200)):
@@ -79,27 +81,22 @@ class KvasirPolypDataset(Dataset):
     - trainsize: Target size for resizing images and masks.
     - augment  : Whether to apply data augmentation.
     """
-    def __init__(self, base_dir, split="train", trainsize=256, augment=False):
-        self.split       = split
-        self.image_dir   = os.path.join(base_dir, self.split, "images")
-        self.mask_dir    = os.path.join(base_dir, self.split, "masks")
-        self.image_files = sorted(os.listdir(self.image_dir))
-        self.mask_files  = sorted(os.listdir(self.mask_dir))
-        
+    def __init__(self, base_dir, split="train", trainsize=256):
+        self.split      = split
+        self.trainsize  = trainsize
+
+        self.image_dir  = os.path.join(base_dir, self.split, "images")
+        self.mask_dir   = os.path.join(base_dir, self.split, "masks")
+
+        self.image_files= sorted(os.listdir(self.image_dir))
+        self.mask_files = sorted(os.listdir(self.mask_dir))
+
         # insert assert statement that the order matches for the names of the image and mask files
         assert len(self.image_files) == len(self.mask_files), "Number of images and masks do not match!"
 
-        self.trainsize   = trainsize
-        self.augment     = augment
+        self.transform  = transforms.Compose([transforms.RandomHorizontalFlip(p=0.5),
+                                              transforms.RandomVerticalFlip(p=0.5)])
 
-        self.img_transform  = transforms.Compose([
-            transforms.Resize((self.trainsize, self.trainsize)),
-            transforms.ToTensor(),
-            # transforms.Normalize(mean = [0.485, 0.456, 0.406], std = [0.229, 0.224, 0.225]),
-            ])
-        
-        self.mask_transform = transforms.Compose([transforms.Resize((self.trainsize, self.trainsize)),
-                                                  transforms.ToTensor(),])
     # --------------------------------------------------------------------------#
     def __len__(self):
         return len(self.image_files)
@@ -111,33 +108,66 @@ class KvasirPolypDataset(Dataset):
 
         assert (img_path.split(".")[0]).rsplit('/', 1)[-1] == mask_path.split(".")[0].rsplit('/', 1)[-1], "Image and mask file name do not match!"
 
-        img       = Image.open(img_path).convert("RGB") 
-        mask      = Image.open(mask_path).convert("L")
-        
-        if self.augment:
-            clean_img, clean_mask, noisy_img, noisy_mask = apply_augmentations(img, mask)
+        # Read image and corresponding mask
+        img     = Image.fromarray(cv2.cvtColor(cv2.imread(img_path), cv2.COLOR_BGR2RGB))
+        mask    = Image.fromarray(cv2.cvtColor(cv2.imread(mask_path),cv2.COLOR_BGR2RGB))
 
-            clean_img, noisy_img  = self.img_transform(clean_img), self.img_transform(noisy_img)
-            clean_mask, noisy_mask = self.mask_transform(clean_mask), self.mask_transform(noisy_mask)
+        # Resize image and mask
+        img     = img.resize((self.trainsize, self.trainsize), resample = PIL.Image.BICUBIC)
+        mask    = mask.resize((self.trainsize, self.trainsize), resample = PIL.Image.NEAREST)
 
-            return {"patient_id": idx, "clean_image": clean_img, "noisy_image": noisy_img, 
-                    "clean_mask": clean_mask, "noisy_mask": noisy_mask}
+        # Processing Pipeline for SDSeg involves transform followed by dynamic range setting for image (regardless of split)
+        # but for mask the dynamic range setting is only true for 'train' and 'val' splits 
+        # however we will still do it and then later map to 0-1 in inference if needed
         
+        if self.split == "train" or self.split == "val":
+            img, mask = utilize_transformation(img, mask, self.transform)
+        
+            # Adjust dynamic range in [-1, +1]; np.float32
+            img     = np.array(img).astype(np.float32) / 255.0  ; img  = (img * 2.0) - 1.0  # Shape: (256, 256, 3)
+            mask    = (np.array(mask) > 128).astype(np.float32) ; mask = (mask * 2.0) - 1.0
+
+            # Confirm dynamic ranges
+            assert np.max(img) <= 1.0 and np.min(img) >= -1.0
+            assert np.max(mask) <= 1.0 and np.min(mask) >= -1.0
+
+            # Convert img and mask to tensor and permute dimensions
+            img, mask = torch.from_numpy(img).permute(2, 0, 1), torch.from_numpy(mask).permute(2, 0, 1)
+            
+            return {"patient_id": idx, "aug_image": img, "aug_mask": mask}
+        
+        else:
+            # Adjust dynamic range in [-1, +1]; np.float32
+            img     = np.array(img).astype(np.float32) / 255.0  ; img  = (img * 2.0) - 1.0
+            mask    = (np.array(mask) > 128).astype(np.float32) ; mask = (mask * 2.0) - 1.0
+
+            # Confirm dynamic ranges
+            assert np.max(img) <= 1.0 and np.min(img) >= -1.0
+            assert np.max(mask) <= 1.0 and np.min(mask) >= -1.0
+
+            # Convert img and mask to tensor and permute dimensions
+            img, mask = torch.from_numpy(img).permute(2, 0, 1), torch.from_numpy(mask).permute(2, 0, 1)
+            
+            return {"patient_id": idx, "image": img, "mask": mask}
+
 # ------------------------------------------------------------------------------#
-def get_dataloaders(base_dir, split_ratio, split = 'train', trainsize = 256, batch_size = 16, num_workers = 4, format = True):
+def get_dataloaders(base_dir, split_ratio, split = 'train', trainsize = 256,
+                    batch_size = 16, num_workers = 4, format = True):
     """Get train, validation, and test dataloaders."""
-    
-    augment = True 
-    
+
     if not format          : split_dataset(base_dir, split_ratios = split_ratio)
     else                   : print(f'Dataset already split into train, val and test directories')
-    if split == 'test' and not do.AUGMENT: augment = False
-    # if not do.AUGMENT: 
-    #     if split != 'train'    : augment = False
-    
-    dataset    = KvasirPolypDataset(base_dir, split = split, trainsize = trainsize, augment = augment)
-    dataloader = DataLoader(dataset, batch_size = batch_size, shuffle = True if split == 'train' else False, num_workers = num_workers, pin_memory = True)
+
+    dataset     = KvasirPolypDataset(base_dir,
+                                     split      = split,
+                                     trainsize  = trainsize)
+
+    dataloader  = DataLoader(dataset,
+                             batch_size     = batch_size,
+                             shuffle        = True if split == 'train' else False,
+                             num_workers    = num_workers,
+                             pin_memory     = True)
 
     return dataloader
 
-# ------------------------------------------------------------------------------#
+# -----------------------------------------------------------------------------#

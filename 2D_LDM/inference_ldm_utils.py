@@ -225,46 +225,23 @@ def visualize_samples(samples, output_dir):
     - output_dir (str): Directory where visualization will be saved.
     """
 
-    num_samples = len(samples)
-    num_columns = num_samples  # One column per sample
-    num_rows = len(samples[0])  # 2 for autoencoder, 3 for LDM
+    num_rows = len(samples[0]); assert num_rows in [2, 3], 'each tuple should have either 2 or 3 elements.'
+    _, axes  = plt.subplots(num_rows, len(samples), figsize = (len(samples) * 5, num_rows * 5))
+    axes     = axes.flatten()
 
-    fig, axes = plt.subplots(num_rows, num_columns, figsize=(3 * num_columns, 3 * num_rows))
-
-    # Handle case where only 1 sample is given (axes will be 1D)
-    if num_samples == 1:
-        axes = np.expand_dims(axes, axis=1)  
-
-    for i, sample in enumerate(samples):
-        for j, img in enumerate(sample):
-            ax = axes[j, i]  # Correct indexing for multiple rows and columns
-            
-            # 🔹 **Fix the Shape Issue** 🔹
-            if img.ndim == 3 and img.shape[0] == 3:  # If shape is (3, H, W), convert to (H, W, 3)
-                img = img.transpose(1, 2, 0)  # Convert CHW → HWC
-                img = (img - img.min(axis=(0, 1))) / (
-                img.max(axis=(0, 1)) - img.min(axis=(0, 1))
-                    )
-                
-            ax.imshow(img, cmap="gray" if img.ndim == 2 else None)  # Use cmap only for grayscale
-            # Assign Titles Based on Number of Rows
-            if num_rows == 2:
-                titles = ["GT Image", "Reconstruction"]
-            elif num_rows == 3:
-                titles = ["GT Image", "GT Mask", "Predicted Mask"]
-            else:
-                titles = ["Sample"] * num_rows  # Fallback
-
-            ax.set_title(titles[j])
-            ax.axis("off")
+    # row-wise order: (gt_image, recon_image) | (gt_image, gt_mask, pred_mask) 
+    for i, image_tuple in enumerate(samples):
+        for j in range(num_rows):
+            ax = axes[j * len(samples) + i] # Get the correct axis for this subplot
+            ax.imshow(np.transpose(image_tuple[j], (1, 2, 0))) # Show the corresponding image
+            ax.axis('off') # Hide the axes
 
     plt.tight_layout()
 
-    # Save image with appropriate name
-    filename = "sample_visualization.png" if num_rows == 2 else "sample_segmentation.png"
-    save_path = os.path.join(output_dir, filename)
+    save_path = os.path.join(output_dir, 'sample_' + ('images' if num_rows == 2 else 'masks') + '.png')
     plt.savefig(save_path)
-    print(f"Sample visualization saved at {save_path}")
-    plt.close()  # Close the figure to free memory
+    print(f'sample visualization saved at {save_path}')
+    plt.show()
+    plt.close()
 
 #------------------------------------------------------------------------------#

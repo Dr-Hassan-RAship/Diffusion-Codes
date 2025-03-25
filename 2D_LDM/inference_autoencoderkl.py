@@ -76,7 +76,7 @@ def inference(autoencoderkl, test_loader, device, output_dir, mode, num_samples)
                 ae_input              = batch["image"].to(device)
                 gt_input              = batch["image"].to(device)
                 with autocast('cuda', enabled = True):
-                    reconstructions, _, _ = autoencoderkl(input)
+                    reconstructions, _, _ = autoencoderkl(ae_input)
                     # [talha] --> confirm reconstruction are logits so we need to map them to [-1, 1] followed by [0, 255]
                     recon_norm            = (((torch.tanh(reconstructions) + 1) / 2.0) * 255.0)
             else:
@@ -84,7 +84,7 @@ def inference(autoencoderkl, test_loader, device, output_dir, mode, num_samples)
                 gt_input              = batch["mask"].to(device)
 
                 with autocast('cuda', enabled = True):
-                    reconstructions, _, _ = autoencoderkl(input)
+                    reconstructions, _, _ = autoencoderkl(ae_input)
                     # [talha] --> confirm and with sir as well and visualize a channel of recon_norm whether it is
                     # binary and the prediction
                     # [nehal] --> Whether we can direct threshold > 0 the tanh output
@@ -119,10 +119,10 @@ def inference(autoencoderkl, test_loader, device, output_dir, mode, num_samples)
     save_metrics_to_csv(metrics_list, metrics_filename, mode)
     
     # [talha] --> debug this function as its giving problem?
-    # if num_samples > 0 and len(result_list) >= num_samples:
-    #     print("Calling visualize_samples function...")
-    #     selected_samples = random.sample(result_list, num_samples)
-    #     visualize_samples(selected_samples, output_dir)
+    if num_samples > 0 and len(result_list) >= num_samples:
+        print("Calling visualize_samples function...")
+        selected_samples = random.sample(result_list, num_samples)
+        visualize_samples(selected_samples, output_dir)
 
     print(f"Inference complete! Results saved in {output_dir}")
 

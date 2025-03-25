@@ -67,7 +67,6 @@ MODEL_PARAMS = {"spatial_dims"     : 2 if DIMENSION == "2d" else 3,
                 "num_res_blocks"   : 2,
                 "num_head_channels": 24} # num_head_channels = model_channels (192) // num_heads (8)
 
-# ------------------------------------------------------------------------------#
 LDM_SNAPSHOT_DIR     = "./results/" + RUN + f"/ldm-" + EXPERIMENT_NAME
 LDM_SCALE_FACTOR     = 1.0
 

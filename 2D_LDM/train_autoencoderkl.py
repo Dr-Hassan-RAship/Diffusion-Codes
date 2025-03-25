@@ -38,30 +38,6 @@ def parse_arguments():
         help="Resume training from the latest checkpoint if available"
     )
     return parser.parse_args()
-
-# ------------------------------------------------------------------------------#
-def get_latest_checkpoint(models_dir):
-    """
-    Search for the latest checkpoint in the models_dir. Checkpoint files should follow the pattern:
-    'autoencoder_epoch_{epoch_number}.pth'
-    
-    Returns:
-        (epoch, filepath) of the latest checkpoint, or None if not found.
-    """
-    checkpoint = None
-    latest_epoch = -1
-    for filename in os.listdir(models_dir):
-        match = re.match(r'autoencoder_epoch_(\d+)\.pth', filename)
-        if match:
-            epoch = int(match.group(1))
-            if epoch > latest_epoch:
-                latest_epoch = epoch
-                checkpoint = filename
-    if checkpoint is not None:
-        return latest_epoch, os.path.join(models_dir, checkpoint)
-    else:
-        return None
-
 # ------------------------------------------------------------------------------#
 def initialize_components(device, snapshot_dir):
     """
@@ -69,12 +45,12 @@ def initialize_components(device, snapshot_dir):
     Writes training parameters to a text file.
     """
     autoencoderkl = AutoencoderKL(**AUTOENCODERKL_PARAMS).to(device)
-    optimizer = torch.optim.AdamW(autoencoderkl.parameters(),
+    optimizer     = torch.optim.AdamW(autoencoderkl.parameters(),
                                   lr=LR,
                                   betas=(0.9, 0.999),
                                   weight_decay=0.0001)
-    scaler = GradScaler('cuda')
-    output_file = "dae_image_params.txt"
+    scaler        = GradScaler('cuda')
+    output_file   = "dae_image_params.txt"
 
     with open(os.path.join(snapshot_dir, output_file), "a") as f:
         f.write("DAE_IMAGE_PARAMS:\n")
@@ -91,15 +67,14 @@ def train_one_epoch(autoencoderkl, train_loader, device, optimizer, scaler, epoc
     Train the autoencoder for one epoch.
     """
     epoch_recon_loss = 0.0
+    autoencoderkl.train(); optimizer.zero_grad(set_to_none=True)
     for step, batch in enumerate(train_loader):
         gt_input = batch["aug_image"].to(device) if mode == 'image' else batch["aug_mask"].to(device)
-
-        autoencoderkl.train()
-        optimizer.zero_grad(set_to_none=True)
+        
         with autocast('cuda', enabled=True):
             reconstruction, _, _ = autoencoderkl(gt_input)
             reconstruction = torch.tanh(reconstruction).to(device)
-            recon_loss = F.l1_loss(reconstruction.float(), gt_input.float())
+            recon_loss     = F.l1_loss(reconstruction.float(), gt_input.float())
 
         scaler.scale(recon_loss).backward()
         scaler.step(optimizer)
@@ -116,15 +91,18 @@ def validate_and_save(autoencoderkl, val_loader, device, models_dir, epoch, writ
     """
     Validate the autoencoder on the validation dataset and save the model checkpoint.
     """
-    autoencoderkl.eval()
+    
     epoch_recon_loss = 0.0
+    autoencoderkl.eval()
     with torch.no_grad():
         for val_step, val_batch in enumerate(val_loader):
             gt_input = val_batch["aug_image"].to(device) if mode == 'image' else val_batch["aug_mask"].to(device)
+
             with autocast('cuda', enabled=True):
                 val_reconstruction, _, _ = autoencoderkl(gt_input)
                 val_reconstruction = torch.tanh(val_reconstruction).to(device)
                 recon_loss = F.l1_loss(gt_input.float(), val_reconstruction.float())
+                
             epoch_recon_loss += recon_loss.item()
             logging.info(f'[val] epoch: {epoch}\tbatch: {val_step}\trecon_loss: {recon_loss:.4f}')
             writer.add_scalar("Loss/Val Iteration", recon_loss.item(), epoch * len(val_loader) + val_step)
@@ -165,10 +143,10 @@ def main():
 
     # Check if a checkpoint exists and resume training
     resume_epoch = 0
-    checkpoint = get_latest_checkpoint(models_dir)
+    checkpoint   = get_latest_checkpoint(models_dir)
     if args.resume and checkpoint is not None:
         resume_epoch, checkpoint_path = checkpoint
-        autoencoderkl.load_state_dict(torch.load(checkpoint_path, map_location=device))
+        autoencoderkl.load_state_dict(torch.load(checkpoint_path, map_location=device, weights_only = True))
         logging.info(f"Resuming training from epoch {resume_epoch}")
         print(f"Resuming training from epoch {resume_epoch}")
     else:

@@ -7,7 +7,7 @@
 # Authors                   : Talha Ahmed, Nehal Ahmed Shaikh, Hassan Mohy-ud-Din
 # Email                     : 24100033@lums.edu.pk, 202410001@lums.edu.pk, hassan.mohyuddin@lums.edu.pk
 #
-# Last Date                 : March 11, 2025
+# Last Date                 : March 25, 2025
 #
 # ------------------------------------------------------------------------------#
 
@@ -68,34 +68,28 @@ def inference(autoencoderkl, test_loader, device, output_dir, mode, num_samples)
         ncols=100,
     )
     # define normalization for reconstruction - same as clean image from dataset.py
-    norm        = transforms.Normalize(mean = [0.485, 0.456, 0.406], std = [0.229, 0.224, 0.225])
     ssim_metric = SSIMMetric(spatial_dims=2)
     
     with torch.no_grad():
         for batch in progress_bar:
             if mode == "image":
-                if do.AUGMENT:
-                    input                 = batch["noisy_image"].to(device)
-                    gt_input              = batch["clean_image"].to(device)
-                else:
-                    input                 = batch["image"].to(device)
-                    gt_input              = batch["image"].to(device)
+                ae_input              = batch["image"].to(device)
+                gt_input              = batch["image"].to(device)
                 with autocast('cuda', enabled = True):
                     reconstructions, _, _ = autoencoderkl(input)
-                    # apply normalization to reconstruction to ensure same dynamic range as with clean image
-                    recon_norm            = norm(reconstructions)
+                    # [talha] --> confirm reconstruction are logits so we need to map them to [-1, 1] followed by [0, 255]
+                    recon_norm            = (((torch.tanh(reconstructions) + 1) / 2.0) * 255.0)
             else:
-                if do.AUGMENT:
-                    input                 = batch["noisy_mask"].to(device)
-                    gt_input              = batch["clean_mask"].to(device)
-                else:
-                    input                 = batch["mask"].to(device)
-                    gt_input              = batch["mask"].to(device)
+                ae_input              = batch["mask"].to(device)
+                gt_input              = batch["mask"].to(device)
 
                 with autocast('cuda', enabled = True):
                     reconstructions, _, _ = autoencoderkl(input)
-                    # apply sigmoid to logits in reconstruction to ensure binary values
-                    recon_norm = (torch.sigmoid(reconstructions) > 0.5).float()
+                    # [talha] --> confirm and with sir as well and visualize a channel of recon_norm whether it is
+                    # binary and the prediction
+                    # [nehal] --> Whether we can direct threshold > 0 the tanh output
+                    recon_norm            = ((torch.tanh(reconstructions) + 1) / 2.0)
+                    recon_norm            = ((recon_norm) > 0.5).float() 
                     
             patient_id = batch["patient_id"]
 
@@ -123,7 +117,8 @@ def inference(autoencoderkl, test_loader, device, output_dir, mode, num_samples)
     metrics_filename = os.path.join(output_dir, "metrics.csv")
     metrics_list.sort(key=lambda x: x[0])
     save_metrics_to_csv(metrics_list, metrics_filename, mode)
-
+    
+    # [talha] --> debug this function as its giving problem?
     # if num_samples > 0 and len(result_list) >= num_samples:
     #     print("Calling visualize_samples function...")
     #     selected_samples = random.sample(result_list, num_samples)
@@ -141,12 +136,11 @@ def main():
     mask_bool = True if args.mode == "mask" else False
 
     
-    
     if im_bool:
-        output_dir = os.path.join(DAE_IMAGE_SNAPSHOT_DIR, f"inference_results_SP{args.num_samples}")
+        output_dir = os.path.join(AEKL_IMAGE_SNAPSHOT_DIR, f"inference_results_SP{args.num_samples}")
         check_or_create_folder(output_dir)
     else:
-        output_dir = os.path.join(DAE_MASK_SNAPSHOT_DIR, f"inference_results_SP{args.num_samples}")
+        output_dir = os.path.join(AEKL_MASK_SNAPSHOT_DIR, f"inference_results_SP{args.num_samples}")
         check_or_create_folder(output_dir)
 
     train_loader = get_dataloaders(

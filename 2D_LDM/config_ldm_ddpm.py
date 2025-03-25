@@ -75,7 +75,6 @@ LDM_SCALE_FACTOR     = 1.0
 # Placeholder for inference configuration
 class InferenceConfig:
     N_PREDS             = 1
-    AUGMENT             = False
     MODEL_EPOCH         = -1                # Epoch of the model to load (-1 for final model)
     NUM_SAMPLES         = 10                # Number of samples 
     SAVE_FOLDER         = LDM_SNAPSHOT_DIR + f"/inference-A{AUGMENT}-M{MODEL_EPOCH if MODEL_EPOCH != -1 else N_EPOCHS}-E{N_EPOCHS}-t{NUM_TRAIN_TIMESTEPS}-S{SCHEDULER}-SP{NUM_SAMPLES}"  # Save folder for inference results

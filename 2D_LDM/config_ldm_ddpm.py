@@ -14,7 +14,7 @@
 BASE_DIR            = "/media/ee/DATA/Talha_Nehal/Datasets/Kvasir-SEG"        # Path to the dataset root directory
 DIMENSION           = '2d'                  # '2d' or '3d'
 TRAINSIZE           = 256                   # Target size for resizing images and masks
-BATCH_SIZE          = 5                     # Batch size for dataloaders
+BATCH_SIZE          = 2                     # Batch size for dataloaders
 SPLIT_RATIOS        = (600, 200, 200)       # Train, validation, test split ratios
 FORMAT              = True                  # If True, train/val/test subdirectories already exist
 CLASSIFICATION_TYPE = 'binary'              # 'binary' or 'multiclass'
@@ -74,6 +74,7 @@ LDM_SCALE_FACTOR     = 1.0
 # Placeholder for inference configuration
 class InferenceConfig:
     N_PREDS             = 1
+    RESUME              = False
     MODEL_EPOCH         = -1                # Epoch of the model to load (-1 for final model)
     NUM_SAMPLES         = 10                # Number of samples 
     SAVE_FOLDER         = LDM_SNAPSHOT_DIR + f"/inference-M{MODEL_EPOCH if MODEL_EPOCH != -1 else N_EPOCHS}-E{N_EPOCHS}-t{NUM_TRAIN_TIMESTEPS}-S{SCHEDULER}-SP{NUM_SAMPLES}"  # Save folder for inference results

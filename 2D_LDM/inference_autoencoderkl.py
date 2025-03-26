@@ -75,44 +75,37 @@ def inference(autoencoderkl, test_loader, device, output_dir, mode, num_samples)
             if mode == "image":
                 ae_input              = batch["image"].to(device)
                 gt_input              = batch["image"].to(device)
-                with autocast('cuda', enabled = True):
-                    reconstructions, _, _ = autoencoderkl(ae_input)
-                    # [talha] --> confirm reconstruction are logits so we need to map them to [-1, 1] followed by [0, 255]
-                    recon_norm            = (((torch.tanh(reconstructions) + 1) / 2.0) * 255.0)
+                
             else:
                 ae_input              = batch["mask"].to(device)
                 gt_input              = batch["mask"].to(device)
-
-                with autocast('cuda', enabled = True):
-                    reconstructions, _, _ = autoencoderkl(ae_input)
-                    # [talha] --> confirm and with sir as well and visualize a channel of recon_norm whether it is
-                    # binary and the prediction
-                    # [nehal] --> Whether we can direct threshold > 0 the tanh output
-                    recon_norm            = ((torch.tanh(reconstructions) + 1) / 2.0)
-                    recon_norm            = ((recon_norm) > 0.5).float() 
-                    
+                
+            recon_norm = postprocess_and_rescaling(autoencoderkl, ae_input, mode)
+            gt_input   = postprocess_and_rescaling(None, gt_input, mode)
             patient_id = batch["patient_id"]
 
-            for i in range(input.shape[0]):
-                gt_img    = gt_input[i].cpu().numpy().squeeze()
-                recon_img = recon_norm[i].cpu().numpy().squeeze()
+            for i in range(ae_input.shape[0]):
+                aekl_input    = gt_input[i].float().cpu().numpy().squeeze()
+                aekl_recon    = recon_norm[i].float().cpu().numpy().squeeze()
+                
+                # print(f'aekl_input.shape {aekl_input.shape}, aekl_recon.shape {aekl_recon.shape}')
 
                 patient_folder = os.path.join(output_dir, f"{patient_id[i]}")
                 check_or_create_folder(patient_folder)
 
-                save_groundtruth_image(gt_img, patient_folder, f"{mode}_groundtruth.jpg", mode)
-                save_groundtruth_image(recon_img, patient_folder, f"{mode}_reconstructed.jpg", mode)
+                save_groundtruth_image(aekl_input, patient_folder, f"{mode}_groundtruth.jpg")
+                save_groundtruth_image(aekl_recon, patient_folder, f"{mode}_reconstructed.jpg")
 
                 if mode == "mask":
-                    dice, hd95, assd, miou = calculate_metrics(recon_img, gt_img)
+                    dice, hd95, assd, miou = calculate_metrics(aekl_recon, aekl_input)
                     metrics_list.append([int(patient_id[i].item()), dice, hd95, assd, miou])
                 else:
-                    mse  = np.mean((gt_img - recon_img) ** 2)
-                    ssim = ssim_metric(torch.tensor(recon_img).unsqueeze(0), torch.tensor(gt_img).unsqueeze(0))
+                    mse  = np.mean((aekl_input - aekl_recon) ** 2)
+                    ssim = ssim_metric(torch.tensor(aekl_recon).unsqueeze(0), torch.tensor(aekl_input).unsqueeze(0))
                     metrics_list.append([int(patient_id[i].item()), mse, ssim.item()])  # append ssim if used
 
                 if num_samples > 0 and len(result_list) < num_samples:
-                    result_list.append((gt_img, recon_img))
+                    result_list.append((aekl_input, aekl_recon))
 
     metrics_filename = os.path.join(output_dir, "metrics.csv")
     metrics_list.sort(key=lambda x: x[0])
@@ -125,7 +118,6 @@ def inference(autoencoderkl, test_loader, device, output_dir, mode, num_samples)
         visualize_samples(selected_samples, output_dir)
 
     print(f"Inference complete! Results saved in {output_dir}")
-
 
 # ------------------------------------------------------------------------------#
 def main():

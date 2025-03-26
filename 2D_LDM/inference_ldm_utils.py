@@ -52,58 +52,58 @@ def load_autoencoder(device, train_loader, image=True, mask=True, epoch_mask = 5
     if image:
         # if epoch_image == N_EPOCHS: joint_dir = f'final_model.pth'
         # else                      : joint_dir = f'autoencoder_epoch_{epoch_image}.pth'
-        joint_dir = f'autoencoder_epoch_{epoch_image}.pth'
+        joint_dir = f'autoencoderkl_epoch_{epoch_image}.pth'
         
         autoencoder_path = os.path.join(
-            DAE_IMAGE_SNAPSHOT_DIR + "/models", joint_dir
+            AEKL_IMAGE_SNAPSHOT_DIR + "/models", joint_dir
         )
-        autoencoder_params = DAE_IMAGE_PARAMS
+        autoencoder_params = AUTOENCODERKL_PARAMS
 
-        dae_image = AutoencoderKL(**autoencoder_params)
-        dae_image.load_state_dict(
+        aekl_image = AutoencoderKL(**autoencoder_params)
+        aekl_image.load_state_dict(
             torch.load(autoencoder_path, map_location=device, weights_only=True)
         )
-        dae_image.to(device)
-        dae_image.eval()
+        aekl_image.to(device)
+        aekl_image.eval()
 
         sample_data = next(iter(train_loader))  # Get scale factor of latent space
 
         with torch.no_grad():
             with autocast("cuda", enabled=True):
-                z = dae_image.encode_stage_2_inputs(
-                    sample_data["clean_image"].to(device)
+                z = aekl_image.encode_stage_2_inputs(
+                    sample_data["aug_image"].to(device)
                 )
 
             print(f"Loaded Image AutoencoderKL from {autoencoder_path}")
 
             z           = LDM_SCALE_FACTOR / torch.std(z)
-            tup_image   = (dae_image, z)
+            tup_image   = (aekl_image, z)
 
     if mask:
         if epoch_mask == N_EPOCHS: joint_dir = f'final_model.pth'
-        else                     : joint_dir = f'autoencoder_epoch_{epoch_mask}.pth'
+        else                     : joint_dir = f'autoencoderkl_epoch_{epoch_mask}.pth'
         
         autoencoder_path = os.path.join(
-            DAE_MASK_SNAPSHOT_DIR + "/models", joint_dir
+            AEKL_MASK_SNAPSHOT_DIR + "/models", joint_dir
         )
-        autoencoder_params = DAE_MASK_PARAMS
+        autoencoder_params = AUTOENCODERKL_PARAMS
 
-        dae_mask = AutoencoderKL(**autoencoder_params)
-        dae_mask.load_state_dict(
+        aekl_mask = AutoencoderKL(**autoencoder_params)
+        aekl_mask.load_state_dict(
             torch.load(autoencoder_path, map_location=device, weights_only=True)
         )
-        dae_mask.to(device)
-        dae_mask.eval()
+        aekl_mask.to(device)
+        aekl_mask.eval()
 
         sample_data = next(iter(train_loader))  # Get scale factor of latent space
 
         with torch.no_grad():
             with autocast("cuda", enabled=True):
-                z = dae_mask.encode_stage_2_inputs(sample_data["clean_mask"].to(device))
+                z = aekl_mask.encode_stage_2_inputs(sample_data["aug_mask"].to(device))
 
         print(f"Loaded Mask AutoencoderKL from {autoencoder_path}")
         z           = LDM_SCALE_FACTOR / torch.std(z)
-        tup_mask    = (dae_mask, z)
+        tup_mask    = (aekl_mask, z)
 
     # return tup_image only if image == True and tup_mask only if mask == True and
     # return both if both are true
@@ -126,7 +126,7 @@ def load_ldm_model(device, scale_factor):
     model_params = MODEL_PARAMS
 
     unet = DiffusionModelUNet(**model_params)
-    unet.load_state_dict(torch.load(model_path, map_location=device, weights_only=True))
+    unet.load_state_dict(torch.load(model_path, map_location = device, weights_only = True))
     unet.to(device)
     unet.eval()
 
@@ -178,9 +178,6 @@ def save_groundtruth_image(image, save_folder, filename, mode="image"):
     if mode == "image":
         # tranpose image to (256, 256, 3) and normalize between 0 - 1 for each channel independantly for imsave
         image = np.transpose(image, (1, 2, 0))
-        image = (image - image.min(axis=(0, 1))) / (
-            image.max(axis=(0, 1)) - image.min(axis=(0, 1))
-        )
         plt.imsave(filepath, image)
     else:
         plt.imsave(filepath, image, cmap="gray")
@@ -209,39 +206,74 @@ def save_metrics_to_csv(metrics, csv_path, mode):
 # ------------------------------------------------------------------------------#
 def visualize_samples(samples, output_dir):
     """
-    Visualizes samples in a **horizontal grid**:
-    - **Autoencoder Inference**: 
-      - Top row: Ground Truth images 
-      - Bottom row: Corresponding Reconstructions
-    - **LDM Inference**:
-      - Row 1: Ground Truth Images
-      - Row 2: Ground Truth Masks
-      - Row 3: Predicted Masks
+    Visualizes samples in a horizontal grid:
+      - For AutoencoderKL Inference: 
+          Row 1: Ground Truth Images 
+          Row 2: Reconstructions
+      - For LDM Inference:
+          Row 1: Ground Truth Images
+          Row 2: Ground Truth Masks
+          Row 3: Predicted Masks
 
     Args:
-    - samples (list): 
-      - Autoencoder: List of tuples (GT Image, Reconstruction).
-      - LDM: List of tuples (GT Image, GT Mask, Predicted Mask).
-    - output_dir (str): Directory where visualization will be saved.
+      samples (list): A list of tuples where each tuple contains:
+                      - For autoencoder: (GT Image, Reconstruction)
+                      - For LDM: (GT Image, GT Mask, Predicted Mask)
+      output_dir (str): Directory where the visualization image will be saved.
     """
+    num_samples = len(samples)
+    num_rows = len(samples[0])
+    assert num_rows in [2, 3], "Each sample tuple must have either 2 or 3 elements."
 
-    num_rows = len(samples[0]); assert num_rows in [2, 3], 'each tuple should have either 2 or 3 elements.'
-    _, axes  = plt.subplots(num_rows, len(samples), figsize = (len(samples) * 5, num_rows * 5))
-    axes     = axes.flatten()
+    # Titles based on inference type
+    titles = {
+        2: ["Ground Truth", "Reconstruction"],
+        3: ["GT Image", "GT Mask", "Predicted Mask"]
+    }
 
-    # row-wise order: (gt_image, recon_image) | (gt_image, gt_mask, pred_mask) 
-    for i, image_tuple in enumerate(samples):
-        for j in range(num_rows):
-            ax = axes[j * len(samples) + i] # Get the correct axis for this subplot
-            ax.imshow(np.transpose(image_tuple[j], (1, 2, 0))) # Show the corresponding image
-            ax.axis('off') # Hide the axes
+    # Create figure and axes
+    fig, axes = plt.subplots(num_rows, num_samples, figsize=(num_samples * 4, num_rows * 4))
+
+    # If only one sample, make axes 2D
+    if num_samples == 1:
+        axes = np.expand_dims(axes, axis=1)
+
+    for col_idx, sample in enumerate(samples):
+        for row_idx in range(num_rows):
+            ax = axes[row_idx][col_idx]
+            img = sample[row_idx]
+
+            # Convert CHW to HWC if needed
+            if img.ndim == 3 and img.shape[0] in [1, 3]:
+                img = np.transpose(img, (1, 2, 0))
+
+            # Squeeze grayscale channels
+            if img.shape[-1] == 1:
+                img = img.squeeze(-1)
+
+            ax.imshow(img, cmap="gray" if img.ndim == 2 else None)
+            ax.set_title(titles[num_rows][row_idx])
+            ax.axis("off")
 
     plt.tight_layout()
-
-    save_path = os.path.join(output_dir, 'sample_' + ('images' if num_rows == 2 else 'masks') + '.png')
+    filename = "sample_reconstructions.png" if num_rows == 2 else "sample_masks.png"
+    save_path = os.path.join(output_dir, filename)
     plt.savefig(save_path)
-    print(f'sample visualization saved at {save_path}')
-    plt.show()
+    print(f"Sample visualization saved at {save_path}")
     plt.close()
 
 #------------------------------------------------------------------------------#
+def postprocess_and_rescaling(aekl_model, aekl_input, mode='image'):
+    if aekl_model is None:
+        recon = aekl_input
+    else:
+        recon, _, _ = aekl_model(aekl_input)
+        recon       = torch.tanh(recon)
+    
+    if mode == 'image':
+        return (recon + 1) / 2.0  # For visualization
+    elif mode == 'mask':
+        return ((recon + 1) / 2.0 > 0.5).float()  # For binary output
+    else:
+        raise ValueError(f"Unsupported mode {mode}")
+#-------------------------------------------------------------------------------#

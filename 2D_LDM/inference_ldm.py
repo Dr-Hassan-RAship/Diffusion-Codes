@@ -21,13 +21,13 @@ from dataset                    import *
 from inference_ldm_utils        import *
 from config_ldm_ddpm            import *
 # ------------------------------------------------------------------------------#
-def inference(unet, dae_image, dae_mask, inferer, test_loader, device, output_dir, num_samples):
+def inference(unet, aekl_image, aekl_mask, inferer, test_loader, device, output_dir, num_samples):
     """
     Perform inference using the LDM model with a progress bar.
     """
     unet.eval()
-    dae_image.eval()
-    dae_mask.eval()
+    aekl_image.eval()
+    aekl_mask.eval()
     metrics_list     = []
     result_list      = []
     
@@ -35,20 +35,14 @@ def inference(unet, dae_image, dae_mask, inferer, test_loader, device, output_di
 
     with torch.no_grad():
         for batch in progress_bar:
-            if do.AUGMENT:
-                images = batch["noisy_image"].to(device)
-                groundtruth_image = batch["clean_image"].cpu().numpy().squeeze()
-                groundtruth_mask  = batch["clean_mask"].cpu().numpy().squeeze()
-            else:
-                images = batch["image"].to(device)
-                groundtruth_image = batch["image"].cpu().numpy().squeeze()
-                groundtruth_mask  = batch["mask"].cpu().numpy().squeeze()
+            images            = batch["image"].to(device)
+            groundtruth_image = batch["image"].cpu().numpy().squeeze()
+            groundtruth_mask  = batch["mask"].cpu().numpy().squeeze()
 
             patient_id = batch["patient_id"]
 
             # Encode images to latent space
-            z_mu, z_sigma = dae_image.encode(images)
-            z_c           = dae_image.sampling(z_mu, z_sigma)  # Conditioned latent representation
+            z_c           = aekl_image.encode_stage_2_inputs(images).to(device) # Conditioned latent representation
 
             # Generate noise tensor for segmentation mask
             z_t_list = [torch.randn_like(z_c).to(device) for _ in range(do.N_PREDS)]
@@ -56,7 +50,7 @@ def inference(unet, dae_image, dae_mask, inferer, test_loader, device, output_di
             # Perform LDM sampling # [talha] do.num_average times and then average predictions but in the case num_average > 1you dont need to average the intermediates only the predictions
             if do.SAVE_INTERMEDIATES:
                 predicted_mask, intermediates = inferer.sample(input_noise        = z_t_list[0],
-                                                               autoencoder_model  = dae_mask,
+                                                               autoencoder_model  = aekl_mask,
                                                                diffusion_model    = unet,
                                                                scheduler          = inferer.scheduler,
                                                                save_intermediates = do.SAVE_INTERMEDIATES,
@@ -65,15 +59,11 @@ def inference(unet, dae_image, dae_mask, inferer, test_loader, device, output_di
                                                                mode               = "concat")
             else:
                 predicted_mask = torch.mean(torch.stack([inferer.sample(input_noise       = z_t,
-                                                                        autoencoder_model = dae_mask,
+                                                                        autoencoder_model = aekl_mask,
                                                                         diffusion_model   = unet,
                                                                         scheduler         = inferer.scheduler,
                                                                         conditioning      = z_c,
                                                                         mode              = "concat") for z_t in z_t_list]), dim = 0)
-            
-            #[talha] --> try to see if we can not only visualize the final predicted mask but also z_T and z_c before it goes to the UNET
-            # and also see if we can get the noise predictions (aka z_0) before it goes to the decoder. But note that z_0 is of 4 channels 
-            #  so we might need to visualize it channel wise like in paper. 
 
             # binarize predicted_mask
             predicted_mask    = (torch.sigmoid(predicted_mask) > 0.5).float().cpu().numpy().squeeze()
@@ -134,12 +124,12 @@ def main():
 
     # Load pre-trained models
     tup_image, tup_mask      = load_autoencoder(device, train_loader, image=True, mask=True, epoch_mask = 200, epoch_image = 250)
-    dae_image, _             = tup_image
-    dae_mask, scale_factor   = tup_mask
+    aekl_image, _             = tup_image
+    aekl_mask, scale_factor   = tup_mask
     unet, _, inferer         = load_ldm_model(device, scale_factor)
 
     check_or_create_folder(do.SAVE_FOLDER)
-    inference(unet, dae_image, dae_mask, inferer, test_loader, device, do.SAVE_FOLDER, do.NUM_SAMPLES)
+    inference(unet, aekl_image, aekl_mask, inferer, test_loader, device, do.SAVE_FOLDER, do.NUM_SAMPLES)
 
 # ------------------------------------------------------------------------------#
 if __name__ == "__main__":

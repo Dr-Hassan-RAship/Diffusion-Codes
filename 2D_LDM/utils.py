@@ -214,25 +214,31 @@ def utilize_transformation(img, mask, transforms_op):
     return img, mask
     
 #----------------------------------------------------------------------------------#
-def get_latest_checkpoint(models_dir):
+def get_latest_checkpoint(models_dir, prefix):
     """
     Search for the latest checkpoint in the models_dir. Checkpoint files should follow the pattern:
-    'autoencoder_epoch_{epoch_number}.pth'
-    
+    '{prefix}{epoch_number}.pth'
+
     Returns:
         (epoch, filepath) of the latest checkpoint, or None if not found.
     """
-    checkpoint = None
+    checkpoint   = None
     latest_epoch = -1
+
+    # Correct regex using f-string and raw string properly
+    pattern = re.compile(rf'{re.escape(prefix)}(\d+)\.pth')
+
     for filename in os.listdir(models_dir):
-        match = re.match(r'autoencoderkl_epoch_(\d+)\.pth', filename)
+        match = pattern.match(filename)
         if match:
             epoch = int(match.group(1))
             if epoch > latest_epoch:
                 latest_epoch = epoch
                 checkpoint = filename
+
     if checkpoint is not None:
         return latest_epoch, os.path.join(models_dir, checkpoint)
     else:
         return None
+
 #-----------------------------------------------------------------------------------#

@@ -39,7 +39,7 @@ def parse_arguments():
     )
     return parser.parse_args()
 # ------------------------------------------------------------------------------#
-def initialize_components(device, snapshot_dir):
+def initialize_components(device, snapshot_dir, mode):
     """
     Initialize autoencoder, optimizer, and gradient scaler.
     Writes training parameters to a text file.
@@ -50,14 +50,14 @@ def initialize_components(device, snapshot_dir):
                                   betas=(0.9, 0.999),
                                   weight_decay=0.0001)
     scaler        = GradScaler('cuda')
-    output_file   = "dae_image_params.txt"
+    output_file   = f"aekl_{mode}_params.txt"
 
     with open(os.path.join(snapshot_dir, output_file), "a") as f:
-        f.write("DAE_IMAGE_PARAMS:\n")
+        f.write("AUTOENCODERKL_PARAMS:\n")
         f.write(f"batch_size: {BATCH_SIZE}\n")
         for key, value in AUTOENCODERKL_PARAMS.items():
             f.write(f"{key}: {value}\n")
-    print(f"DAE_IMAGE_PARAMS appended to {output_file}")
+    print(f"AUTOENCODERKL_PARAMS appended to {output_file}")
 
     return autoencoderkl, optimizer, scaler
 
@@ -73,8 +73,8 @@ def train_one_epoch(autoencoderkl, train_loader, device, optimizer, scaler, epoc
         
         with autocast('cuda', enabled=True):
             reconstruction, _, _ = autoencoderkl(gt_input)
-            reconstruction = torch.tanh(reconstruction).to(device)
-            recon_loss     = F.l1_loss(reconstruction.float(), gt_input.float())
+            reconstruction       = torch.tanh(reconstruction).to(device)
+            recon_loss           = F.l1_loss(reconstruction.float(), gt_input.float())
 
         scaler.scale(recon_loss).backward()
         scaler.step(optimizer)
@@ -100,8 +100,8 @@ def validate_and_save(autoencoderkl, val_loader, device, models_dir, epoch, writ
 
             with autocast('cuda', enabled=True):
                 val_reconstruction, _, _ = autoencoderkl(gt_input)
-                val_reconstruction = torch.tanh(val_reconstruction).to(device)
-                recon_loss = F.l1_loss(gt_input.float(), val_reconstruction.float())
+                val_reconstruction       = torch.tanh(val_reconstruction).to(device)
+                recon_loss               = F.l1_loss(gt_input.float(), val_reconstruction.float())
                 
             epoch_recon_loss += recon_loss.item()
             logging.info(f'[val] epoch: {epoch}\tbatch: {val_step}\trecon_loss: {recon_loss:.4f}')
@@ -143,7 +143,7 @@ def main():
 
     # Check if a checkpoint exists and resume training
     resume_epoch = 0
-    checkpoint   = get_latest_checkpoint(models_dir)
+    checkpoint   = get_latest_checkpoint(models_dir, prefix = 'autoencoderkl_epoch_')
     if args.resume and checkpoint is not None:
         resume_epoch, checkpoint_path = checkpoint
         autoencoderkl.load_state_dict(torch.load(checkpoint_path, map_location=device, weights_only = True))

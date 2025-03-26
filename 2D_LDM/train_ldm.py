@@ -10,21 +10,22 @@
 # Last Date                 : March 11, 2025
 # ------------------------------------------------------------------------------#
 
-import csv, logging, os, sys, torch, time
+import logging, os, torch, time
 
 import torch.nn.functional as F
 
-from torch.amp import GradScaler, autocast
-from torch.utils.tensorboard import SummaryWriter
-from tqdm import tqdm
-from generative.networks.nets import DiffusionModelUNet
+from torch.amp                      import GradScaler, autocast
+from torch.utils.tensorboard        import SummaryWriter
+# from generative.networks.nets       import DiffusionModelUNet
 from generative.networks.schedulers import DDPMScheduler, DDIMScheduler
-from generative.inferers import LatentDiffusionInferer
-from config_ldm_ddpm import *
-from dataset import get_dataloaders
-from inference_ldm_utils import *
-from utils import *
-
+# from generative.inferers            import LatentDiffusionInferer
+from config_ldm_ddpm                import *
+from dataset                        import get_dataloaders
+from inference_ldm_utils            import *
+from utils                          import *
+from source_autoencoderkl           import *
+from source_inferer                 import *
+from source_unet                    import *
 
 # ------------------------------------------------------------------------------#
 # Setup
@@ -35,6 +36,7 @@ def setup_environment(seed: int, snapshot_dir: str):
     torch.cuda.manual_seed_all(seed)
     os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
     torch.multiprocessing.set_sharing_strategy("file_system")
+    
     output_file = (
         "model_params.txt"  # Define the output text file pathweights_only=True
     )
@@ -56,53 +58,38 @@ def setup_environment(seed: int, snapshot_dir: str):
 # ------------------------------------------------------------------------------#
 
 
-def train_one_epoch(
-    model,
-    dae_image,
-    dae_mask,
-    train_loader,
-    optimizer,
-    inferer,
-    scaler,
-    scheduler,
-    device,
-    epoch,
-    writer,
-):
+def train_one_epoch(model, aekl_image, aekl_mask, train_loader, optimizer, inferer, scaler, scheduler, device, epoch, writer):
     """Train the LDM for one epoch."""
     epoch_loss = 0.0
-    # progress_bar = tqdm(enumerate(train_loader), total=len(train_loader), ncols=110)
-    # progress_bar.set_description(f"Epoch {epoch + 1}/{N_EPOCHS}")
+
     model.train()
-    dae_image.eval()
-    dae_mask.eval()
+    aekl_image.eval()
+    aekl_mask.eval()
 
     for step, batch in enumerate(train_loader):
-        clean_image, clean_mask = batch["clean_image"].to(device), batch[
-            "clean_mask"
-        ].to(device)
+        image, mask  = batch['aug_image'].to(device), batch['aug_mask'].to(device)
         # noisy_image, noisy_mask = batch["noisy_image"].to(device), batch["noisy_mask"].to(device)
 
-        optimizer.zero_grad(set_to_none=True)
+        optimizer.zero_grad(set_to_none = True)
         with autocast("cuda", enabled=True):
             # Assumed Pipeline:
             # 1. Encode images and masks
             # 2. Get random noise same shape as latent_masks
             # 3. Get timesteps corresponding to latent masks
-            # 4. Call inferer with latent_images as conditioning and mode as 'concat' and autoencoder model as dae_mask
+            # 4. Call inferer with latent_images as conditioning and mode as 'concat' and autoencoder model as aekl_mask
 
-            latent_images               = dae_image.encode_stage_2_inputs(clean_image).to(device)
-            latent_masks                = dae_mask.encode_stage_2_inputs(clean_mask).to(device)
+            latent_images               = aekl_image.encode_stage_2_inputs(image).to(device)
+            latent_masks                = aekl_mask.encode_stage_2_inputs(mask).to(device)
             noise                       = torch.randn_like(latent_masks).to(device) # (B, C, H, W)
             timesteps                   = torch.randint(0, scheduler.num_train_timesteps, (latent_masks.size(0),), device = device).long()
             z_T                         = scheduler.add_noise(original_samples = latent_masks, noise = noise, timesteps = timesteps)
             
             #[talha] Make sure z_t is same as the z_t we could have returned from inferer. 
-            noise_pred                  = inferer(inputs            = clean_mask,
+            noise_pred                  = inferer(inputs            = mask,
                                                   noise             = noise,
                                                   diffusion_model   = model,
                                                   timesteps         = timesteps,
-                                                  autoencoder_model = dae_mask,
+                                                  autoencoder_model = aekl_mask,
                                                   condition         = latent_images,
                                                   mode              = "concat")
             # Batchify loss_latent by making sure inferer returns noise_pred, z_t and the timesteps for it
@@ -132,35 +119,35 @@ def train_one_epoch(
     return epoch_loss / len(train_loader)
 
 
-def validate_one_epoch(
-    model, dae_image, dae_mask, val_loader, inferer, scheduler, device, epoch, writer
-):
+def validate_one_epoch(model, aekl_image, aekl_mask, val_loader, inferer, scheduler, device, epoch, writer):
+    
     """Validate the LDM for one epoch."""
     val_loss = 0.0
     model.eval()
-    dae_image.eval()
-    dae_mask.eval()
+    aekl_image.eval()
+    aekl_mask.eval()
 
     with torch.no_grad():
         for step, batch in enumerate(val_loader):
-            clean_image, clean_mask = batch["clean_image"].to(device), batch[
-                "clean_mask"
-            ].to(device)
+            image, mask  = batch['aug_image'].to(device), batch['aug_mask'].to(device)
+            
             # noisy_image, noisy_mask = batch["noisy_image"].to(device), batch["noisy_mask"].to(device)
 
             with autocast("cuda", enabled = True):
-                latent_images               = dae_image.encode_stage_2_inputs(clean_image).to(device), 
-                latent_masks                = dae_mask.encode_stage_2_inputs(clean_mask).to(device)
+                latent_images               = aekl_image.encode_stage_2_inputs(image).to(device) 
+                latent_masks                = aekl_mask.encode_stage_2_inputs(mask).to(device)
                 noise                       = torch.randn_like(latent_masks).to(device)
                 timesteps                   = torch.randint(0, scheduler.num_train_timesteps, (latent_masks.size(0),), device = device).long()
                 z_T                         = scheduler.add_noise(original_samples = latent_masks, noise = noise, timesteps = timesteps)
-                noise_pred                  = inferer(inputs            = clean_mask,
+                
+                noise_pred                  = inferer(inputs            = mask,
                                                       noise             = noise,
                                                       diffusion_model   = model,
                                                       timesteps         = timesteps,
-                                                      autoencoder_model = dae_mask,
+                                                      autoencoder_model = aekl_mask,
                                                       condition         = latent_images,
                                                       mode              = "concat")
+                
                 loss_noise             = F.l1_loss(noise_pred.float(), noise.float())
             
                 alpha_bar_T            = scheduler.alphas_cumprod[timesteps][:, None, None, None]
@@ -185,71 +172,61 @@ def validate_one_epoch(
 def main():
     snapshot_dir = LDM_SNAPSHOT_DIR
     check_or_create_folder(snapshot_dir)
+    
     device = setup_environment(SEED, snapshot_dir)
     models_dir = os.path.join(snapshot_dir, "models")
+    
     check_or_create_folder(models_dir)
     writer = SummaryWriter(f"{snapshot_dir}/log")
 
-    logging.basicConfig(
-        filename=os.path.join(snapshot_dir, "logs.txt"),
-        level=logging.INFO,  # Log message with level INFO  or higher
-        format="[%(asctime)s.%(msecs)03d] %(message)s",  # Format of the log message
-        datefmt="%H:%M:%S",
-    )  # Format of the timestamp
-    logging.getLogger().addHandler(logging.StreamHandler(sys.stdout))
-    logging.info(
-        f"ldm training parameters: epochs = {N_EPOCHS}, lr = {LR}, timesteps = {NUM_TRAIN_TIMESTEPS}, noise scheduler = {NOISE_SCHEDULER}, scheduler = {SCHEDULER}"
-    )
-    print(
-        f"Results logged in: {snapshot_dir}, TensorBoard logs in: {snapshot_dir}/log, Models saved in: {models_dir}\n"
-    )
+    setup_logging(snapshot_dir)
+    
+    logging.info(f"ldm training parameters: epochs = {N_EPOCHS}, lr = {LR}, timesteps = {NUM_TRAIN_TIMESTEPS}, noise scheduler = {NOISE_SCHEDULER}, scheduler = {SCHEDULER}")
+    print(f"Results logged in: {snapshot_dir}, TensorBoard logs in: {snapshot_dir}/log, Models saved in: {models_dir}\n")
     torch.manual_seed(SEED)
 
-    train_loader = get_dataloaders(
-        BASE_DIR,
-        split_ratio=SPLIT_RATIOS,
-        split="train",
-        trainsize=TRAINSIZE,
-        batch_size=BATCH_SIZE,
-        format=FORMAT,
-    )
-    val_loader = get_dataloaders(
-        BASE_DIR,
-        split_ratio=SPLIT_RATIOS,
-        split="val",
-        trainsize=TRAINSIZE,
-        batch_size=BATCH_SIZE,
-        format=FORMAT,
-    )
-    tup_image, tup_mask = load_autoencoder(
-        device, train_loader, image=True, mask=True, epoch_image=250, epoch_mask=200
-    )
-    unet = DiffusionModelUNet(**MODEL_PARAMS).to(device)
+    train_loader = get_dataloaders(BASE_DIR, split_ratio = SPLIT_RATIOS, split = "train", trainsize = TRAINSIZE,
+                                   batch_size = BATCH_SIZE,
+                                   format     = FORMAT,)
+    
+    val_loader   = get_dataloaders(BASE_DIR, split_ratio = SPLIT_RATIOS, split = "val", trainsize = TRAINSIZE,
+                                   batch_size = BATCH_SIZE,
+                                   format     = FORMAT,)
 
-    # if RESUME_PATH:
-    #     epoch_add = int(RESUME_PATH.split("_")[-1][:-4])
-    #     writer = SummaryWriter(f"{snapshot_dir}/log")
-    #     unet.load_state_dict(
-    #         torch.load(RESUME_PATH, map_location=device, weights_only=True)
-    #     )
-    #     unet.to(device)
+    tup_image, tup_mask = load_autoencoder(device, train_loader, image = True, mask = True, epoch_image = 500, epoch_mask = 100)
+    unet                = DiffusionModelUNet(**MODEL_PARAMS).to(device)
 
     scheduler = (
         DDIMScheduler(num_train_timesteps=NUM_TRAIN_TIMESTEPS, schedule=NOISE_SCHEDULER)
         if SCHEDULER == "DDIM"
+        
         else DDPMScheduler(
             num_train_timesteps=NUM_TRAIN_TIMESTEPS, schedule=NOISE_SCHEDULER
         )
     )
-    dae_image, _ = tup_image  # scale_image compressed
-    dae_mask, scale_mask = tup_mask
-    dae_image, dae_mask = dae_image.to(device), dae_mask.to(device)
-    inferer = LatentDiffusionInferer(scheduler=scheduler, scale_factor=scale_mask)
-    optimizer = torch.optim.AdamW(
-        unet.parameters(), lr=LR, betas=(0.9, 0.999), weight_decay=0.0001
-    )
-    scaler = GradScaler("cuda")
+    
+    aekl_image, _         = tup_image  # scale_image compressed
+    aekl_mask, scale_mask = tup_mask
+    
+    aekl_image, aekl_mask = aekl_image.to(device), aekl_mask.to(device)
+    inferer               = LatentDiffusionInferer(scheduler = scheduler, scale_factor = scale_mask)
+    
+    optimizer             = torch.optim.AdamW(
+    unet.parameters(), lr = LR, betas = (0.9, 0.999), weight_decay = 0.0001)
+    
+    scaler     = GradScaler("cuda")
     start_time = time.time()
+    
+    # Check if a checkpoint exists and resume training
+    resume_epoch = 0
+    checkpoint   = get_latest_checkpoint(models_dir, prefix = 'model_epoch_')
+    if do.RESUME and checkpoint is not None:
+        resume_epoch, checkpoint_path = checkpoint
+        unet.load_state_dict(torch.load(checkpoint_path, map_location = device, weights_only = True))
+        logging.info(f"Resuming training from epoch {resume_epoch}")
+        print(f"Resuming training from epoch {resume_epoch}")
+    else:
+        print("Starting training from scratch.")
 
     eval_list = ["Epoch", "Train Loss", "Val Loss"]
     prepare_and_write_csv_file(snapshot_dir, eval_list)
@@ -257,41 +234,23 @@ def main():
     layout = prepare_writer_layout()
     writer.add_custom_scalars(layout)
 
-    for epoch in range(N_EPOCHS):  # Training Loop
-        # if RESUME_PATH:
-        #     epoch += epoch_add + 1
-
+    for epoch in range(resume_epoch, resume_epoch + N_EPOCHS):        # if RESUME_PATH:
         train_loss, val_loss = None, None
 
-        train_loss = train_one_epoch(
-            unet,
-            dae_image,
-            dae_mask,
-            train_loader,
-            optimizer,
-            inferer,
-            scaler,
-            scheduler,
-            device,
-            epoch,
-            writer,
+        train_loss = train_one_epoch(unet, aekl_image, aekl_mask, train_loader, optimizer, inferer, scaler, scheduler, device,
+                                     epoch,
+                                     writer,
         )
         logging.info(f"[train] epoch: {epoch}\tmean train loss: {train_loss}")
         print(f"[train] epoch: {epoch}\tmean train loss: {train_loss:.4f}")
         writer.add_scalar("loss/train epoch", train_loss, epoch)
 
         if (epoch + 1) % VAL_INTERVAL == 0:
-            val_loss = validate_one_epoch(
-                unet,
-                dae_image,
-                dae_mask,
-                val_loader,
-                inferer,
-                scheduler,
-                device,
-                epoch,
-                writer,
-            )
+            train_loss = validate_one_epoch(unet, aekl_image, aekl_mask, val_loader, inferer, scheduler, device,
+                                            epoch,
+                                            writer,
+        )
+
             logging.info(f"[val] epoch: {epoch}\tmean val loss: {val_loss}")
             print(f"[val] epoch: {epoch}\tmean val loss: {val_loss:.4f}")
             writer.add_scalar("loss/val epoch", val_loss, epoch)
@@ -305,7 +264,7 @@ def main():
         list_to_write = [epoch, train_loss, val_loss]
         prepare_and_write_csv_file(snapshot_dir, list_to_write)
 
-    print(f"execution time: {time.time() - start_time} seconds")
+    print(f"execution time: {(time.time() - start_time) // 60.0} minutes")
     final_model_path = os.path.join(models_dir, "final_model.pth")
     torch.save(unet.state_dict(), final_model_path)
     logging.info(f"model saved to {final_model_path}")

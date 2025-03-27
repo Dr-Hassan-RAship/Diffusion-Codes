@@ -19,7 +19,6 @@ from PIL                import Image
 from torchvision        import transforms
 from torch.utils.data   import DataLoader, Dataset
 from config_ldm_ddpm    import *
-from utils              import *
 
 # ------------------------------------------------------------------------------#
 def split_dataset(base_dir, split_ratios=(600, 200, 200)):
@@ -170,4 +169,16 @@ def get_dataloaders(base_dir, split_ratio, split = 'train', trainsize = 256,
 
     return dataloader
 
+# -----------------------------------------------------------------------------#
+def utilize_transformation(img, mask, transforms_op):
+    """
+    Applying transformations to img and mask with same random seed
+    """
+    
+    state = torch.get_rng_state()
+    mask  = transforms_op(mask)
+    torch.set_rng_state(state)
+    img   = transforms_op(img)
+    
+    return img, mask
 # -----------------------------------------------------------------------------#

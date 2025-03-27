@@ -8,165 +8,83 @@
 #
 # Last Date                 : March 24, 2025
 #-------------------------------------------------------------------------------#
-import torch, os, csv, sys, logging, re
+import os, csv, sys, logging, re, subprocess, logging, torch
 
-import numpy                as np
-
-from scipy.ndimage          import distance_transform_edt
-from skimage                import segmentation as skimage_seg
-
-import torch.nn             as nn
-import torch.nn.functional  as F
-
+from config_ldm_ddpm          import *
+from monai.networks.nets      import AutoencoderKL
+from dataset                  import *
 #------------------------------------------------------------------------------#
-def pad_tensor_symmetrically(tensor: torch.Tensor) -> torch.Tensor:
+def validate_resume_params(snapshot_dir, mode, current_batch_size, current_model_params):
     """
-    Symmetrically pads a 3D tensor along the depth dimension (S) to ensure it has exactly 16 slices.
+    Validates the current training configuration against saved parameters.
+    If mismatched, it logs the differences and uses the saved configuration.
+    """
+    txt_file            = os.path.join(snapshot_dir, f"aekl_{mode}_params.txt")
+    override_params     = current_model_params.copy()
+    override_batch_size = current_batch_size
+
+    if not os.path.exists(txt_file):
+        logging.warning(f"Parameter file {txt_file} not found. Cannot validate consistency.")
+        return override_batch_size, override_params
+
+    with open(txt_file, "r") as f:
+        lines = f.readlines()
+
+    saved_params = {}
+    for line in lines[1:]:  # skip header
+        if ":" not in line:
+            continue
+        key, value = line.strip().split(":", 1)
+        key, value = key.strip(), value.strip()
+        try:
+            parsed_value = eval(value)
+        except:
+            parsed_value  = value
+        saved_params[key] = parsed_value
+
+    mismatch_batch = False
+    if "batch_size" in saved_params and saved_params["batch_size"] != current_batch_size:
+        logging.warning(f"Batch size mismatch! (config: {current_batch_size}, saved: {saved_params['batch_size']})")
+        override_batch_size = saved_params["batch_size"]
+        mismatch_batch      = True
+
+    mismatch_params = False
+    for key in current_model_params:
+        if key in saved_params and saved_params[key] != current_model_params[key]:
+            logging.warning(f"Param mismatch for '{key}'! (config: {current_model_params[key]}, saved: {saved_params[key]})")
+            override_params[key] = saved_params[key]
+            mismatch_params      = True
+            
+    return override_batch_size, override_params, mismatch_batch, mismatch_params
+
+#-----------------------------------------------------------------------------#
+def launch_tensorboard(log_dir):
+    """
+    Launch TensorBoard in a subprocess.
 
     Args:
-        tensor (torch.Tensor): A 3D tensor of shape (H, W, S), where H is height, W is width, and S is the number of slices.
-
-    Returns:
-        torch.Tensor: A padded 3D tensor of shape (H, W, 16). If S >= 16, the original tensor is returned unchanged.
-
-
-    Example Usage:
-        >>> tensor        = torch.randn(32, 32, 10)
-        >>> padded_tensor = pad_tensor_symmetrically(tensor)
-        >>> print(padded_tensor.shape)
-        torch.Size([32, 32, 16])
+        log_dir (str): Path to the log directory to visualize.
     """
-    # Ensure the input tensor is 3D
-    if tensor.ndim != 3:
-        raise ValueError(f"Input tensor must be 3D (H x W x S). Got shape: {tensor.shape}")
-
-    H, W, S = tensor.shape
-
-    # Check if padding is needed
-    if S < 16:
-        padding_total = 16 - S  # Total number of padding slices needed
-        is_odd        = padding_total % 2 != 0  # Check if padding_total is odd
-
-        # Calculate padding for top and bottom
-        if is_odd:
-            # Randomly choose to add the extra slice to the top or bottom
-            extra          = np.random.choice(['top', 'bottom'])
-            padding_top    = padding_total // 2 + (1 if extra == 'top' else 0)
-            padding_bottom = padding_total // 2 + (1 if extra == 'bottom' else 0)
-        else:
-            # Split padding equally between top and bottom
-            padding_top = padding_bottom = padding_total // 2
-
-        # Create zero-padding tensors for top and bottom
-        padding_top_slices    = torch.zeros((H, W, padding_top), dtype=tensor.dtype, device=tensor.device)
-        padding_bottom_slices = torch.zeros((H, W, padding_bottom), dtype=tensor.dtype, device=tensor.device)
-
-        # Concatenate the padding slices with the original tensor along the depth dimension (axis=2)
-        padded_tensor         = torch.cat([padding_top_slices, tensor, padding_bottom_slices], dim=2)
-    else:
-        # No padding needed if S >= 16
-        padded_tensor = tensor
-
-    return padded_tensor
+    try:
+        subprocess.Popen(["tensorboard", "--logdir", log_dir, "--port", "6006"])
+        logging.info(f"TensorBoard launched at http://localhost:6006/ (logdir: {log_dir})")
+        print(f"🔍 TensorBoard launched at http://localhost:6006/ (logdir: {log_dir})")
+    except Exception as e:
+        logging.warning(f"Failed to launch TensorBoard: {e}")
+        print(f"⚠️ Could not launch TensorBoard: {e}")
 
 #------------------------------------------------------------------------------#
-def compute_sdm(mask: np.ndarray, device: str = "cuda") -> torch.Tensor:
+def prepare_and_write_csv_file(snapshot_dir, list_entries, write_header=False):
     """
-    Compute the Signed Distance Map (SDM) for a binary polyp mask.
-
-    Args:
-        mask (np.ndarray): A binary mask of shape (B, 1, H, W), where B is the batch size.
-        device (str)    : The device to store the resulting tensor ("cpu" or "cuda").
-
-    Returns:
-        torch.Tensor: The Signed Distance Map of shape (B, 1, H, W), normalized to [-1, 1].
+    Write entries to logs.csv. Optionally write header if `write_header=True`.
     """
-    # Ensure the input is a NumPy array
-    if not isinstance(mask, np.ndarray):
-        raise TypeError("Input mask must be a NumPy array.")
-
-    B, C, H, W = mask.shape
-    assert C == 1, "Mask should have a single channel (B, 1, H, W)."
-    
-    sdm = np.zeros((B, 1, H, W), dtype=np.float32)  # Initialize SDM tensor
-
-    for i in range(B):  # Iterate over the batch
-        binary_mask = mask[i, 0].astype(np.uint8)  # Ensure it's binary (0 or 1)
-
-        if np.all(binary_mask == 1):  # Fully foreground case
-            sdm[i, 0] = -1.0
-            continue
-        if np.all(binary_mask == 0):  # Fully background case
-            sdm[i, 0] = 1.0
-            continue
-
-        pos_dist = distance_transform_edt(binary_mask)   # Distance inside the mask
-        neg_dist = distance_transform_edt(1 - binary_mask)  # Distance outside the mask
-
-        # Normalize distances to [-1, 1]
-        sdf = (neg_dist - np.min(neg_dist)) / (np.max(neg_dist) - np.min(neg_dist)) - \
-              (pos_dist - np.min(pos_dist)) / (np.max(pos_dist) - np.min(pos_dist))
-
-        # Set boundary pixels to 0
-        boundary = skimage_seg.find_boundaries(binary_mask, mode="inner").astype(np.uint8)
-        sdf[boundary == 1] = 0
-
-        sdm[i, 0] = sdf  # Store computed SDM
-
-    # Convert SDM to PyTorch tensor and move to the desired device
-    return torch.from_numpy(sdm).to(device)
-
-
-#------------------------------------------------------------------------------#
-class DiceLoss(nn.Module):
-    def __init__(self, n_classes):
-        super(DiceLoss, self).__init__()
-        self.n_classes  = n_classes
-
-    def _one_hot_encoder(self, input_tensor):
-        # Shape will be [24, 224, 224, 2]
-        one_hot_labels  = F.one_hot(input_tensor, num_classes=2)
-
-        # Rearrange the dimensions to [24, 2, 224, 224]
-        one_hot_labels  = one_hot_labels.permute(0, 3, 1, 2)
-        return one_hot_labels.float()
-
-    def _dice_loss(self, score, target):
-        target          = target.float()
-        smooth          = 1e-10
-        intersect       = torch.sum(score * target)
-        y_sum           = torch.sum(target * target)
-        z_sum           = torch.sum(score * score)
-        loss            = (2 * intersect + smooth) / (z_sum + y_sum + smooth)
-        loss            = 1 - loss
-        return loss
-
-    def forward(self, inputs, target, weight=None, softmax=False):
-        if softmax:         inputs = torch.softmax(inputs, dim=1)
-        if weight is None:  weight = [1] * self.n_classes
-
-        # Already one-hot encoded
-        #target          = self._one_hot_encoder(target)
-
-        assert inputs.size() == target.size(), 'predict & target shape do not match'
-
-        class_wise_dice, loss = [], 0.0
-        for i in range(0, self.n_classes):
-            dice        = self._dice_loss(inputs[:, i], target[:, i])
-            class_wise_dice.append(1.0 - dice.item())
-            loss        += dice * weight[i]
-
-        return loss / self.n_classes
-
-#------------------------------------------------------------------------------#
-def prepare_and_write_csv_file(snapshot_dir, list_entries):
-    """
-    For writing csv file with entries in eval_list
-    """
-    
-    with open(os.path.join(snapshot_dir, 'logs.csv'), 'a') as csvfile:
+    csv_path = os.path.join(snapshot_dir, 'logs.csv')
+    with open(csv_path, 'a', newline='') as csvfile:
         csv_logger = csv.writer(csvfile)
-        csv_logger.writerow(list_entries)
+        if write_header:
+            csv_logger.writerow(list_entries)
+        else:
+            csv_logger.writerow(list_entries)
         csvfile.flush()
 #------------------------------------------------------------------------------#
 def prepare_writer_layout():
@@ -192,53 +110,126 @@ def setup_logging(snapshot_dir, log_filename="logs.txt", level=logging.INFO, con
     log_path = os.path.join(snapshot_dir, log_filename)
 
     logging.basicConfig(
-        filename=log_path,
-        level=level,
-        format="[%(asctime)s.%(msecs)03d] %(message)s",
-        datefmt="%H:%M:%S"
+        filename = log_path,
+        level    = level,
+        format   = "[%(asctime)s.%(msecs)03d] %(message)s",
+        datefmt  = "%H:%M:%S",
+        force    = True
     )
 
     if console:
         logging.getLogger().addHandler(logging.StreamHandler(sys.stdout))
-#---------------------------------------------------------------------------------#
-def utilize_transformation(img, mask, transforms_op):
-    """
-    Applying transformations to img and mask with same random seed
-    """
-    
-    state = torch.get_rng_state()
-    mask  = transforms_op(mask)
-    torch.set_rng_state(state)
-    img   = transforms_op(img)
-    
-    return img, mask
-    
+        
 #----------------------------------------------------------------------------------#
-def get_latest_checkpoint(models_dir, prefix):
+def get_latest_checkpoint(models_dir, prefix, resume_epoch=None):
     """
-    Search for the latest checkpoint in the models_dir. Checkpoint files should follow the pattern:
-    '{prefix}{epoch_number}.pth'
+    Get the latest or specified checkpoint.
+
+    Args:
+        models_dir (str): Path to the models directory.
+        prefix (str): Checkpoint filename prefix, e.g., 'autoencoderkl_epoch_'.
+        resume_epoch (int or None): If specified, return the checkpoint for this epoch and delete newer ones.
 
     Returns:
-        (epoch, filepath) of the latest checkpoint, or None if not found.
+        (int, str): Tuple of (epoch, checkpoint path), or (None, None) if not found.
     """
     checkpoint   = None
     latest_epoch = -1
 
-    # Correct regex using f-string and raw string properly
-    pattern = re.compile(rf'{re.escape(prefix)}(\d+)\.pth')
+    pattern      = re.compile(rf'{re.escape(prefix)}(\d+)\.pth')
+    epoch_files  = []
 
     for filename in os.listdir(models_dir):
         match = pattern.match(filename)
         if match:
             epoch = int(match.group(1))
-            if epoch > latest_epoch:
-                latest_epoch = epoch
-                checkpoint = filename
+            epoch_files.append((epoch, filename))
 
-    if checkpoint is not None:
-        return latest_epoch, os.path.join(models_dir, checkpoint)
+    if not epoch_files:
+        return None, None
+
+    if resume_epoch is not None:
+        # Find checkpoint at requested epoch
+        for epoch, fname in epoch_files:
+            if epoch == resume_epoch:
+                checkpoint = fname
+
+        # Delete all checkpoints after the requested epoch
+        for epoch, fname in epoch_files:
+            if epoch > resume_epoch:
+                path_to_delete = os.path.join(models_dir, fname)
+                os.remove(path_to_delete)
+                print(f"🗑️ Deleted newer checkpoint: {path_to_delete}")
+
+        if checkpoint:
+            return resume_epoch, os.path.join(models_dir, checkpoint)
+        else:
+            print(f"⚠️ No checkpoint found for epoch {resume_epoch}")
+            return None, None
+
     else:
-        return None
-
+        # Default behavior: return the latest
+        latest_epoch, checkpoint = max(epoch_files, key = lambda x: x[0])
+        return latest_epoch, os.path.join(models_dir, checkpoint)
 #-----------------------------------------------------------------------------------#
+def validate_resume_training(model, snapshot_dir, models_dir, mode, device, args, prefix):
+    """
+    Resume training if --resume is specified and checkpoint exists.
+    Validates params from the saved txt file.
+
+    Returns:
+        resume_epoch (int): Epoch to resume from.
+        model (nn.Module): Updated model if parameter mismatch.
+        train_loader (DataLoader): Updated if batch size mismatch.
+        val_loader (DataLoader): Updated if batch size mismatch.
+    """
+    
+    resume_epoch             = 0
+    override_batch_size      = BATCH_SIZE
+    override_params          = AUTOENCODERKL_PARAMS
+    train_loader, val_loader = None, None  # initialize as None
+    optimizer                = None
+    
+    latest_epoch, ckpt_path = get_latest_checkpoint(models_dir, prefix=prefix, resume_epoch = None)
+    print(f'latest_epoch: {latest_epoch}, ckpt_path: {ckpt_path}')
+
+    if args.resume and ckpt_path is not None:
+        # Validate parameter consistency
+        override_batch_size, override_params, mismatch_batch, mismatch_params = validate_resume_params(
+            snapshot_dir,
+            mode                 = mode,
+            current_batch_size   = BATCH_SIZE,
+            current_model_params = AUTOENCODERKL_PARAMS
+        )
+        
+        # Re-initialize dataloaders if batch size differs
+        if mismatch_batch:
+            train_loader = get_dataloaders(
+                BASE_DIR, split_ratio = SPLIT_RATIOS, split = 'train',
+                trainsize = TRAINSIZE, batch_size = override_batch_size, format = FORMAT
+            )
+            val_loader   = get_dataloaders(
+                BASE_DIR, split_ratio = SPLIT_RATIOS, split = 'val',
+                trainsize = TRAINSIZE, batch_size = override_batch_size, format = FORMAT
+            )
+
+        # Re-initialize model if model param mismatch
+        if mismatch_params:
+            model = AutoencoderKL(**override_params).to(device)
+            # Load model weights
+            model.load_state_dict(torch.load(ckpt_path, map_location=device, weights_only=True))
+            resume_epoch = latest_epoch + 1
+            logging.info(f"Resuming training from epoch {resume_epoch} using checkpoint {ckpt_path}")
+            print(f"✅ Resuming training from epoch {resume_epoch}")
+            
+            optimizer     = torch.optim.AdamW(model.parameters(),
+                                  lr=LR,
+                                  betas=(0.9, 0.999),
+                                  weight_decay=0.0001)
+
+    else:
+        logging.info("Starting training from scratch.")
+        print("🚀 Starting training from scratch.")
+
+    return resume_epoch, model, train_loader, val_loader, optimizer
+#-------------------------------------------------------------------------------------#

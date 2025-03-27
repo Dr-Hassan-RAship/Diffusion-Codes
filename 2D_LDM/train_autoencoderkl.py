@@ -1,6 +1,6 @@
 # ------------------------------------------------------------------------------#
 #
-# File name                 : train_image_dae.py
+# File name                 : train_image_aekl.py
 # Purpose                   : Training script for the autoencoderKL for both image and mask (without discriminator & generator)
 # Usage                     : python train_autoencoderkl.py --mode 'image' [--resume]
 #
@@ -11,14 +11,14 @@
 # Note                      : Used AdamW optimizer for better performance
 # ------------------------------------------------------------------------------#
 
-import logging, os, torch, argparse, time, re
+import logging, os, torch, argparse, time
 import torch.nn.functional    as F
 
 from torch.amp                import autocast, GradScaler
 from torch.utils.tensorboard  import SummaryWriter
 from monai.networks.nets      import AutoencoderKL
 from config_ldm_ddpm          import *
-from dataset                  import get_dataloaders
+from dataset                  import *
 from utils                    import *
 # ------------------------------------------------------------------------------#
 def parse_arguments():
@@ -52,12 +52,17 @@ def initialize_components(device, snapshot_dir, mode):
     scaler        = GradScaler('cuda')
     output_file   = f"aekl_{mode}_params.txt"
 
-    with open(os.path.join(snapshot_dir, output_file), "a") as f:
-        f.write("AUTOENCODERKL_PARAMS:\n")
-        f.write(f"batch_size: {BATCH_SIZE}\n")
-        for key, value in AUTOENCODERKL_PARAMS.items():
-            f.write(f"{key}: {value}\n")
-    print(f"AUTOENCODERKL_PARAMS appended to {output_file}")
+    txt_path      = os.path.join(snapshot_dir, output_file)
+    
+    if not os.path.exists(txt_path):
+        with open(txt_path, "a") as f:
+            f.write("AUTOENCODERKL_PARAMS:\n")
+            f.write(f"batch_size: {BATCH_SIZE}\n")
+            for key, value in AUTOENCODERKL_PARAMS.items():
+                f.write(f"{key}: {value}\n")
+        print(f"AUTOENCODERKL_PARAMS added to {output_file}")
+    else:
+        print(f'Params txt file already exists!')
 
     return autoencoderkl, optimizer, scaler
 
@@ -119,46 +124,59 @@ def validate_and_save(autoencoderkl, val_loader, device, models_dir, epoch, writ
 def main():
     args = parse_arguments()
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    
     snapshot_dir = AEKL_IMAGE_SNAPSHOT_DIR if args.mode == 'image' else AEKL_MASK_SNAPSHOT_DIR
-    
     os.makedirs(snapshot_dir, exist_ok=True)
+    
     models_dir = os.path.join(snapshot_dir, "models")
-    
     os.makedirs(models_dir, exist_ok=True)
-    writer = SummaryWriter(os.path.join(snapshot_dir, "log"))
-    
-    autoencoderkl, optimizer, scaler = initialize_components(device, snapshot_dir)
-    
+
+    # Setup Logging
     setup_logging(snapshot_dir)
-    logging.info(f"dae_image training parameters: epochs = {N_EPOCHS}, lr = {LR}, timesteps = {NUM_TRAIN_TIMESTEPS}, noise scheduler = {NOISE_SCHEDULER}, scheduler = {SCHEDULER}")
+    if args.resume:
+        print('--------------------------------------------------TRAINING RESUMING!---------------------------------------------------------------------')
+        # Prepare Tensorboard Writer
+        writer = SummaryWriter(os.path.join(snapshot_dir, "log_resume"))
+    else:
+        # Prepare Tensorboard Writer
+        writer = SummaryWriter(os.path.join(snapshot_dir, "log"))
+    logging.info(f"aekl_{args.mode} training parameters: epochs = {N_EPOCHS}, lr = {LR}, timesteps = {NUM_TRAIN_TIMESTEPS}, noise scheduler = {NOISE_SCHEDULER}, scheduler = {SCHEDULER}")
+    
+    autoencoderkl, optimizer, scaler = initialize_components(device, snapshot_dir, args.mode)
     
     print(f"Results logged in: {snapshot_dir}")
     print(f"TensorBoard logs in: {snapshot_dir}/log")
     print(f"Models saved in: {models_dir}\n")
     torch.manual_seed(SEED)
+    
+    # Dataloaders
+    train_loader = get_dataloaders(
+                BASE_DIR, split_ratio = SPLIT_RATIOS, split = 'train',
+                trainsize = TRAINSIZE, batch_size = BATCH_SIZE, format = FORMAT
+            )
+    val_loader   = get_dataloaders(
+        BASE_DIR, split_ratio = SPLIT_RATIOS, split = 'val',
+        trainsize = TRAINSIZE, batch_size = BATCH_SIZE, format = FORMAT
+    )
+     # Resume or start fresh
+    resume_epoch, autoencoderkl, train_loader_override, val_loader_override, optimizer_override = validate_resume_training(
+    autoencoderkl, snapshot_dir, models_dir, mode = args.mode, device = device, args = args, prefix = 'autoencoderkl_epoch_')
 
-    train_loader = get_dataloaders(BASE_DIR, split_ratio=SPLIT_RATIOS, split='train', trainsize=TRAINSIZE, batch_size=BATCH_SIZE, format=FORMAT)
-    val_loader   = get_dataloaders(BASE_DIR, split_ratio=SPLIT_RATIOS, split='val', trainsize=TRAINSIZE, batch_size=BATCH_SIZE, format=FORMAT)
-    start_time   = time.time()
-
-    # Check if a checkpoint exists and resume training
-    resume_epoch = 0
-    checkpoint   = get_latest_checkpoint(models_dir, prefix = 'autoencoderkl_epoch_')
-    if args.resume and checkpoint is not None:
-        resume_epoch, checkpoint_path = checkpoint
-        autoencoderkl.load_state_dict(torch.load(checkpoint_path, map_location=device, weights_only = True))
-        logging.info(f"Resuming training from epoch {resume_epoch}")
-        print(f"Resuming training from epoch {resume_epoch}")
-    else:
-        print("Starting training from scratch.")
-
+    # Fall back to default loaders if not overridden
+    train_loader = train_loader_override or train_loader
+    val_loader   = val_loader_override or val_loader
+    optimizer    = optimizer_override  or optimizer
+    
     # Prepare CSV logging and TensorBoard custom scalars
     eval_list = ['Epoch', 'Train Recon Loss', 'Val Recon Loss']
-    prepare_and_write_csv_file(snapshot_dir, eval_list)
-    layout = prepare_writer_layout()
-    writer.add_custom_scalars(layout)
+    if not os.path.exists(os.path.join(snapshot_dir, 'logs.csv')):
+        prepare_and_write_csv_file(snapshot_dir, eval_list, write_header=True)
+    writer.add_custom_scalars(prepare_writer_layout())
 
     # Run training loop (if resuming, continue from resume_epoch+1)
+    # Launch tensorboard
+    launch_tensorboard(os.path.join(snapshot_dir, "log_resume"))
+    start_time   = time.time()
     for epoch in range(resume_epoch, resume_epoch + N_EPOCHS):
         train_recon_loss = train_one_epoch(autoencoderkl, train_loader, device, optimizer, scaler, epoch, writer, args.mode)
         logging.info(f'[train] epoch: {epoch}\tmean recon loss: {train_recon_loss:.4f}')
@@ -172,7 +190,7 @@ def main():
             writer.add_scalar("loss/val epoch", val_recon_loss, epoch)
 
         list_to_write = [epoch, train_recon_loss, val_recon_loss]
-        prepare_and_write_csv_file(snapshot_dir, list_to_write)
+        prepare_and_write_csv_file(snapshot_dir, list_to_write, write_header = False)
             
     print(f'execution time: {(time.time() - start_time) // 60.0} minutes')
     final_model_path = os.path.join(models_dir, 'final_model.pth')

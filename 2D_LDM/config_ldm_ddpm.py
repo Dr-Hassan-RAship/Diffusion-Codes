@@ -51,7 +51,7 @@ AUTOENCODERKL_PARAMS   = {"spatial_dims"              : 2,
                           "latent_channels"           : 4, # (= Z in SDSeg paper)
                           "out_channels"              : 3,
                           "channels"                  : (128, 256, 512, 512), # to match SDSeg paper i.e. 32 latent dim
-                          "num_res_blocks"            : 2,
+                          "num_res_blocks"            : 3,
                           "attention_levels"          : (False, False, False, False),
                           "with_encoder_nonlocal_attn": True, # (as per SDSeg paper to ensure middle block of encoder is as required)
                           "with_decoder_nonlocal_attn": True, # (as per SDSeg paper to ensure middle block of decoder is as required)

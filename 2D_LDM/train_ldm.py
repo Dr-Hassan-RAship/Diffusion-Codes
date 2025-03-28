@@ -96,12 +96,17 @@ def train_one_epoch(model, aekl_image, aekl_mask, train_loader, optimizer, infer
             # Then calculate L1 loss between z_o_tilde (gotten from Eq(2) of paper) and latent_masks
             loss_noise             = F.l1_loss(noise_pred.float(), noise.float())
             
-            alpha_bar_T            = scheduler.alphas_cumprod[timesteps][:, None, None, None]
-            z_0_pred               = (1 / torch.sqrt(alpha_bar_T)) * (z_T - (torch.sqrt(1 - alpha_bar_T) * noise_pred))
-            loss_latent            = F.l1_loss(z_0_pred.float(), latent_masks.float())
+            loss_latent            = torch.tensor(0.0)
+            if epoch >= 300:
+                alpha_bar_T            = scheduler.alphas_cumprod[timesteps][:, None, None, None]
+                z_0_pred               = (1 / torch.sqrt(alpha_bar_T)) * (z_T - (torch.sqrt(1 - alpha_bar_T) * noise_pred))
+                loss_latent            = F.l1_loss(z_0_pred.float(), latent_masks.float())
 
+                loss                   = loss_noise + loss_latent
             # Then add both losses and backpropogate.
-            loss                   = loss_noise + loss_latent
+            
+            else:
+                loss = loss_noise
 
         # Using Monai Scaler for better precision training and better gradient calculation
         scaler.scale(loss).backward()

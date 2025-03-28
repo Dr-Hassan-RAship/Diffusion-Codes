@@ -137,6 +137,7 @@ def load_ldm_model(device, scale_factor):
             num_train_timesteps=do.TRAIN_TIMESTEPS, schedule=NOISE_SCHEDULER
         )
     )
+    
     inferer = LatentDiffusionInferer(scheduler=scheduler, scale_factor=scale_factor)
     print(f"Loaded LDM model from {model_path} with {SCHEDULER} scheduler.")
     return unet, scheduler, inferer

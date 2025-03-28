@@ -28,7 +28,7 @@ VAL_INTERVAL        = 1             # Validate every n epochs (can reduce)
 MODEL_SAVE_INTERVAL = 1             # Save model every n epochs
 NUM_TRAIN_TIMESTEPS = 1000          # i.e., diffusion steps (T)
 NOISE_SCHEDULER     = "linear_beta" # {linear_beta, cosine_beta}
-SCHEDULER           = 'DDIM'        # {DDPM, DDIM}
+SCHEDULER           = 'DDPM'        # {DDPM, DDIM}
 # RESUME_PATH       = LDM_SNAPSHOT_DIR + f'/models/model_epoch_499.pth'
 
 NUM_INFERENCE_TIMESTEPS = NUM_TRAIN_TIMESTEPS // 10 if SCHEDULER == 'DDIM' else NUM_TRAIN_TIMESTEPS
@@ -51,7 +51,7 @@ AUTOENCODERKL_PARAMS   = {"spatial_dims"              : 2,
                           "latent_channels"           : 4, # (= Z in SDSeg paper)
                           "out_channels"              : 3,
                           "channels"                  : (128, 256, 512, 512), # to match SDSeg paper i.e. 32 latent dim
-                          "num_res_blocks"            : 3,
+                          "num_res_blocks"            : 2,
                           "attention_levels"          : (False, False, False, False),
                           "with_encoder_nonlocal_attn": True, # (as per SDSeg paper to ensure middle block of encoder is as required)
                           "with_decoder_nonlocal_attn": True, # (as per SDSeg paper to ensure middle block of decoder is as required)

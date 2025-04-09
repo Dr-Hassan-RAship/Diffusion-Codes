@@ -68,7 +68,7 @@ def inference(unet, aekl_image, aekl_mask, inferer, test_loader, device, output_
             # binarize predicted_mask
             predicted_mask    = (torch.sigmoid(predicted_mask) > 0.5).float().cpu().numpy().squeeze()
             # Save results
-            patient_folder = os.path.join(output_dir, f"{int(patient_id.item())}")
+            patient_folder    = os.path.join(output_dir, f"{int(patient_id.item())}")
             check_or_create_folder(patient_folder)
             
 
@@ -123,9 +123,9 @@ def main():
     test_loader  = get_dataloaders(BASE_DIR, split_ratio=SPLIT_RATIOS, split="test", trainsize=TRAINSIZE, batch_size=1, format=FORMAT)
 
     # Load pre-trained models
-    tup_image, tup_mask      = load_autoencoder(device, train_loader, image=True, mask=True, epoch_mask = 200, epoch_image = 250)
-    aekl_image, _             = tup_image
-    aekl_mask, scale_factor   = tup_mask
+    tup_image, tup_mask      = load_autoencoder(device, train_loader, image=True, mask=True, epoch_mask = 100, epoch_image = 500)
+    aekl_image, _            = tup_image
+    aekl_mask, scale_factor  = tup_mask
     unet, _, inferer         = load_ldm_model(device, scale_factor)
 
     check_or_create_folder(do.SAVE_FOLDER)

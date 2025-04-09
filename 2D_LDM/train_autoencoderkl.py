@@ -142,12 +142,13 @@ def main():
         writer = SummaryWriter(os.path.join(snapshot_dir, "log"))
     logging.info(f"aekl_{args.mode} training parameters: epochs = {N_EPOCHS}, lr = {LR}, timesteps = {NUM_TRAIN_TIMESTEPS}, noise scheduler = {NOISE_SCHEDULER}, scheduler = {SCHEDULER}")
     
-    autoencoderkl, optimizer, scaler = initialize_components(device, snapshot_dir, args.mode)
-    
     print(f"Results logged in: {snapshot_dir}")
     print(f"TensorBoard logs in: {snapshot_dir}/log")
     print(f"Models saved in: {models_dir}\n")
     torch.manual_seed(SEED)
+    
+    # Initialize components
+    autoencoderkl, optimizer, scaler = initialize_components(device, snapshot_dir, args.mode)
     
     # Dataloaders
     train_loader = get_dataloaders(
@@ -158,7 +159,7 @@ def main():
         BASE_DIR, split_ratio = SPLIT_RATIOS, split = 'val',
         trainsize = TRAINSIZE, batch_size = BATCH_SIZE, format = FORMAT
     )
-     # Resume or start fresh
+    # Resume or start fresh
     resume_epoch, autoencoderkl, train_loader_override, val_loader_override, optimizer_override = validate_resume_training(
     autoencoderkl, snapshot_dir, models_dir, mode = args.mode, device = device, args = args, prefix = 'autoencoderkl_epoch_')
 

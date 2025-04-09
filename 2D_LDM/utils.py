@@ -13,6 +13,8 @@ import os, csv, sys, logging, re, subprocess, logging, torch
 from config_ldm_ddpm          import *
 from monai.networks.nets      import AutoencoderKL
 from dataset                  import *
+from source_unet              import *
+
 #------------------------------------------------------------------------------#
 def validate_resume_params(snapshot_dir, mode, current_batch_size, current_model_params):
     """
@@ -186,7 +188,7 @@ def validate_resume_training(model, snapshot_dir, models_dir, mode, device, args
     
     resume_epoch             = 0
     override_batch_size      = BATCH_SIZE
-    override_params          = AUTOENCODERKL_PARAMS
+    override_params          = AUTOENCODERKL_PARAMS if mode != 'ldm' else MODEL_PARAMS
     train_loader, val_loader = None, None  # initialize as None
     optimizer                = None
     
@@ -199,7 +201,7 @@ def validate_resume_training(model, snapshot_dir, models_dir, mode, device, args
             snapshot_dir,
             mode                 = mode,
             current_batch_size   = BATCH_SIZE,
-            current_model_params = AUTOENCODERKL_PARAMS
+            current_model_params = AUTOENCODERKL_PARAMS if mode != 'ldm' else MODEL_PARAMS
         )
         
         # Re-initialize dataloaders if batch size differs
@@ -215,7 +217,7 @@ def validate_resume_training(model, snapshot_dir, models_dir, mode, device, args
 
         # Re-initialize model if model param mismatch
         if mismatch_params:
-            model = AutoencoderKL(**override_params).to(device)
+            model = AutoencoderKL(**override_params).to(device) if mode != 'ldm' else DiffusionModelUNet(**MODEL_PARAMS).to(device)
             # Load model weights
             model.load_state_dict(torch.load(ckpt_path, map_location=device, weights_only=True))
             resume_epoch = latest_epoch + 1

@@ -22,16 +22,14 @@ CLASSIFICATION_TYPE = 'binary'              # 'binary' or 'multiclass'
 # ------------------------------------------------------------------------------#
 # Training configuration
 SEED                = 1337          # Random seed for reproducibility
-N_EPOCHS            = 500           # Number of training epochs
+N_EPOCHS            = 2500          # Number of training epochs
 LR                  = 1.0e-5        # Learning rate for the optimizer # [talha] change it to be -5
 VAL_INTERVAL        = 1             # Validate every n epochs (can reduce)
-MODEL_SAVE_INTERVAL = 1             # Save model every n epochs
+MODEL_SAVE_INTERVAL = 10             # Save model every n epochs
 NUM_TRAIN_TIMESTEPS = 1000          # i.e., diffusion steps (T)
 NOISE_SCHEDULER     = "linear_beta" # {linear_beta, cosine_beta}
 SCHEDULER           = 'DDPM'        # {DDPM, DDIM}
 # RESUME_PATH       = LDM_SNAPSHOT_DIR + f'/models/model_epoch_499.pth'
-
-NUM_INFERENCE_TIMESTEPS = NUM_TRAIN_TIMESTEPS // 10 if SCHEDULER == 'DDIM' else NUM_TRAIN_TIMESTEPS
 
 # ------------------------------------------------------------------------------#
 # Experiment configuration
@@ -75,11 +73,12 @@ LDM_SCALE_FACTOR     = 1.0
 class InferenceConfig:
     N_PREDS             = 1
     RESUME              = False
-    MODEL_EPOCH         = -1                # Epoch of the model to load (-1 for final model)
-    NUM_SAMPLES         = 10                # Number of samples 
+    MODEL_EPOCH         = 1369               # Epoch of the model to load (-1 for final model)
+    NUM_SAMPLES         = 10                 # Number of samples 
     SAVE_FOLDER         = LDM_SNAPSHOT_DIR + f"/inference-M{MODEL_EPOCH if MODEL_EPOCH != -1 else N_EPOCHS}-E{N_EPOCHS}-t{NUM_TRAIN_TIMESTEPS}-S{SCHEDULER}-SP{NUM_SAMPLES}"  # Save folder for inference results
+    INFERER_SCHEDULER   = 'DDIM'
     TRAIN_TIMESTEPS     = NUM_TRAIN_TIMESTEPS
-    INFERENCE_TIMESTEPS = NUM_INFERENCE_TIMESTEPS
+    INFERENCE_TIMESTEPS = NUM_TRAIN_TIMESTEPS // 10 if SCHEDULER == 'DDIM' else NUM_TRAIN_TIMESTEPS
     SAVE_INTERMEDIATES  = True
     METRIC_REPORT       = True
 

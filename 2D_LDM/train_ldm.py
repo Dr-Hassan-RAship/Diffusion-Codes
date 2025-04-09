@@ -2,7 +2,7 @@
 #
 # File name                 : train_ldm.py
 # Purpose                   : Train Latent Diffusion Model (LDM) for binary segmentation
-# Usage                     : python train_ldm.py
+# Usage                     : python train_ldm.py [--resume]
 #
 # Authors                   : Talha Ahmed, Nehal Ahmed Shaikh, Hassan Mohy-ud-Din
 # Email                     : 24100033@lums.edu.pk, 202410001@lums.edu.pk, hassan.mohyuddin@lums.edu.pk
@@ -10,7 +10,7 @@
 # Last Date                 : March 11, 2025
 # ------------------------------------------------------------------------------#
 
-import logging, os, torch, time
+import logging, os, torch, time, argparse
 
 import torch.nn.functional as F
 
@@ -52,11 +52,21 @@ def setup_environment(seed: int, snapshot_dir: str):
 
     return "cuda" if torch.cuda.is_available() else "cpu"
 
+# ------------------------------------------------------------------------------#
+def parse_arguments():
+    parser = argparse.ArgumentParser(
+        description="Training script for LDM"
+    )
+    parser.add_argument(
+        "--resume",
+        action="store_true",
+        help="Resume training from the latest checkpoint if available"
+    )
+    return parser.parse_args()
 
 # ------------------------------------------------------------------------------#
 # Training and Validation Functions
 # ------------------------------------------------------------------------------#
-
 
 def train_one_epoch(model, aekl_image, aekl_mask, train_loader, optimizer, inferer, scaler, scheduler, device, epoch, writer):
     """Train the LDM for one epoch."""
@@ -97,7 +107,7 @@ def train_one_epoch(model, aekl_image, aekl_mask, train_loader, optimizer, infer
             loss_noise             = F.l1_loss(noise_pred.float(), noise.float())
             
             loss_latent            = torch.tensor(0.0)
-            if epoch >= 300:
+            if epoch >= 500:
                 alpha_bar_T            = scheduler.alphas_cumprod[timesteps][:, None, None, None]
                 z_0_pred               = (1 / torch.sqrt(alpha_bar_T)) * (z_T - (torch.sqrt(1 - alpha_bar_T) * noise_pred))
                 loss_latent            = F.l1_loss(z_0_pred.float(), latent_masks.float())
@@ -175,21 +185,33 @@ def validate_one_epoch(model, aekl_image, aekl_mask, val_loader, inferer, schedu
 # Main Training Loop
 # ------------------------------------------------------------------------------#
 def main():
+    args = parse_arguments()
+    
     snapshot_dir = LDM_SNAPSHOT_DIR
     check_or_create_folder(snapshot_dir)
     
     device = setup_environment(SEED, snapshot_dir)
     models_dir = os.path.join(snapshot_dir, "models")
     
-    check_or_create_folder(models_dir)
-    writer = SummaryWriter(f"{snapshot_dir}/log")
-
+    # Setup Logging
     setup_logging(snapshot_dir)
-    
+    if args.resume:
+        print('--------------------------------------------------TRAINING RESUMING!---------------------------------------------------------------------')
+        # Prepare Tensorboard Writer
+        writer = SummaryWriter(os.path.join(snapshot_dir, "log_resume"))
+    else:
+        # Prepare Tensorboard Writer
+        writer = SummaryWriter(os.path.join(snapshot_dir, "log"))    
     logging.info(f"ldm training parameters: epochs = {N_EPOCHS}, lr = {LR}, timesteps = {NUM_TRAIN_TIMESTEPS}, noise scheduler = {NOISE_SCHEDULER}, scheduler = {SCHEDULER}")
+    
     print(f"Results logged in: {snapshot_dir}, TensorBoard logs in: {snapshot_dir}/log, Models saved in: {models_dir}\n")
     torch.manual_seed(SEED)
-
+    
+    # Initalize model and dataloader
+    unet                = DiffusionModelUNet(**MODEL_PARAMS).to(device)
+    optimizer           = torch.optim.AdamW(
+    unet.parameters(), lr = LR, betas = (0.9, 0.999), weight_decay = 0.0001)
+    
     train_loader = get_dataloaders(BASE_DIR, split_ratio = SPLIT_RATIOS, split = "train", trainsize = TRAINSIZE,
                                    batch_size = BATCH_SIZE,
                                    format     = FORMAT,)
@@ -197,10 +219,19 @@ def main():
     val_loader   = get_dataloaders(BASE_DIR, split_ratio = SPLIT_RATIOS, split = "val", trainsize = TRAINSIZE,
                                    batch_size = BATCH_SIZE,
                                    format     = FORMAT,)
+    
+    # Resume or start fresh
+    resume_epoch, unet, train_loader_override, val_loader_override, optimizer_override = validate_resume_training(
+    unet, snapshot_dir, models_dir, mode = 'ldm', device = device, args = args, prefix = 'model_epoch_')
 
-    tup_image, tup_mask = load_autoencoder(device, train_loader, image = True, mask = True, epoch_image = 500, epoch_mask = 100)
-    unet                = DiffusionModelUNet(**MODEL_PARAMS).to(device)
-
+    # Fall back to default loaders if not overridden
+    train_loader = train_loader_override or train_loader
+    val_loader   = val_loader_override or val_loader
+    optimizer    = optimizer_override  or optimizer
+    
+    # Load pre-trained autoencoderkl image and mask
+    tup_image, tup_mask = load_autoencoder(device, train_loader, image = True, mask = True, epoch_image = 500, epoch_mask = 100)    
+    
     scheduler = (
         DDIMScheduler(num_train_timesteps=NUM_TRAIN_TIMESTEPS, schedule=NOISE_SCHEDULER)
         if SCHEDULER == "DDIM"
@@ -216,29 +247,18 @@ def main():
     aekl_image, aekl_mask = aekl_image.to(device), aekl_mask.to(device)
     inferer               = LatentDiffusionInferer(scheduler = scheduler, scale_factor = scale_mask)
     
-    optimizer             = torch.optim.AdamW(
-    unet.parameters(), lr = LR, betas = (0.9, 0.999), weight_decay = 0.0001)
-    
     scaler     = GradScaler("cuda")
-    start_time = time.time()
     
-    # Check if a checkpoint exists and resume training
-    resume_epoch = 0
-    checkpoint   = get_latest_checkpoint(models_dir, prefix = 'model_epoch_')
-    if do.RESUME and checkpoint is not None:
-        resume_epoch, checkpoint_path = checkpoint
-        unet.load_state_dict(torch.load(checkpoint_path, map_location = device, weights_only = True))
-        logging.info(f"Resuming training from epoch {resume_epoch}")
-        print(f"Resuming training from epoch {resume_epoch}")
-    else:
-        print("Starting training from scratch.")
+    # Prepare CSV logging and TensorBoard custom scalars
+    eval_list = ['Epoch', 'Train Loss', 'Val Loss']
+    if not os.path.exists(os.path.join(snapshot_dir, 'logs.csv')):
+        prepare_and_write_csv_file(snapshot_dir, eval_list, write_header=True)
+    writer.add_custom_scalars(prepare_writer_layout())
 
-    eval_list = ["Epoch", "Train Loss", "Val Loss"]
-    prepare_and_write_csv_file(snapshot_dir, eval_list)
-
-    layout = prepare_writer_layout()
-    writer.add_custom_scalars(layout)
-
+    # Run training loop (if resuming, continue from resume_epoch+1)
+    # Launch tensorboard
+    launch_tensorboard(os.path.join(snapshot_dir, "log_resume"))
+    start_time   = time.time()
     for epoch in range(resume_epoch, resume_epoch + N_EPOCHS):        # if RESUME_PATH:
         train_loss, val_loss = None, None
 
@@ -251,7 +271,7 @@ def main():
         writer.add_scalar("loss/train epoch", train_loss, epoch)
 
         if (epoch + 1) % VAL_INTERVAL == 0:
-            train_loss = validate_one_epoch(unet, aekl_image, aekl_mask, val_loader, inferer, scheduler, device,
+            val_loss = validate_one_epoch(unet, aekl_image, aekl_mask, val_loader, inferer, scheduler, device,
                                             epoch,
                                             writer,
         )

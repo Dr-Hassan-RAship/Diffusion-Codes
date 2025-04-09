@@ -119,7 +119,7 @@ def load_autoencoder(device, train_loader, image=True, mask=True, epoch_mask = 5
 def load_ldm_model(device, scale_factor):
     """Load the trained LDM model and scheduler."""
     model_path = (
-        os.path.join(LDM_SNAPSHOT_DIR, "models", f"model_epoch_{do.MODEL_EPOCH}.pth")
+        os.path.join(LDM_SNAPSHOT_DIR + "/models", f"model_epoch_{do.MODEL_EPOCH}.pth")
         if do.MODEL_EPOCH != -1
         else os.path.join(LDM_SNAPSHOT_DIR, "models", "final_model.pth")
     )
@@ -132,11 +132,12 @@ def load_ldm_model(device, scale_factor):
 
     scheduler = (
         DDIMScheduler(num_train_timesteps=do.TRAIN_TIMESTEPS, schedule=NOISE_SCHEDULER)
-        if SCHEDULER == "DDIM"
+        if do.INFERER_SCHEDULER == "DDIM"
         else DDPMScheduler(
             num_train_timesteps=do.TRAIN_TIMESTEPS, schedule=NOISE_SCHEDULER
         )
     )
+    scheduler.set_timesteps(do.INFERENCE_TIMESTEPS)
     
     inferer = LatentDiffusionInferer(scheduler=scheduler, scale_factor=scale_factor)
     print(f"Loaded LDM model from {model_path} with {SCHEDULER} scheduler.")
@@ -178,9 +179,15 @@ def save_groundtruth_image(image, save_folder, filename, mode="image"):
     filepath = os.path.join(save_folder, filename)
     if mode == "image":
         # tranpose image to (256, 256, 3) and normalize between 0 - 1 for each channel independantly for imsave
-        image = np.transpose(image, (1, 2, 0))
+        image  = np.transpose(image, (1, 2, 0))
+        # normalize 
+        image  = ((image + 1.0) / 2.0).clip(0, 1)
+
         plt.imsave(filepath, image)
     else:
+        image = np.transpose(image, (1, 2, 0))
+        image = (((image + 1.0) / 2.0))[:, :, 0]
+        
         plt.imsave(filepath, image, cmap="gray")
     print(f"{filename} saved at {save_folder}")
 

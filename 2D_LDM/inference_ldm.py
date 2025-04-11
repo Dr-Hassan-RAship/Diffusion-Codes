@@ -97,6 +97,7 @@ def inference(unet, aekl_image, aekl_mask, inferer, test_loader, device, output_
     #     visualize_samples(selected_samples, output_dir)
     
     # visualize intermediate steps
+
     if do.SAVE_INTERMEDIATES:
         visualize_intermediate_steps(intermediates, output_dir)
     

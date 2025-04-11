@@ -197,6 +197,7 @@ def main():
     setup_logging(snapshot_dir)
     if args.resume:
         print('--------------------------------------------------TRAINING RESUMING!---------------------------------------------------------------------')
+        logging.info('--------------------------------------------------TRAINING RESUMING!---------------------------------------------------------------------')
         # Prepare Tensorboard Writer
         writer = SummaryWriter(os.path.join(snapshot_dir, "log_resume"))
     else:
@@ -257,9 +258,9 @@ def main():
 
     # Run training loop (if resuming, continue from resume_epoch+1)
     # Launch tensorboard
-    launch_tensorboard(os.path.join(snapshot_dir, "log_resume"))
+    # launch_tensorboard(os.path.join(snapshot_dir, "log_resume"))
     start_time   = time.time()
-    for epoch in range(resume_epoch, resume_epoch + N_EPOCHS):        # if RESUME_PATH:
+    for epoch in range(resume_epoch, resume_epoch + N_EPOCHS - 1370):        # if RESUME_PATH:
         train_loss, val_loss = None, None
 
         train_loss = train_one_epoch(unet, aekl_image, aekl_mask, train_loader, optimizer, inferer, scaler, scheduler, device,

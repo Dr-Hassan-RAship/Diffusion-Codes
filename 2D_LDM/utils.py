@@ -21,7 +21,8 @@ def validate_resume_params(snapshot_dir, mode, current_batch_size, current_model
     Validates the current training configuration against saved parameters.
     If mismatched, it logs the differences and uses the saved configuration.
     """
-    txt_file            = os.path.join(snapshot_dir, f"aekl_{mode}_params.txt")
+    joint_dir           = f"aekl_{mode}_params.txt" if mode != 'ldm' else f"model_params.txt" 
+    txt_file            = os.path.join(snapshot_dir, joint_dir)
     override_params     = current_model_params.copy()
     override_batch_size = current_batch_size
 
@@ -56,7 +57,7 @@ def validate_resume_params(snapshot_dir, mode, current_batch_size, current_model
             logging.warning(f"Param mismatch for '{key}'! (config: {current_model_params[key]}, saved: {saved_params[key]})")
             override_params[key] = saved_params[key]
             mismatch_params      = True
-            
+    
     return override_batch_size, override_params, mismatch_batch, mismatch_params
 
 #-----------------------------------------------------------------------------#
@@ -220,9 +221,6 @@ def validate_resume_training(model, snapshot_dir, models_dir, mode, device, args
             model = AutoencoderKL(**override_params).to(device) if mode != 'ldm' else DiffusionModelUNet(**MODEL_PARAMS).to(device)
             # Load model weights
             model.load_state_dict(torch.load(ckpt_path, map_location=device, weights_only=True))
-            resume_epoch = latest_epoch + 1
-            logging.info(f"Resuming training from epoch {resume_epoch} using checkpoint {ckpt_path}")
-            print(f"✅ Resuming training from epoch {resume_epoch}")
             
             optimizer     = torch.optim.AdamW(model.parameters(),
                                   lr=LR,
@@ -232,6 +230,9 @@ def validate_resume_training(model, snapshot_dir, models_dir, mode, device, args
     else:
         logging.info("Starting training from scratch.")
         print("🚀 Starting training from scratch.")
-
+    
+    resume_epoch = latest_epoch + 1
+    logging.info(f"Resuming training from epoch {resume_epoch} using checkpoint {ckpt_path}")
+    print(f"✅ Resuming training from epoch {resume_epoch}")
     return resume_epoch, model, train_loader, val_loader, optimizer
 #-------------------------------------------------------------------------------------#

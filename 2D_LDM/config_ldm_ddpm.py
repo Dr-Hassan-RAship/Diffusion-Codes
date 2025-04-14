@@ -73,7 +73,7 @@ LDM_SCALE_FACTOR     = 1.0
 class InferenceConfig:
     N_PREDS             = 1
     RESUME              = False
-    MODEL_EPOCH         = 1369               # Epoch of the model to load (-1 for final model)
+    MODEL_EPOCH         = 1769               # Epoch of the model to load (-1 for final model)
     NUM_SAMPLES         = 10                 # Number of samples 
     SAVE_FOLDER         = LDM_SNAPSHOT_DIR + f"/inference-M{MODEL_EPOCH if MODEL_EPOCH != -1 else N_EPOCHS}-E{N_EPOCHS}-t{NUM_TRAIN_TIMESTEPS}-S{SCHEDULER}-SP{NUM_SAMPLES}"  # Save folder for inference results
     INFERER_SCHEDULER   = 'DDIM'

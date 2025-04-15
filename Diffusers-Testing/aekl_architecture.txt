@@ -43,3 +43,5 @@ Forward/backward pass size (MB): 1580.02
 Params size (MB): 167.31
 Estimated Total Size (MB): 1747.72
 ====================================================================================================
+
+Encoder Params: 24,720,356

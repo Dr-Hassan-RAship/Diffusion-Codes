@@ -45,3 +45,6 @@ Estimated Total Size (MB): 1747.72
 ====================================================================================================
 
 Encoder Params: 24,720,356
+
+Notes:
+1) Check Zarosky's paper to check which pretrained model its using from Diffusers Package

@@ -17,11 +17,11 @@ def trainer(model, optimizer, train_loader, device, scaler, val_loader):
         model.train()
         optimizer.zero_grad()
         for step, batch in enumerate(train_loader):
-            x, y = batch['x'], batch['y']
+            images = batch['aug_images']
 
             with autocast(device, enabled=True):
-                pred = model(x)
-                loss = l1_loss(pred, y)
+                pred = model(images)
+                loss = l1_loss(pred, images)
             
             scaler.scale(loss).backward()
             scaler.step(optimizer)
@@ -44,11 +44,11 @@ def validator(model, val_loader, device):
     model.eval()
     with torch.no_grad():
         for step, batch in enumerate(val_loader):
-            x, y = batch['x'], batch['y']
+            images = batch['aug_images'].to(device)
 
             with autocast(device, enabled=True):
-                pred = model(x)
-                loss = l1_loss(pred, y)
+                pred = model(images)
+                loss = l1_loss(pred, images)
                 
             epoch_loss += loss.item()
 
@@ -59,7 +59,7 @@ def main():
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     torch.manual_seed(SEED)
 
-    model = LDM_Segmentor()
+    model = LDM_Segmentor().to(device)
     optimizer = AdamW(model.parameters(), lr=LR, betas=(0.9, 0.999), weight_decay=0.0001)
     scaler = GradScaler(device)
     train_loader = get_dataloaders(

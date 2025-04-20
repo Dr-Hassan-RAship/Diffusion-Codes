@@ -55,6 +55,7 @@ def validator(model, val_loader, device):
     return epoch_loss / len(val_loader)
 
 def main():
+    print('initializing components.')
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     torch.manual_seed(SEED)
 
@@ -70,6 +71,10 @@ def main():
         trainsize = TRAINSIZE, batch_size = BATCH_SIZE, format = FORMAT
     )
 
+    print('starting training.')
     start_time   = time.time()
     losses = trainer(model, optimizer, train_loader, device, scaler, val_loader)      
     print(f'execution time: {(time.time() - start_time) // 60.0} minutes')
+
+if __name__ == '__main__':
+    main()

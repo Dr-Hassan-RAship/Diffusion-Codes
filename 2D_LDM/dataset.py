@@ -18,7 +18,7 @@ import numpy            as np
 from PIL                import Image
 from torchvision        import transforms
 from torch.utils.data   import DataLoader, Dataset
-from config_ldm_ddpm    import *
+from config    import *
 
 # ------------------------------------------------------------------------------#
 def split_dataset(base_dir, split_ratios=(600, 200, 200)):

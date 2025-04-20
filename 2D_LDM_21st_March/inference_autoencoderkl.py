@@ -21,7 +21,7 @@ from tqdm                               import tqdm
 from monai.metrics.regression           import SSIMMetric
 from dataset                            import *
 from inference_ldm_utils                import *
-from config_ldm_ddpm                    import *
+from config                    import *
 
 
 # ------------------------------------------------------------------------------#

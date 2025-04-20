@@ -19,7 +19,7 @@ import matplotlib.pyplot        as plt
 from tqdm                       import tqdm
 from dataset                    import *
 from inference_ldm_utils        import *
-from config_ldm_ddpm            import *
+from config            import *
 # ------------------------------------------------------------------------------#
 def inference(unet, dae_image, dae_mask, inferer, test_loader, device, output_dir, num_samples):
     """

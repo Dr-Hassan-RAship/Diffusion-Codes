@@ -1,3 +1,5 @@
+--------------------------------------------- in_channels = 4, input_dim = 64 ------------------------------------------------
+
 ===================================================================================================================
 Layer (type:depth-idx)                                            Output Shape              Param #
 ===================================================================================================================
@@ -80,3 +82,84 @@ Estimated Total Size (MB): 4254.35
 
 V.V.V.Imp: Run torch.cuda.empty_cache() after each batch iteration! as we will rapidly run out of memory. So we need to confirm
 and see whether our AdamW optimizer is affected by it or not.
+
+--------------------------------------------- in_channels = 8, input_dim = 32 ------------------------------------------------
+===================================================================================================================
+Layer (type:depth-idx)                                            Output Shape              Param #
+===================================================================================================================
+UNet2DConditionModel                                              [2, 4, 32, 32]            --
+├─Timesteps: 1-1                                                  [2, 320]                  --
+├─TimestepEmbedding: 1-2                                          [2, 1280]                 --
+│    └─Linear: 2-1                                                [2, 1280]                 410,880
+│    └─SiLU: 2-2                                                  [2, 1280]                 --
+│    └─Linear: 2-3                                                [2, 1280]                 1,639,680
+├─Conv2d: 1-3                                                     [2, 320, 32, 32]          23,360
+├─ModuleList: 1-4                                                 --                        --
+│    └─CrossAttnDownBlock2D: 2-4                                  [2, 320, 16, 16]          --
+│    │    └─ModuleList: 3-3                                       --                        (recursive)
+│    │    └─ModuleList: 3-4                                       --                        (recursive)
+│    │    └─ModuleList: 3-3                                       --                        (recursive)
+│    │    └─ModuleList: 3-4                                       --                        (recursive)
+│    │    └─ModuleList: 3-5                                       --                        921,920
+│    └─CrossAttnDownBlock2D: 2-5                                  [2, 640, 8, 8]            --
+│    │    └─ModuleList: 3-8                                       --                        (recursive)
+│    │    └─ModuleList: 3-9                                       --                        (recursive)
+│    │    └─ModuleList: 3-8                                       --                        (recursive)
+│    │    └─ModuleList: 3-9                                       --                        (recursive)
+│    │    └─ModuleList: 3-10                                      --                        3,687,040
+│    └─CrossAttnDownBlock2D: 2-6                                  [2, 1280, 4, 4]           --
+│    │    └─ModuleList: 3-13                                      --                        (recursive)
+│    │    └─ModuleList: 3-14                                      --                        (recursive)
+│    │    └─ModuleList: 3-13                                      --                        (recursive)
+│    │    └─ModuleList: 3-14                                      --                        (recursive)
+│    │    └─ModuleList: 3-15                                      --                        14,746,880
+│    └─DownBlock2D: 2-7                                           [2, 1280, 4, 4]           --
+│    │    └─ModuleList: 3-16                                      --                        62,277,120
+├─UNetMidBlock2DCrossAttn: 1-5                                    [2, 1280, 4, 4]           --
+│    └─ModuleList: 2-10                                           --                        (recursive)
+│    │    └─ResnetBlock2D: 3-17                                   [2, 1280, 4, 4]           31,138,560
+│    └─ModuleList: 2-9                                            --                        --
+│    │    └─Transformer2DModel: 3-18                              [2, 1280, 4, 4]           34,760,960
+│    └─ModuleList: 2-10                                           --                        (recursive)
+│    │    └─ResnetBlock2D: 3-19                                   [2, 1280, 4, 4]           31,138,560
+├─ModuleList: 1-6                                                 --                        --
+│    └─UpBlock2D: 2-11                                            [2, 1280, 8, 8]           --
+│    │    └─ModuleList: 3-20                                      --                        147,494,400
+│    │    └─ModuleList: 3-21                                      --                        14,746,880
+│    └─CrossAttnUpBlock2D: 2-12                                   [2, 1280, 16, 16]         --
+│    │    └─ModuleList: 3-26                                      --                        (recursive)
+│    │    └─ModuleList: 3-27                                      --                        (recursive)
+│    │    └─ModuleList: 3-26                                      --                        (recursive)
+│    │    └─ModuleList: 3-27                                      --                        (recursive)
+│    │    └─ModuleList: 3-26                                      --                        (recursive)
+│    │    └─ModuleList: 3-27                                      --                        (recursive)
+│    │    └─ModuleList: 3-28                                      --                        14,746,880
+│    └─CrossAttnUpBlock2D: 2-13                                   [2, 640, 32, 32]          --
+│    │    └─ModuleList: 3-33                                      --                        (recursive)
+│    │    └─ModuleList: 3-34                                      --                        (recursive)
+│    │    └─ModuleList: 3-33                                      --                        (recursive)
+│    │    └─ModuleList: 3-34                                      --                        (recursive)
+│    │    └─ModuleList: 3-33                                      --                        (recursive)
+│    │    └─ModuleList: 3-34                                      --                        (recursive)
+│    │    └─ModuleList: 3-35                                      --                        3,687,040
+│    └─CrossAttnUpBlock2D: 2-14                                   [2, 320, 32, 32]          --
+│    │    └─ModuleList: 3-40                                      --                        (recursive)
+│    │    └─ModuleList: 3-41                                      --                        (recursive)
+│    │    └─ModuleList: 3-40                                      --                        (recursive)
+│    │    └─ModuleList: 3-41                                      --                        (recursive)
+│    │    └─ModuleList: 3-40                                      --                        (recursive)
+│    │    └─ModuleList: 3-41                                      --                        (recursive)
+├─GroupNorm: 1-7                                                  [2, 320, 32, 32]          640
+├─SiLU: 1-8                                                       [2, 320, 32, 32]          --
+├─Conv2d: 1-9                                                     [2, 4, 32, 32]            11,524
+===================================================================================================================
+Total params: 859,532,484
+Trainable params: 859,532,484
+Non-trainable params: 0
+Total mult-adds (Units.GIGABYTES): 111.58
+===================================================================================================================
+Input size (MB): 0.27
+Forward/backward pass size (MB): 644.41
+Params size (MB): 1719.06
+Estimated Total Size (MB): 2363.74
+===================================================================================================================

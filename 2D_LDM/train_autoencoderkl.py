@@ -17,7 +17,7 @@ import torch.nn.functional    as F
 from torch.amp                import autocast, GradScaler
 from torch.utils.tensorboard  import SummaryWriter
 from monai.networks.nets      import AutoencoderKL
-from config_ldm_ddpm          import *
+from config          import *
 from dataset                  import *
 from utils                    import *
 # ------------------------------------------------------------------------------#

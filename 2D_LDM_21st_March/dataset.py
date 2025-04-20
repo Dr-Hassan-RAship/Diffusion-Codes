@@ -16,7 +16,7 @@ import os, random, shutil
 from torchvision        import transforms
 from torch.utils.data   import DataLoader, Dataset
 from custom_transforms  import *
-from config_ldm_ddpm    import *
+from config    import *
 from custom_transforms  import *
 
 # ------------------------------------------------------------------------------#

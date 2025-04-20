@@ -22,7 +22,7 @@ from monai.networks.nets      import AutoencoderKL
 from generative.networks.nets import PatchDiscriminator
 from monai.losses             import PatchAdversarialLoss, PerceptualLoss
 from torch.nn                 import MSELoss
-from config_ldm_ddpm          import *
+from config          import *
 from dataset                  import get_dataloaders
 from utils                    import *
 

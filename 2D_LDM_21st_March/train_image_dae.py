@@ -22,7 +22,7 @@ from tqdm                     import tqdm
 from monai.networks.nets      import AutoencoderKL
 from generative.networks.nets import PatchDiscriminator
 from monai.losses             import PatchAdversarialLoss, PerceptualLoss
-from config_ldm_ddpm          import *
+from config          import *
 from dataset                  import get_dataloaders
 from utils                    import *
 

@@ -10,7 +10,7 @@
 #-------------------------------------------------------------------------------#
 import os, csv, sys, logging, re, subprocess, logging, torch
 
-from config_ldm_ddpm          import *
+from config          import *
 from monai.networks.nets      import AutoencoderKL
 from dataset                  import *
 from source_unet              import *

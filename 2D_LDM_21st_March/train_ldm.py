@@ -20,7 +20,7 @@ from tqdm import tqdm
 from generative.networks.nets import DiffusionModelUNet
 from generative.networks.schedulers import DDPMScheduler, DDIMScheduler
 from generative.inferers import LatentDiffusionInferer
-from config_ldm_ddpm import *
+from config import *
 from dataset import get_dataloaders
 from inference_ldm_utils import *
 from utils import *

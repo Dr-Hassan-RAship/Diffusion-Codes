@@ -17,7 +17,7 @@ import numpy               as np
 from PIL                   import Image, ImageEnhance
 from skimage.morphology    import disk, erosion, dilation, opening, closing
 
-from config_ldm_ddpm       import *
+from config       import *
 
 
 # ------------------------------------------------------------------------------#

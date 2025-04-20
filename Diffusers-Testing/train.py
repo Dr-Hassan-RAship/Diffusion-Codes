@@ -8,7 +8,7 @@ from torch.utils.tensorboard import SummaryWriter
 from config import *
 from dataset import get_dataloaders
 
-def trainer(model, optimizer, train_loader, device, scaler, val_loader):
+def trainer(model, optimizer, train_loader, device, scheduler, scaler, val_loader):
     train_losses = []
     val_losses = []
     for epoch in range(100):
@@ -18,10 +18,11 @@ def trainer(model, optimizer, train_loader, device, scaler, val_loader):
         optimizer.zero_grad()
         for step, batch in enumerate(train_loader):
             image, mask = batch['aug_image'], batch['aug_mask']
+            timesteps = torch.randint(0, scheduler.num_train_timesteps, (len(train_loader),), device = device).long()
 
             with autocast(device, enabled=True):
-                pred = model(image, mask)
-                loss = l1_loss(pred, image)
+                output = model(image, mask, timesteps)
+                loss = l1_loss(output['mask_hat'], mask)
             
             scaler.scale(loss).backward()
             scaler.step(optimizer)
@@ -45,10 +46,11 @@ def validator(model, val_loader, device):
     with torch.no_grad():
         for step, batch in enumerate(val_loader):
             image, mask = batch['aug_image'], batch['aug_mask']
+            timesteps = torch.randint(0, scheduler.num_train_timesteps, (len(val_loader),), device = device).long()
 
             with autocast(device, enabled=True):
-                pred = model(image, mask)
-                loss = l1_loss(pred, image)
+                output = model(image, mask, timesteps)
+                loss = l1_loss(output['mask_hat'], mask)
                 
             epoch_loss += loss.item()
 

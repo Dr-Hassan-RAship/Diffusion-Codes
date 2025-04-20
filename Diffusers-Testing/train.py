@@ -6,12 +6,13 @@ from torch.nn.functional import l1_loss
 from torch.optim import AdamW
 from torch.utils.tensorboard import SummaryWriter
 
-from config import *
+from config  import *
 from dataset import get_dataloaders
 
 def trainer(model, optimizer, train_loader, device, scheduler, scaler, val_loader):
     train_losses = []
     val_losses = []
+
     for epoch in range(100):
         print(f'starting epoch {epoch + 1}.')
         epoch_loss = 0
@@ -19,7 +20,7 @@ def trainer(model, optimizer, train_loader, device, scheduler, scaler, val_loade
         optimizer.zero_grad()
         for step, batch in enumerate(train_loader):
             image, mask = batch['aug_image'].half(), batch['aug_mask'].half()
-            timesteps = torch.randint(0, scheduler.config.num_train_timesteps, (len(train_loader),), device = device).long()
+            timesteps   = torch.randint(0, model.scheduler.config.num_train_timesteps, (image.shape[0],), device=device).long()
 
             with autocast(device, enabled=True):
                 output = model(image, mask, timesteps)
@@ -30,7 +31,8 @@ def trainer(model, optimizer, train_loader, device, scheduler, scaler, val_loade
             scaler.update()
 
             epoch_loss += loss.item()
-        
+            torch.cuda.empty_cache() # [talha] to prevent RAM from being used up
+
         train_losses.append(epoch_loss / len(train_loader))
         print(f'epoch {epoch + 1} train_loss: {train_losses[-1]}')
         if (epoch + 1) % VAL_INTERVAL == 0:
@@ -47,7 +49,7 @@ def validator(model, val_loader, scheduler, device):
     with torch.no_grad():
         for step, batch in enumerate(val_loader):
             image, mask = batch['aug_image'], batch['aug_mask']
-            timesteps = torch.randint(0, scheduler.config.num_train_timesteps, (len(val_loader),), device = device).long()
+            timesteps   = torch.randint(0, model.scheduler.config.num_train_timesteps, (image.shape[0],), device=device).long()
 
             with autocast(device, enabled=True):
                 output = model(image, mask, timesteps)

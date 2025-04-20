@@ -57,7 +57,7 @@ class LDM_Segmentor(nn.Module):
         # --- Step 1: Mask → VAE encoder (frozen)
         with torch.no_grad():
             posterior = self.vae.encode(mask).latent_dist
-            z0 = posterior.sample() * 0.18215  # scaled latent
+            z0 = posterior.sample() * 0.18215  # scaled latent # (B, 4, 32, 32)
 
         # --- Step 2: Add noise to z0 using scheduler → zt
         noise = torch.randn_like(z0)
@@ -67,13 +67,21 @@ class LDM_Segmentor(nn.Module):
         zc = self.image_encoder(image) * 0.18215
 
         # --- Step 4: Concatenate and denoise
-        zt_cat = torch.cat([zt, zc], dim=1)  # (B, 8, 32, 32)
-        noise_pred = self.unet(zt_cat, t).sample
+        zt_cat     = torch.cat([zt, zc], dim=1)  # (B, 8, 32, 32)
+        noise_pred = self.unet(zt_cat, t).sample # (B, 4, 32, 32)
 
         # --- Step 5: Decode z0_hat to mask
         with torch.no_grad():
-            z0_hat   = self.scheduler.step(noise_pred, t, zt).prev_sample
-            mask_hat = self.vae.decode(z0_hat / 0.18215).sample
+            z0_hat_list = []
+            mask_hat_list = []
+            for batch_idx in range(image.shape[0]):
+                z0_hat   = self.scheduler.step(noise_pred[batch_idx].unsqueeze(0), t[batch_idx].unsqueeze(0), zt[batch_idx].unsqueeze(0)).pred_original_sample
+                mask_hat = self.vae.decode(z0_hat / 0.18215).sample
+                z0_hat_list.append(z0_hat)
+                mask_hat_list.append(mask_hat)
+
+            z0_hat = torch.cat(z0_hat_list, dim=0)  # (B, 4, 32, 32)
+            mask_hat = torch.cat(mask_hat_list, dim=0)
 
         return {
             "z0": z0,

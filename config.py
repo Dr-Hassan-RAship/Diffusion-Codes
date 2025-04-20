@@ -41,8 +41,8 @@ RUN             = '01_' + OPTIONAL_INFO
 # AutoencoderKL configuration (same autoencoder params for both mask and image)
 # Note: We will not be using discriminator and generator for training AEKL
 
-AEKL_IMAGE_SNAPSHOT_DIR = "./results/" + RUN + "/autoencoderkl-image"
-AEKL_MASK_SNAPSHOT_DIR  = "./results/" + RUN + "/autoencoderkl-mask"
+AEKL_SNAPSHOT_DIR = {'image': './results/' + RUN + '/autoencoderkl-image',
+                     'mask' : './results/' + RUN + '/autoencoderkl-mask'}
 
 AUTOENCODERKL_PARAMS   = {"spatial_dims"              : 2,
                           "in_channels"               : 3,

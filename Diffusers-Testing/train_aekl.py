@@ -5,7 +5,7 @@
 # Usage                     : python train_aekl.py --mode 'image' [--resume] [--pretrained]
 #
 # Authors                   : Talha Ahmed, Nehal Ahmed Shaikh, Hassan Mohy-ud-Din
-# Email                     : 24100033@lums.edu.pk, 202410001@lums.edu.pk, hassan.mohyuddin@lums.edu.pk
+# Email                     : 24100033@lums.edu.pk, 20240001@lums.edu.pk, hassan.mohyuddin@lums.edu.pk
 #
 # Last Date                 : April 16, 2025
 # Note                      : Used AdamW optimizer for better performance

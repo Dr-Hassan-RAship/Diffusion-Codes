@@ -17,11 +17,11 @@ def trainer(model, optimizer, train_loader, device, scaler, val_loader):
         model.train()
         optimizer.zero_grad()
         for step, batch in enumerate(train_loader):
-            images = batch['aug_images']
+            image, mask = batch['aug_image'], batch['aug_mask']
 
             with autocast(device, enabled=True):
-                pred = model(images)
-                loss = l1_loss(pred, images)
+                pred = model(image, mask)
+                loss = l1_loss(pred, image)
             
             scaler.scale(loss).backward()
             scaler.step(optimizer)
@@ -44,11 +44,11 @@ def validator(model, val_loader, device):
     model.eval()
     with torch.no_grad():
         for step, batch in enumerate(val_loader):
-            images = batch['aug_images'].to(device)
+            image, mask = batch['aug_image'], batch['aug_mask']
 
             with autocast(device, enabled=True):
-                pred = model(images)
-                loss = l1_loss(pred, images)
+                pred = model(image, mask)
+                loss = l1_loss(pred, image)
                 
             epoch_loss += loss.item()
 

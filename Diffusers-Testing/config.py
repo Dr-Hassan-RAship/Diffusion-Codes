@@ -28,7 +28,7 @@ MODEL_SAVE_INTERVAL = 10             # Save model every n epochs
 NUM_TRAIN_TIMESTEPS = 1000          # i.e., diffusion steps (T)
 NOISE_SCHEDULER     = "linear_beta" # {linear_beta, cosine_beta}
 SCHEDULER           = 'DDPM'        # {DDPM, DDIM}
-DETERMINISTIC       = False
+DETERMINISTIC       = False         # Whether to use deterministic vae latent representation or not
 
 # ------------------------------------------------------------------------------#
 # Experiment configuration
@@ -42,8 +42,8 @@ UNET_PARAMS = { "sample_size"        : TRAINSIZE // 8,
                 "in_channels"        : 8,  # Using latent space input (z = 4 + concatenation), so latent dimensions match autoencoder
                 "out_channels"       : 4,  # Latent space output before decoder
                 "layers_per_block"   : 2,
-                "block_out_channels" : (128, 256, 256, 512), # (192, 384, 384, 768, 768)
-                "down_block_types"   : ("DownBlock2D",) * 4,
+                "block_out_channels" : (128, 256, 256, 512), #  
+                "down_block_types"   : ("DownBlock2D",) * 4, 
                 "up_block_types"     : ("UpBlock2D",) * 4,
               } # num_head_channels = model_channels (192) // num_heads (8)
 

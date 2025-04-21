@@ -163,3 +163,8 @@ Forward/backward pass size (MB): 644.41
 Params size (MB): 1719.06
 Estimated Total Size (MB): 2363.74
 ===================================================================================================================
+
+1) Stop training and run inference to check results 
+2) Try Stable Diffusion v1-3/4/5 (apparently they have the same number of params as they are just checkpoints) 
+and check if its possible to abstract a model from it without cross-attention
+3) 

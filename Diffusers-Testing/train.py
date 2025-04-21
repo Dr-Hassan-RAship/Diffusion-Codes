@@ -100,10 +100,10 @@ def main():
     print(f"Results logged in: {snapshot_dir}, TensorBoard logs in: {snapshot_dir}/log, Models saved in: {models_dir}\n")
     torch.manual_seed(SEED)
     
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    model = LDM_Segmentor().to(device)
-    optimizer = AdamW(model.parameters(), lr=LR, betas=(0.9, 0.999), weight_decay=0.0001)
-    scaler = GradScaler(device)
+    device     = "cuda" if torch.cuda.is_available() else "cpu"
+    model      = LDM_Segmentor().to(device)
+    optimizer  = AdamW(model.parameters(), lr=LR, betas=(0.9, 0.999), weight_decay=0.0001)
+    scaler     = GradScaler(device)
 
     train_loader = get_dataloaders(BASE_DIR, SPLIT_RATIOS, "train", TRAINSIZE, BATCH_SIZE, FORMAT)
     val_loader   = get_dataloaders(BASE_DIR, SPLIT_RATIOS, "val", TRAINSIZE, BATCH_SIZE, FORMAT)

@@ -19,7 +19,6 @@ class TauEncoder(nn.Module):
         else:
             return h.sample() # self.mean + self.std * randn_tensor
 
-
 class LDM_Segmentor(nn.Module):
     """
     Latent Diffusion Segmentor:
@@ -39,7 +38,7 @@ class LDM_Segmentor(nn.Module):
             p.requires_grad = False
 
         # -- Learnable Tau encoder
-        self.image_encoder = TauEncoder(self.vae).to(device).requires_grad_()
+        self.image_encoder = TauEncoder(self.vae).to(device).train()
 
         # -- UNet2DModel: takes (zt || zc) → predicts noise
         self.unet = UNet2DModel(**UNET_PARAMS).to(device).train()
@@ -63,13 +62,13 @@ class LDM_Segmentor(nn.Module):
 
         # -- Add noise to get zt
         noise = torch.randn_like(z0)
-        zt = self.scheduler.add_noise(z0, noise, t)
+        zt    = self.scheduler.add_noise(z0, noise, t)
 
         # -- Encode image using Tau encoder
         zc = self.image_encoder(image) * self.latent_scale  # (B, 4, 32, 32)
 
         # -- Concatenate zt and zc → pass to UNet
-        zt_cat = torch.cat([zt, zc], dim=1)  # (B, 8, 32, 32)
+        zt_cat     = torch.cat([zt, zc], dim=1)  # (B, 8, 32, 32)
         noise_pred = self.unet(zt_cat, t).sample  # Predict residual noise
 
         # --- Decode z0_hat to mask
@@ -85,14 +84,13 @@ class LDM_Segmentor(nn.Module):
         z0_hat = torch.cat(z0_hat_list, dim=0)  # (B, 4, 32, 32)
         mask_hat = torch.cat(mask_hat_list, dim=0)
 
-
         return {
-            "z0": z0,
-            "zt": zt,
-            "zc": zc,
-            "z0_hat": z0_hat,
-            "noise_pred": noise_pred,
-            "mask_hat": mask_hat,
+            "z0"          : z0,
+            "zt"          : zt,
+            "zc"          : zc,
+            "z0_hat"      : z0_hat,
+            "noise_pred"  : noise_pred,
+            "mask_hat"    : mask_hat,
         }
 
 

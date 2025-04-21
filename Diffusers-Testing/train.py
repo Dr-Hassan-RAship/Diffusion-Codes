@@ -1,86 +1,131 @@
-import argparse, logging, time, torch
-from architectures import LDM_Segmentor
-from diffusers import DDPMScheduler
+import os, time, argparse, logging, torch
 from torch.amp import autocast, GradScaler
 from torch.nn.functional import l1_loss
 from torch.optim import AdamW
 from torch.utils.tensorboard import SummaryWriter
 
-from config  import *
+from config import *
 from dataset import get_dataloaders
+from architectures import LDM_Segmentor
+from utils import setup_logging, prepare_and_write_csv_file
 
-def trainer(model, optimizer, train_loader, device, scaler, val_loader):
-    train_losses = []
-    val_losses = []
+# ------------------------------------------------------------------------------ #
+def save_model_checkpoint(model, optimizer, epoch, path):
+    ckpt = {
+        "model_state_dict": model.state_dict(),
+        "optimizer_state_dict": optimizer.state_dict(),
+        "epoch": epoch,
+    }
+    torch.save(ckpt, path)
 
-    for epoch in range(100):
-        torch.cuda.empty_cache() # [talha] to prevent RAM from being used up
-        print(f'starting epoch {epoch + 1}.')
-        epoch_loss = 0
+# ------------------------------------------------------------------------------ #
+def trainer(model, optimizer, train_loader, val_loader, device, scaler, snapshot_dir, writer, resume_epoch):
+    for epoch in range(resume_epoch, resume_epoch + N_EPOCHS):
+        print(f"\n🚀 Starting Epoch {epoch}")
         model.train()
-        optimizer.zero_grad()
-        for step, batch in enumerate(train_loader):
-            image, mask = batch['aug_image'].to(dtype = torch.float16, device = device), batch['aug_mask'].to(dtype = torch.float16, device = device)
-            timesteps = torch.randint(0, model.scheduler.config.num_train_timesteps, (image.shape[0],), device = device).long()
+        epoch_loss = 0.0
 
+        for step, batch in enumerate(train_loader):
+            image = batch["aug_image"].to(device, dtype=torch.float16)
+            mask  = batch["aug_mask"].to(device, dtype=torch.float16)
+            t     = torch.randint(0, model.scheduler.config.num_train_timesteps, (image.size(0),), device=device).long()
+
+            optimizer.zero_grad(set_to_none=True)
             with autocast(device, enabled=True):
-                output = model(image, mask, timesteps)
-                loss = l1_loss(output['mask_hat'], mask)
-            
+                out  = model(image, mask, t)
+                loss = l1_loss(out["mask_hat"], mask)
+
             scaler.scale(loss).backward()
             scaler.step(optimizer)
             scaler.update()
-            
-            print(f'Iteration: {}')
-            epoch_loss += loss.item()
-        
-        train_losses.append(epoch_loss / len(train_loader))
-        print(f'epoch {epoch + 1} train_loss: {train_losses[-1]}')
-        if (epoch + 1) % VAL_INTERVAL == 0:
-            val_losses.append(validator(model, val_loader, device))
-            print(f'epoch {epoch + 1} val_loss: {val_losses[-1]}')
-        
-        print(f'ending epoch {epoch + 1}.')
-        
-    return train_losses, val_losses
 
-def validator(model, val_loader, device):
-    epoch_loss = 0
+            epoch_loss += loss.item()
+            writer.add_scalar("Loss/Train Iteration", loss.item(), epoch * len(train_loader) + step)
+            logging.info(f"[train] epoch: {epoch} batch: {step} loss: {loss.item():.4f}")
+
+        epoch_loss /= len(train_loader)
+        logging.info(f"[train] epoch: {epoch} mean loss: {epoch_loss:.4f}")
+        writer.add_scalar("loss/train epoch", epoch_loss, epoch)
+
+        # ---- Validation ---- #
+        if (epoch + 1) % VAL_INTERVAL == 0:
+            val_loss = validator(model, val_loader, device, epoch, writer)
+            logging.info(f"[val] epoch: {epoch} mean val loss: {val_loss:.4f}")
+            writer.add_scalar("loss/val epoch", val_loss, epoch)
+        else:
+            val_loss = 0.0
+
+        # ---- Save Model ---- #
+        if (epoch + 1) % MODEL_SAVE_INTERVAL == 0:
+            ckpt_path = os.path.join(snapshot_dir, "models", f"model_epoch_{epoch + 1}.pth")
+            save_model_checkpoint(model, optimizer, epoch, ckpt_path)
+            logging.info(f"Checkpoint saved to {ckpt_path}")
+
+        prepare_and_write_csv_file(snapshot_dir, [epoch, epoch_loss, val_loss], write_header=(epoch == 0))
+
+# ------------------------------------------------------------------------------ #
+def validator(model, val_loader, device, epoch, writer):
     model.eval()
+    val_loss = 0.0
     with torch.no_grad():
         for step, batch in enumerate(val_loader):
-            image, mask = batch['aug_image'].to(dtype = torch.float16, device = device), batch['aug_mask'].to(dtype = torch.float16, device = device)
-            timesteps = torch.randint(0, model.scheduler.config.num_train_timesteps, (image.shape[0],), device = device).long()
+            image = batch["aug_image"].to(device, dtype=torch.float16)
+            mask  = batch["aug_mask"].to(device, dtype=torch.float16)
+            t     = torch.randint(0, model.scheduler.config.num_train_timesteps, (image.size(0),), device=device).long()
 
             with autocast(device, enabled=True):
-                output = model(image, mask, timesteps)
-                loss = l1_loss(output['mask_hat'], mask)
-                
-            epoch_loss += loss.item()
+                out = model(image, mask, t)
+                loss = l1_loss(out["mask_hat"], mask)
 
-    return epoch_loss / len(val_loader)
+            val_loss += loss.item()
+            writer.add_scalar("Loss/Val Iteration", loss.item(), epoch * len(val_loader) + step)
 
+    return val_loss / len(val_loader)
+
+# ------------------------------------------------------------------------------ #
 def main():
-    print('initializing components.')
-    device = 'cuda' if torch.cuda.is_available() else 'cpu'
-    torch.manual_seed(SEED)
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--resume", action="store_true")
+    args = parser.parse_args()
 
+    snapshot_dir = LDM_SNAPSHOT_DIR
+    models_dir   = os.path.join(snapshot_dir, "models")
+    os.makedirs(models_dir, exist_ok=True)
+
+    # Setup environment
+    setup_logging(snapshot_dir)
+    logging.info("Starting new LDM training session")
+    writer = SummaryWriter(os.path.join(snapshot_dir, "log_resume" if args.resume else "log"))
+    
+    print(f"Results logged in: {snapshot_dir}, TensorBoard logs in: {snapshot_dir}/log, Models saved in: {models_dir}\n")
+    torch.manual_seed(SEED)
+    
+    device = "cuda" if torch.cuda.is_available() else "cpu"
     model = LDM_Segmentor().to(device)
     optimizer = AdamW(model.parameters(), lr=LR, betas=(0.9, 0.999), weight_decay=0.0001)
     scaler = GradScaler(device)
-    train_loader = get_dataloaders(
-                BASE_DIR, split_ratio = SPLIT_RATIOS, split = 'train',
-                trainsize = TRAINSIZE, batch_size = BATCH_SIZE, format = FORMAT
-            )
-    val_loader   = get_dataloaders(
-        BASE_DIR, split_ratio = SPLIT_RATIOS, split = 'val',
-        trainsize = TRAINSIZE, batch_size = BATCH_SIZE, format = FORMAT
-    )
 
-    print('starting training.')
-    start_time   = time.time()
-    losses = trainer(model, optimizer, train_loader, device, scaler, val_loader)      
-    print(f'execution time: {(time.time() - start_time) // 60.0} minutes')
+    train_loader = get_dataloaders(BASE_DIR, SPLIT_RATIOS, "train", TRAINSIZE, BATCH_SIZE, FORMAT)
+    val_loader   = get_dataloaders(BASE_DIR, SPLIT_RATIOS, "val", TRAINSIZE, BATCH_SIZE, FORMAT)
 
-if __name__ == '__main__':
+    resume_epoch = 0
+    if args.resume:
+        ckpt_list = [f for f in os.listdir(os.path.join(snapshot_dir, "models")) if f.startswith("model_epoch_")]
+        if ckpt_list:
+            latest_ckpt = sorted(ckpt_list, key=lambda f: int(f.split("_")[-1].split(".")[0]))[-1]
+            ckpt_path = os.path.join(snapshot_dir, "models", latest_ckpt)
+            state = torch.load(ckpt_path, map_location=device)
+            model.load_state_dict(state["model_state_dict"])
+            optimizer.load_state_dict(state["optimizer_state_dict"])
+            resume_epoch = state["epoch"] + 1
+            logging.info(f"✅ Resumed from {ckpt_path} at epoch {resume_epoch}")
+
+    start = time.time()
+    trainer(model, optimizer, train_loader, val_loader, device, scaler, snapshot_dir, writer, resume_epoch)
+    total_time = (time.time() - start) / 60
+    logging.info(f"Training finished in {total_time:.2f} minutes.")
+    writer.close()
+
+# ------------------------------------------------------------------------------ #
+if __name__ == "__main__":
     main()

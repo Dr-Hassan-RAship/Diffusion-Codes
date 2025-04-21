@@ -1,7 +1,7 @@
 import torch
 from diffusers import AutoencoderKL, UNet2DModel, DDPMScheduler
 from torch import nn
-
+from config import *
 
 class TauEncoder(nn.Module):
     """
@@ -10,14 +10,14 @@ class TauEncoder(nn.Module):
     """
     def __init__(self, vae: AutoencoderKL):
         super().__init__()
-        self.encoder = vae.encoder
-        self.quant_conv = vae.quant_conv
+        self.vae = vae
 
     def forward(self, x):
-        h = self.encoder(x)
-        moments = self.quant_conv(h)
-        mean, logvar = torch.chunk(moments, 2, dim=1)
-        return mean  # Deterministic z_c
+        h = self.vae.encode(x).latent_dist
+        if DETERMINISTIC:
+            return h.mean
+        else:
+            return h.sample() # self.mean + self.std * randn_tensor
 
 
 class LDM_Segmentor(nn.Module):
@@ -42,15 +42,7 @@ class LDM_Segmentor(nn.Module):
         self.image_encoder = TauEncoder(self.vae).to(device).requires_grad_()
 
         # -- UNet2DModel: takes (zt || zc) → predicts noise
-        self.unet = UNet2DModel(
-            sample_size=32,
-            in_channels=8,
-            out_channels=4,
-            layers_per_block=2,
-            block_out_channels=(128, 256, 256, 512),
-            down_block_types=("DownBlock2D",) * 4,
-            up_block_types=("UpBlock2D",) * 4
-        ).to(device).train()
+        self.unet = UNet2DModel(**UNET_PARAMS).to(device).train()
 
         # -- Scheduler
         self.scheduler = DDPMScheduler(num_train_timesteps=scheduler_steps)
@@ -102,3 +94,5 @@ class LDM_Segmentor(nn.Module):
             "noise_pred": noise_pred,
             "mask_hat": mask_hat,
         }
+
+

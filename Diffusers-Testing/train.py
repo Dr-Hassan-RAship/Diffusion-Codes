@@ -6,7 +6,7 @@ from torch.utils.tensorboard import SummaryWriter
 
 from config import *
 from dataset import get_dataloaders
-from architectures import LDM_Segmentor
+from architectures import *
 from utils import setup_logging, prepare_and_write_csv_file
 
 # ------------------------------------------------------------------------------ #
@@ -39,6 +39,7 @@ def trainer(model, optimizer, train_loader, val_loader, device, scaler, snapshot
             scaler.step(optimizer)
             scaler.update()
 
+            torch.cuda.empty_cache()
             epoch_loss += loss.item()
             writer.add_scalar("Loss/Train Iteration", loss.item(), epoch * len(train_loader) + step)
             logging.info(f"[train] epoch: {epoch} batch: {step} loss: {loss.item():.4f}")

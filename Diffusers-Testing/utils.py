@@ -14,6 +14,13 @@ from config                   import *
 from monai.networks.nets      import AutoencoderKL
 from dataset                  import *
 
+from   config import *
+from   safetensors.torch import save_model as save_safetensors
+from   safetensors.torch import load_file as load_safetensors
+from   glob import glob
+from   torch.optim import AdamW
+from   architectures import *
+
 #-----------------------------------------------------------------------------#
 
 def prepare_and_write_csv_file(snapshot_dir, list_entries, write_header=False):
@@ -62,55 +69,73 @@ def setup_logging(snapshot_dir, log_filename="logs.txt", level=logging.INFO, con
     if console:
         logging.getLogger().addHandler(logging.StreamHandler(sys.stdout))
         
-#----------------------------------------------------------------------------------#
-def get_latest_checkpoint(models_dir, prefix, resume_epoch=None):
+#--------------------------------------------------------------------------------------#
+def save_checkpoint(model, optimizer, epoch, path):
     """
-    Get the latest or specified checkpoint.
-
-    Args:
-        models_dir (str): Path to the models directory.
-        prefix (str): Checkpoint filename prefix, e.g., 'autoencoderkl_epoch_'.
-        resume_epoch (int or None): If specified, return the checkpoint for this epoch and delete newer ones.
-
-    Returns:
-        (int, str): Tuple of (epoch, checkpoint path), or (None, None) if not found.
+    Save model weights (deduplicated) + optimizer state to disk.
     """
-    checkpoint   = None
-    latest_epoch = -1
+    weights_path = path + ".safetensors"
+    opt_path     = path + ".opt.pt"
 
-    pattern      = re.compile(rf'{re.escape(prefix)}(\d+)\.pth')
-    epoch_files  = []
+    # 1) Save deduplicated model weights
+    save_safetensors(model, weights_path) 
 
-    for filename in os.listdir(models_dir):
-        match = pattern.match(filename)
-        if match:
-            epoch = int(match.group(1))
-            epoch_files.append((epoch, filename))
+    # 2) Save optimizer + epoch
+    ckpt = {
+        "optimizer_state_dict": optimizer.state_dict(),
+        "epoch": epoch,
+    }
+    torch.save(ckpt, opt_path)
+    
+#--------------------------------------------------------------------------------------#
+def get_latest_checkpoint(models_dir):
+    """Returns the latest (epoch_num, weights_path, opt_path) tuple."""
+    
+    safetensors_files = sorted(
+        glob(os.path.join(models_dir, "model_epoch_*.safetensors")),
+        key = lambda x: int(x.split("_")[-1].split(".")[0])
+    )
+    if not safetensors_files:
+        return None, None, None
 
-    if not epoch_files:
-        return None, None
+    weights_path = safetensors_files[-1]
+    epoch_num    = int(weights_path.split("_")[-1].split(".")[0])
+    opt_path     = os.path.join(models_dir, f"model_epoch_{epoch_num}.opt.pt")
+    return epoch_num, weights_path, opt_path
 
-    if resume_epoch is not None:
-        # Find checkpoint at requested epoch
-        for epoch, fname in epoch_files:
-            if epoch == resume_epoch:
-                checkpoint = fname
+#--------------------------------------------------------------------------------------#
+def load_model_and_optimizer(weights_path, opt_path, device):
+    """Loads model and optimizer from safetensors + pt files without RAM duplication."""
+    
+    model     = LDM_Segmentor().to("cpu")
+    optimizer = AdamW(model.parameters(), lr=LR, betas=(0.9, 0.999), weight_decay=0.0001)
 
-        # Delete all checkpoints after the requested epoch
-        for epoch, fname in epoch_files:
-            if epoch > resume_epoch:
-                path_to_delete = os.path.join(models_dir, fname)
-                os.remove(path_to_delete)
-                print(f"🗑️ Deleted newer checkpoint: {path_to_delete}")
+    # Load pretrained VAE weights directly into model.vae without retaining duplicate
+    model.vae.load_state_dict(
+        AutoencoderKL.from_pretrained("CompVis/stable-diffusion-v1-4", subfolder="vae").state_dict()
+    )
+    for p in model.vae.parameters():
+        p.requires_grad = False
+    model.vae.eval()
 
-        if checkpoint:
-            return resume_epoch, os.path.join(models_dir, checkpoint)
-        else:
-            print(f"⚠️ No checkpoint found for epoch {resume_epoch}")
-            return None, None
+    # Load deduplicated model weights from .safetensors
+    state_dict = load_safetensors(weights_path)
+    model.load_state_dict(state_dict, strict=False)
+    del state_dict
 
-    else:
-        # Default behavior: return the latest
-        latest_epoch, checkpoint = max(epoch_files, key = lambda x: x[0])
-        return latest_epoch, os.path.join(models_dir, checkpoint)
-#-----------------------------------------------------------------------------------#
+    # Load optimizer state
+    opt_state = torch.load(opt_path, map_location="cpu", weights_only = True)
+    optimizer.load_state_dict(opt_state["optimizer_state_dict"])
+    epoch     = opt_state["epoch"] + 1
+    del opt_state
+
+    # Move to GPU
+    model = model.to(device)
+    for state in optimizer.state.values():
+        for k, v in state.items():
+            if isinstance(v, torch.Tensor):
+                state[k] = v.to(device)
+
+    return model, optimizer, epoch
+
+#--------------------------------------------------------------------------------------#

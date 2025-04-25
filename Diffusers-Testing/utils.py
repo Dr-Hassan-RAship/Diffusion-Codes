@@ -11,7 +11,7 @@
 import os, csv, sys, logging, re, subprocess, logging, torch
 
 from config                   import *
-from monai.networks.nets      import AutoencoderKL
+from diffusers                import AutoencoderKL
 from dataset                  import *
 
 from   config import *
@@ -104,7 +104,7 @@ def get_latest_checkpoint(models_dir):
     return epoch_num, weights_path, opt_path
 
 #--------------------------------------------------------------------------------------#
-def load_model_and_optimizer(weights_path, opt_path, device):
+def load_model_and_optimizer(weights_path, opt_path, device, load_optim_dict = True):
     """Loads model and optimizer from safetensors + pt files without RAM duplication."""
     
     model     = LDM_Segmentor().to("cpu")
@@ -121,21 +121,25 @@ def load_model_and_optimizer(weights_path, opt_path, device):
     # Load deduplicated model weights from .safetensors
     state_dict = load_safetensors(weights_path)
     model.load_state_dict(state_dict, strict=False)
+    
     del state_dict
-
-    # Load optimizer state
-    opt_state = torch.load(opt_path, map_location="cpu", weights_only = True)
-    optimizer.load_state_dict(opt_state["optimizer_state_dict"])
-    epoch     = opt_state["epoch"] + 1
-    del opt_state
 
     # Move to GPU
     model = model.to(device)
-    for state in optimizer.state.values():
-        for k, v in state.items():
-            if isinstance(v, torch.Tensor):
-                state[k] = v.to(device)
 
+    # Load optimizer state
+    if load_optim_dict:
+        opt_state = torch.load(opt_path, map_location="cpu", weights_only = True)
+        optimizer.load_state_dict(opt_state["optimizer_state_dict"])
+        epoch     = opt_state["epoch"] + 1
+
+        del opt_state
+
+        for state in optimizer.state.values():
+            for k, v in state.items():
+                if isinstance(v, torch.Tensor):
+                    state[k] = v.to(device)
+    
     return model, optimizer, epoch
 
 #--------------------------------------------------------------------------------------#

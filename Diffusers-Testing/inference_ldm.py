@@ -114,9 +114,8 @@ def main():
     print("📦 Loading trained LDM model...")
     model = LDM_Segmentor().to(device)
 
-    ckpt_path = os.path.join(LDM_SNAPSHOT_DIR, "models", f"model_epoch_{do.MODEL_EPOCH}.pth")
-    checkpoint = torch.load(ckpt_path, map_location=device, weights_only = True)
-    model.load_state_dict(checkpoint["model_state_dict"])
+    ckpt_path   = os.path.join(LDM_SNAPSHOT_DIR, "models", f"model_epoch_{do.MODEL_EPOCH}.safetensors")
+    model, _, _ = load_model_and_optimizer(ckpt_path, None, device, load_optim_dict = False)
     print(f"🔁 Loaded full model checkpoint from: {ckpt_path}")
 
     perform_inference(model, test_loader, device, do.SAVE_FOLDER, num_samples=do.NUM_SAMPLES)

@@ -72,15 +72,15 @@ def denoise_and_decode(batch_size, noise_pred, t, zt, scheduler, vae, latent_sca
     
     z0_hat_list   = []
     mask_hat_list = []
-    # noise_pred = noise_pred.to(dtype = torch.float16, device = 'cpu')
-    # t          = t.to(device  = 'cpu')
-    # zt         = zt.to(device = 'cpu')
+    noise_pred = noise_pred.to(dtype = torch.float16, device = 'cpu')
+    t          = t.to(device  = 'cpu')
+    zt         = zt.to(device = 'cpu')
     # print(t, t.dtype, t.device, t.shape)
     # print(noise_pred.shape, noise_pred.device, noise_pred.dtype)
     # print(zt.shape, zt.device, zt.dtype)
     for batch_idx in range(batch_size):
         z0_hat   =  scheduler.step(noise_pred[batch_idx].unsqueeze(0), t[batch_idx].unsqueeze(0), zt[batch_idx].unsqueeze(0)).pred_original_sample
-        # z0_hat   = z0_hat.to(device)
+        z0_hat   = z0_hat.to(device)
         mask_hat = vae.decode(z0_hat / latent_scale).sample
         z0_hat_list.append(z0_hat)
         mask_hat_list.append(mask_hat)

@@ -190,9 +190,7 @@ class LDM_Segmentor_Concatenation(nn.Module):
         # ------------------------------
         # Load pretrained VAE (Frozen)
         # ------------------------------
-        self.vae = AutoencoderKL.from_pretrained(
-            "CompVis/stable-diffusion-v1-4", subfolder="vae"
-        ).to(self.device)
+        self.vae = AutoencoderKL.from_pretrained("CompVis/stable-diffusion-v1-4", subfolder="vae").to(self.device)
         self.vae.eval()
         for p in self.vae.parameters():
             p.requires_grad = False

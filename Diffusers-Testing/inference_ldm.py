@@ -18,7 +18,7 @@ import matplotlib.pyplot as plt
 from tqdm                import tqdm
 from config              import *
 from dataset             import get_dataloaders
-from architectures       import LDM_Segmentor
+from architectures       import *
 from utils               import *
 from inference_ldm_utils import *
 

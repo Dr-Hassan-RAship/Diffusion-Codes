@@ -1,8 +1,12 @@
-import torch
+import torch, os
 import copy
 import torch.nn as nn
 from   diffusers import AutoencoderKL, UNet2DConditionModel, UNet2DModel, DDPMScheduler, DDIMScheduler
-from config import *
+from   config import *
+from   safetensors.torch import save_model as save_safetensors
+from   safetensors.torch import load_file as load_safetensors
+from   glob import glob
+from   torch.optim import AdamW
 
 #--------------------------------------------------------------------------------------
 class TauEncoder(nn.Module):
@@ -69,7 +73,7 @@ def denoise_and_decode(batch_size, noise_pred, t, zt, scheduler, vae, latent_sca
     z0_hat_list   = []
     mask_hat_list = []
     # noise_pred = noise_pred.to(dtype = torch.float16, device = 'cpu')
-    # t          = t.to(device = 'cpu')
+    # t          = t.to(device  = 'cpu')
     # zt         = zt.to(device = 'cpu')
     # print(t, t.dtype, t.device, t.shape)
     # print(noise_pred.shape, noise_pred.device, noise_pred.dtype)
@@ -94,4 +98,5 @@ def switch_to_ddim(device):
     scheduler.set_timesteps(do.INFERENCE_TIMESTEPS, device = device)
     
     return scheduler
-#--------------------------------------------------------------------------------------#
+
+#----------------------------------------------------------------

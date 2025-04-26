@@ -81,13 +81,18 @@ class LDM_Segmentor(nn.Module):
         zc = (self.image_encoder(image) * self.latent_scale)
 
         # Step 4: Concatenate and denoise
-        zt_cat = torch.cat([zt, zc], dim=1)  # (B, 8, 32, 32)
-        noise_pred = self.unet(zt_cat, t).sample  # (B, 4, 32, 32)
+        zt_cat     = torch.cat([zt, zc], dim=1)  # (B, 8, 32, 32)
 
-        # Step 5: Estimate z0_hat and decode to mask
-        z0_hat, mask_hat = denoise_and_decode(image.shape[0], noise_pred, t, zt, self.scheduler, 
-                                              self.vae, self.latent_scale, self.device)
-        if inference:
+         # Step 5: Estimate z0_hat and decode to mask
+        if not inference or do.ONE_X_ONE:
+            noise_pred       = self.unet(zt_cat, t).sample  # (B, 4, 32, 32), t is just (B,)
+            z0_hat, mask_hat = denoise_and_decode_in_one_step(image.shape[0], noise_pred, t, zt, self.scheduler, 
+                                              self.vae, self.latent_scale, self.device, inference)
+        else:
+            z0_hat, mask_hat = denoise_and_decode(image.shape[0], None, t, zt, self.scheduler, 
+                                              self.vae, self.latent_scale, self.device, self.unet, zt_cat)
+        
+        if inference or do.ONE_X_ONE:
             return {'z0_hat': z0_hat, 'mask_hat': mask_hat} 
         else:   
             return {"z0": z0, "zt": zt, "zc": zc, "z0_hat": z0_hat, "noise": noise, 'noise_pred': noise_pred}

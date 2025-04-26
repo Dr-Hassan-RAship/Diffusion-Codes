@@ -33,7 +33,7 @@ def trainer(model, optimizer, train_loader, val_loader, device, scaler, snapshot
             optimizer.zero_grad(set_to_none=True)
             with autocast(device, enabled=True):
                 out  = model(image, mask, t)
-                loss = l1_loss(out["z0_hat"], out['z0']) + l1_loss(out['noise_pred'], out['noise'])
+                loss = l1_loss(out['noise_pred'], out['noise']) # + l1_loss(out["z0_hat"], out['z0']) [nehal flag version] 
 
             scaler.scale(loss).backward()
             scaler.step(optimizer)

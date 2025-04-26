@@ -90,7 +90,7 @@ class LDM_Segmentor(nn.Module):
                                               self.vae, self.latent_scale, self.device, inference)
         else:
             z0_hat, mask_hat = denoise_and_decode(image.shape[0], None, t, zt, self.scheduler, 
-                                              self.vae, self.latent_scale, self.device, self.unet, zt_cat)
+                                              self.vae, self.latent_scale, self.device, self.unet, zc)
         
         if inference or do.ONE_X_ONE:
             return {'z0_hat': z0_hat, 'mask_hat': mask_hat} 

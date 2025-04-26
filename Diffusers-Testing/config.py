@@ -60,8 +60,8 @@ class InferenceConfig:
     SAVE_FOLDER         = LDM_SNAPSHOT_DIR + f"/inference-M{MODEL_EPOCH if MODEL_EPOCH != -1 else N_EPOCHS}-E{N_EPOCHS}-t{NUM_TRAIN_TIMESTEPS}-S{SCHEDULER}-SP{NUM_SAMPLES}"  # Save folder for inference results
     INFERER_SCHEDULER   = 'DDIM'
     TRAIN_TIMESTEPS     = NUM_TRAIN_TIMESTEPS
-    ONE_X_ONE           = True
-    INFERENCE_TIMESTEPS = 2 if INFERER_SCHEDULER == 'DDIM' else NUM_TRAIN_TIMESTEPS
+    ONE_X_ONE           = False # make it False if training
+    INFERENCE_TIMESTEPS = 100 if INFERER_SCHEDULER == 'DDIM' else NUM_TRAIN_TIMESTEPS
     SAVE_INTERMEDIATES  = False
     METRIC_REPORT       = True
 

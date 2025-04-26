@@ -95,12 +95,13 @@ def denoise_and_decode(batch_size, noise_pred, timesteps, zt, scheduler, vae, la
     """
     Denoise and decode the latent zt to obtain the predicted mask in multiple steps
     """
+
     z0_hat     = zt_cat
     zt         = zt.to(device = 'cpu')
     for t in tqdm(timesteps.to(device  = device)):
         print(f'Timestep: {t}')        
         noise_pred = unet(z0_hat, t.expand(1)).to(dtype = torch.float16, device = 'cpu') # (1, 4, 32, 32), t.shape = (1,)
-        z0_hat     =  scheduler.step(noise_pred, t.expand(1).to(device = 'cpu'), zt).prev_sample
+        z0_hat     = scheduler.step(noise_pred, t.expand(1).to(device = 'cpu'), zt).prev_sample
         z0_hat     = z0_hat.to(device)
         mask_hat   = vae.decode(z0_hat / latent_scale).sample
         

@@ -90,7 +90,7 @@ class LDM_Segmentor(nn.Module):
         if inference:
             return {'z0_hat': z0_hat, 'mask_hat': mask_hat} 
         else:   
-            return {"z0": z0, "zt": zt, "zc": zc, "z0_hat": z0_hat, "mask_hat": mask_hat}
+            return {"z0": z0, "zt": zt, "zc": zc, "z0_hat": z0_hat, "noise": noise, 'noise_pred': noise_pred}
 
 
 # ------------------------------------------------------------------------------#

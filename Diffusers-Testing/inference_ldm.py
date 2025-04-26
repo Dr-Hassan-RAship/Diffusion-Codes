@@ -59,9 +59,11 @@ def perform_inference(model, test_loader, device, output_dir, num_samples=5):
         # Run sampling
         preds = []
         intermediates = []
+        model.scheduler.set_timesteps(do.INFERENCE_TIMESTEPS)
         for zt in zt_list:
             # t = torch.randint(0, model.scheduler.config.num_train_timesteps, (B,), device=device).long()
-            t = torch.full((B,), 999, device=device).long()
+            # t = torch.full((B,), 999, device=device).long()
+            t = model.scheduler.timesteps
             model_out = model(image, mask, t, inference = True)
             preds.append(model_out["mask_hat"])
             # Ignore do.SAVE_INTERMEDIATES as its not functional in diffusers

@@ -94,8 +94,8 @@ def main():
     os.makedirs(models_dir, exist_ok=True)
 
     setup_logging(snapshot_dir)
-    writer = SummaryWriter(os.path.join(snapshot_dir, "log_resume" if args.resume else "log"))
-    print(f"Results logged in: {snapshot_dir}, TensorBoard logs in: {snapshot_dir}/log, Models saved in: {models_dir}\n")
+    writer = SummaryWriter(os.path.join(snapshot_dir, "log_resume2" if args.resume else "log"))
+    print(f"Results logged in: {snapshot_dir}, TensorBoard logs in: {snapshot_dir}/log_resume2, Models saved in: {models_dir}\n")
     torch.manual_seed(SEED)
 
     device = "cuda" if torch.cuda.is_available() else "cpu"

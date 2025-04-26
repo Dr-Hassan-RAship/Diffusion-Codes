@@ -75,17 +75,18 @@ def save_checkpoint(model, optimizer, epoch, path):
     Save model weights (deduplicated) + optimizer state to disk.
     """
     weights_path = path + ".safetensors"
-    opt_path     = path + ".opt.pt"
 
     # 1) Save deduplicated model weights
     save_safetensors(model, weights_path) 
 
-    # 2) Save optimizer + epoch
-    ckpt = {
-        "optimizer_state_dict": optimizer.state_dict(),
-        "epoch": epoch,
-    }
-    torch.save(ckpt, opt_path)
+    # 2) Save optimizer + epoch if and only if we are at last epoch
+    if epoch == 1500:
+        opt_path     = path + ".opt.pt"
+        ckpt = {
+            "optimizer_state_dict": optimizer.state_dict(),
+            "epoch": epoch,
+        }
+        torch.save(ckpt, opt_path)
     
 #--------------------------------------------------------------------------------------#
 def get_latest_checkpoint(models_dir):
@@ -107,6 +108,7 @@ def get_latest_checkpoint(models_dir):
 def load_model_and_optimizer(weights_path, opt_path, device, load_optim_dict = True):
     """Loads model and optimizer from safetensors + pt files without RAM duplication."""
     
+    epoch     = None
     model     = LDM_Segmentor().to("cpu")
     optimizer = AdamW(model.parameters(), lr=LR, betas=(0.9, 0.999), weight_decay=0.0001)
 

@@ -97,6 +97,8 @@ def switch_to_ddim(device):
     scheduler = DDIMScheduler(num_train_timesteps=NUM_TRAIN_TIMESTEPS)
     scheduler.set_timesteps(do.INFERENCE_TIMESTEPS, device = device)
     
+    print(f'Switching to DDIM scheduler with inference timesteps: {do.INFERENCE_TIMESTEPS}')
+    
     return scheduler
 
 #----------------------------------------------------------------

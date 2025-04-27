@@ -46,7 +46,7 @@ class LDM_Segmentor(nn.Module):
         # Scheduler (set to DDPM by default)
         self.scheduler = DDPMScheduler(num_train_timesteps=scheduler_steps)
 
-    def forward(self, image: torch.Tensor, mask: torch.Tensor = None, t: torch.Tensor = None, inference: bool = False):
+    def forward(self, image: torch.Tensor, mask: torch.Tensor = None, t: torch.Tensor = None):
         """
         Forward pass for both training and inference.
 
@@ -61,42 +61,41 @@ class LDM_Segmentor(nn.Module):
             dict containing z0, zt, zc, z0_hat, noise_pred, mask_hat
         """
 
-        if inference:
-            # Sample initial latent z0 from noise during inference
-            B = image.shape[0]
-            zt = (torch.randn(B, 4, TRAINSIZE // 8, TRAINSIZE // 8, device=self.device, dtype=torch.float16)* self.latent_scale)
-            if not isinstance(self.scheduler, DDIMScheduler):
-                self.scheduler = switch_to_ddim(self.device)
-        else:
-            with torch.no_grad():
-                # Encode GT mask via frozen VAE encoder
-                posterior = self.vae.encode(mask).latent_dist
-                z0 = posterior.sample() * self.latent_scale
+        with torch.no_grad():
+            # Encode GT mask via frozen VAE encoder
+            posterior = self.vae.encode(mask).latent_dist
+            z0 = posterior.sample() * self.latent_scale
 
-                # Step 2: Add noise to z0 → zt
-                noise = torch.randn_like(z0)
-                zt = self.scheduler.add_noise(z0, noise, t)
+            # Step 2: Add noise to z0 → zt
+            noise = torch.randn_like(z0)
+            zt = self.scheduler.add_noise(z0, noise, t)
 
         # Step 3: Encode input image → zc
         zc = (self.image_encoder(image) * self.latent_scale)
 
-        # Step 4: Concatenate and denoise
-        zt_cat     = torch.cat([zt, zc], dim=1)  # (B, 8, 32, 32)
+        # Step 5: Estimate z0_hat and decode to mask
+        noise_hat  = self.unet(torch.cat([zt, zc], dim=1), t).sample  # (B, 4, 32, 32), t is just (B,)
+        z0_hat, _  = denoise_and_decode_in_one_step(image.shape[0], noise_hat, t, zt, self.scheduler, 
+                                                    self.vae, self.latent_scale, self.device, False)
+        
+        return {"z0": z0, "z0_hat": z0_hat, "noise": noise, 'noise_hat': noise_hat}
 
-         # Step 5: Estimate z0_hat and decode to mask
-        if not inference or do.ONE_X_ONE:
-            noise_pred       = self.unet(zt_cat, t).sample  # (B, 4, 32, 32), t is just (B,)
-            z0_hat, mask_hat = denoise_and_decode_in_one_step(image.shape[0], noise_pred, t, zt, self.scheduler, 
-                                              self.vae, self.latent_scale, self.device, inference)
+    def inference(self, image, t):
+        if not isinstance(self.scheduler, DDIMScheduler):
+            self.scheduler = switch_to_ddim(self.device)
+
+        zt = (torch.randn(1, 4, TRAINSIZE // 8, TRAINSIZE // 8, device = self.device, dtype = torch.float16) * self.latent_scale)
+        zc = (self.image_encoder(image) * self.latent_scale)
+
+        if do.ONE_X_ONE:
+            noise_hat        = self.unet(torch.cat([zt, zc], dim=1), t).sample
+            z0_hat, mask_hat = denoise_and_decode_in_one_step(image.shape[0], noise_hat, t, zt, self.scheduler, 
+                                                              self.vae, self.latent_scale, self.device, True)
         else:
             z0_hat, mask_hat = denoise_and_decode(image.shape[0], None, t, zt, self.scheduler, 
-                                              self.vae, self.latent_scale, self.device, self.unet, zc)
-        
-        if inference or do.ONE_X_ONE:
-            return {'z0_hat': z0_hat, 'mask_hat': mask_hat} 
-        else:   
-            return {"z0": z0, "zt": zt, "zc": zc, "z0_hat": z0_hat, "noise": noise, 'noise_pred': noise_pred}
+                                                  self.vae, self.latent_scale, self.device, self.unet, zc)
 
+        return {'z0_hat': z0_hat, 'mask_hat': mask_hat} 
 
 # ------------------------------------------------------------------------------#
 class LDM_Segmentor_CrossAttention(nn.Module):

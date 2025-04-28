@@ -1,14 +1,27 @@
-import os, time, argparse, logging, torch
-from torch.amp import autocast, GradScaler
-from torch.nn.functional import l1_loss
-from torch.optim import AdamW
-from torch.utils.tensorboard import SummaryWriter
+# ------------------------------------------------------------------------------#
+#
+# File name                 : train.py
+# Purpose                   : Training script for Latent Diffusion Model (LDM) segmentation
+# Usage                     : python train.py
+#
+# Authors                   : Talha Ahmed, Nehal Ahmed Shaikh, Hassan Mohy-ud-Din
+# Email                     : 24100033@lums.edu.pk, 202410001@lums.edu.pk, hassan.mohyuddin@lums.edu.pk
+#
+# Last Modified             : April 28, 2025
+# ------------------------------------------------------------------------------#
 
-from config import *
-from dataset import get_dataloaders
-from architectures import *
-from utils import *
-from modelling_utils import *
+import os, time, argparse, logging, torch
+
+from torch.amp                      import autocast, GradScaler
+from torch.nn.functional            import l1_loss
+from torch.optim                    import AdamW
+from torch.utils.tensorboard        import SummaryWriter
+
+from config                         import *
+from dataset                        import get_dataloaders
+from architectures                  import *
+from utils                          import *
+from modeling_utils                import *
 
 # ------------------------------------------------------------------------------ #
 def initialize_new_session(device):
@@ -59,7 +72,7 @@ def trainer(model, optimizer, train_loader, val_loader, device, scaler, snapshot
         # ---- Save Model and Optimizer ---- #
         if (epoch + 1) % MODEL_SAVE_INTERVAL == 0:
             ckpt_path = os.path.join(snapshot_dir, "models", f"model_epoch_{epoch + 1}")
-            save_checkpoint(model, optimizer, epoch, ckpt_path)
+            save_checkpoint(model, optimizer, epoch + 1, ckpt_path)
             logging.info(f"Checkpoint saved to {ckpt_path}")
 
         prepare_and_write_csv_file(snapshot_dir, [epoch, epoch_loss, val_loss], write_header=(epoch == 0))
@@ -76,7 +89,7 @@ def validator(model, val_loader, device, epoch, writer):
 
             with autocast(device, enabled=True):
                 out  = model(image, mask, t)
-                loss = l1_loss(out["mask_hat"], mask)
+                loss = l1_loss(out['noise_pred'], out['noise']) # + l1_loss(out["z0_hat"], out['z0']) [nehal flag version]
 
             val_loss += loss.item()
             writer.add_scalar("Loss/Val Iteration", loss.item(), epoch * len(val_loader) + step)
@@ -94,8 +107,8 @@ def main():
     os.makedirs(models_dir, exist_ok=True)
 
     setup_logging(snapshot_dir)
-    writer = SummaryWriter(os.path.join(snapshot_dir, "log_resume2" if args.resume else "log"))
-    print(f"Results logged in: {snapshot_dir}, TensorBoard logs in: {snapshot_dir}/log_resume2, Models saved in: {models_dir}\n")
+    writer = SummaryWriter(os.path.join(snapshot_dir, "log" if args.resume else "log"))
+    print(f"Results logged in: {snapshot_dir}, TensorBoard logs in: {snapshot_dir}/log, Models saved in: {models_dir}\n")
     torch.manual_seed(SEED)
 
     device = "cuda" if torch.cuda.is_available() else "cpu"

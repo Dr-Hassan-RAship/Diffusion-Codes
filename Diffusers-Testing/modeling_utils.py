@@ -1,13 +1,22 @@
-import torch, os
-import copy
+# ------------------------------------------------------------------------------#
+#
+# File name                 : modeling_utils.py
+# Purpose                   : Architecture utilities for Latent Diffusion Model (LDM) segmentation 
+# Usage                     : Used for forward pass, denoising, and decoding
+#
+# Authors                   : Talha Ahmed, Nehal Ahmed Shaikh, Hassan Mohy-ud-Din
+# Email                     : 24100033@lums.edu.pk, 202410001@lums.edu.pk, hassan.mohyuddin@lums.edu.pk
+#
+# Last Modified             : April 28, 2025
+# ------------------------------------------------------------------------------#
+
+import torch, copy
+
 import torch.nn as nn
-from   diffusers import AutoencoderKL, UNet2DConditionModel, UNet2DModel, DDPMScheduler, DDIMScheduler
-from   config import *
-from   safetensors.torch import save_model as save_safetensors
-from   safetensors.torch import load_file as load_safetensors
-from   glob import glob
-from   torch.optim import AdamW
-from tqdm.auto import tqdm
+
+from   diffusers            import AutoencoderKL, UNet2DConditionModel, DDIMScheduler
+from   config               import *
+from   tqdm.auto            import tqdm
 
 #--------------------------------------------------------------------------------------
 class TauEncoder(nn.Module):
@@ -66,6 +75,7 @@ def load_hybrid_unet(pretrained_path: str, device: str = "cuda") -> UNet2DCondit
     return unet_new.requires_grad_(True)
 #--------------------------------------------------------------------------------------
 def denoise_and_decode_in_one_step(batch_size, noise_pred, timesteps, zt, scheduler, vae, latent_scale, device, inference = False):
+    
     """
     Denoise and decode the latent zt to obtain the predicted mask.
     """
@@ -73,22 +83,25 @@ def denoise_and_decode_in_one_step(batch_size, noise_pred, timesteps, zt, schedu
     mask_hat_list = []
     
     if inference:
-        noise_pred = noise_pred.to(device = 'cpu')
-        timesteps  = timesteps.to(device = 'cpu')
+        noise_pred = noise_pred.to(device = 'cpu') 
+        timesteps  = timesteps.to(device = 'cpu') 
         zt         = zt.to(device = 'cpu')
-
+        
     for batch_idx in range(batch_size):
-        z0_hat   = scheduler.step(noise_pred[batch_idx].unsqueeze(0), timesteps[batch_idx].unsqueeze(0), zt[batch_idx].unsqueeze(0)).pred_original_sample
+        z0_hat   =  scheduler.step(noise_pred[batch_idx].unsqueeze(0), timesteps[batch_idx].unsqueeze(0), zt[batch_idx].unsqueeze(0)).pred_original_sample
         z0_hat   = z0_hat.to(device) if inference else z0_hat
         mask_hat = vae.decode(z0_hat / latent_scale).sample
         z0_hat_list.append(z0_hat)
         mask_hat_list.append(mask_hat)
-
-    return torch.cat(z0_hat_list, dim = 0), torch.cat(mask_hat_list, dim = 0) # (B, 4, 32, 32), (B, 3, 256, 256)
+    
+    z0_hat   = torch.cat(z0_hat_list,   dim = 0) # (B, 4, 32, 32)
+    mask_hat = torch.cat(mask_hat_list, dim = 0) # (B, 3, 256, 256)
+    
+    return z0_hat, mask_hat
 
 #---------------------------------------------------------------------------------------
-def denoise_and_decode(noise_pred, timesteps, zt, scheduler, vae, latent_scale, device, 
-                       unet, zc):
+def denoise_and_decode(timesteps, zt, scheduler, vae, latent_scale, device, unet, zc):
+    
     """
     Denoise and decode the latent zt to obtain the predicted mask in multiple steps
     """

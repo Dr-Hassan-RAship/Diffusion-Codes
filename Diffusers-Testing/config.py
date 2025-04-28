@@ -7,7 +7,7 @@
 # Authors                   : Talha Ahmed, Nehal Ahmed Shaikh, Hassan Mohy-ud-Din
 # Email                     : 24100033@lums.edu.pk, 20240001@lums.edu.pk, hassan.mohyuddin@lums.edu.pk
 #
-# Last Date                 : March 25, 2025
+# Last Date                 : April 28, 2025
 #
 # ------------------------------------------------------------------------------#
 # Dataset configuration
@@ -21,10 +21,10 @@ CLASSIFICATION_TYPE = 'binary'              # 'binary' or 'multiclass'
 # ------------------------------------------------------------------------------#
 # Training configuration
 SEED                = 1337          # Random seed for reproducibility
-N_EPOCHS            = 500          # Number of training epochs
+N_EPOCHS            = 2000          # Number of training epochs
 LR                  = 1.0e-5        # Learning rate for the optimizer # [talha] change it to be -5
-VAL_INTERVAL        = 1             # Validate every n epochs (can reduce)
-MODEL_SAVE_INTERVAL = 10             # Save model every n epochs
+VAL_INTERVAL        = 500           # Validate every n epochs (can reduce)
+MODEL_SAVE_INTERVAL = 500           # Save model every n epochs
 NUM_TRAIN_TIMESTEPS = 1000          # i.e., diffusion steps (T)
 NOISE_SCHEDULER     = "linear_beta" # {linear_beta, cosine_beta}
 SCHEDULER           = 'DDPM'        # {DDPM, DDIM}
@@ -32,9 +32,9 @@ DETERMINISTIC       = False         # Whether to use deterministic vae latent re
 
 # ------------------------------------------------------------------------------#
 # Experiment configuration
-OPTIONAL_INFO   = "with_sdseg_settings"
+OPTIONAL_INFO   = "with_l_noise"
 EXPERIMENT_NAME = f'machine--B{BATCH_SIZE}-E{N_EPOCHS}-V{VAL_INTERVAL}-T{NUM_TRAIN_TIMESTEPS}-S{SCHEDULER}'
-RUN             = '01_' + OPTIONAL_INFO
+RUN             = '02_' + OPTIONAL_INFO
 
 # ------------------------------------------------------------------------------#
 # Model configuration for Diffusion i.e., UNET --> matched with SDSeg

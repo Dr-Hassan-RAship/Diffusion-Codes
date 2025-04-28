@@ -7,13 +7,12 @@
 # Authors                   : Talha Ahmed, Nehal Ahmed Shaikh, Hassan Mohy-ud-Din
 # Email                     : 24100033@lums.edu.pk, 202410001@lums.edu.pk, hassan.mohyuddin@lums.edu.pk
 #
-# Last Date                 : March 11, 2025
+# Last Date                 : April 28, 2025
 #
 # ------------------------------------------------------------------------------#
 import os, csv, torch
 
 import numpy                                        as np
-import pandas                                       as pd
 import nibabel                                      as nib
 import matplotlib.pyplot                            as plt
 import matplotlib
@@ -22,20 +21,8 @@ matplotlib.use("Agg")
 
 from medpy                                          import metric
 from monai.metrics                                  import MeanIoU
-from torch.amp                                      import autocast
-from monai.networks.nets                            import AutoencoderKL
-from config                                import *
-from generative.networks.schedulers                 import DDPMScheduler, DDIMScheduler
-from generative.inferers                            import LatentDiffusionInferer
-from generative.networks.nets.diffusion_model_unet  import DiffusionModelUNet
-
-# ------------------------------------------------------------------------------#
-
-
-def check_or_create_folder(folder):
-    """Check if folder exists, if not, create it."""
-    if not os.path.exists(folder):
-        os.makedirs(folder)
+from config                                         import *
+from utils                                          import *
 
 # ------------------------------------------------------------------------------#
 def save_nifti(filename, savepath, data, affine=None, header=None):
@@ -44,105 +31,7 @@ def save_nifti(filename, savepath, data, affine=None, header=None):
     check_or_create_folder(os.path.dirname(save_path))
     nifti_image = nib.Nifti1Image(data.astype(np.uint8), affine, header=header)
     nib.save(nifti_image, save_path)
-
-# ------------------------------------------------------------------------------#
-def load_autoencoder(device, train_loader, image=True, mask=True, epoch_mask = 500, epoch_image = 500):
-    """Load a pre-trained autoencoder model (for image and mask) and get scale factor."""
-    tup_image, tup_mask = None, None
-    if image:
-        # if epoch_image == N_EPOCHS: joint_dir = f'final_model.pth'
-        # else                      : joint_dir = f'autoencoder_epoch_{epoch_image}.pth'
-        joint_dir = f'autoencoderkl_epoch_{epoch_image}.pth'
-        
-        autoencoder_path = os.path.join(
-            AEKL_IMAGE_SNAPSHOT_DIR + "/models", joint_dir
-        )
-        autoencoder_params = AUTOENCODERKL_PARAMS
-
-        aekl_image = AutoencoderKL(**autoencoder_params)
-        aekl_image.load_state_dict(
-            torch.load(autoencoder_path, map_location=device, weights_only=True)
-        )
-        aekl_image.to(device)
-        aekl_image.eval()
-
-        sample_data = next(iter(train_loader))  # Get scale factor of latent space
-
-        with torch.no_grad():
-            with autocast("cuda", enabled=True):
-                z = aekl_image.encode_stage_2_inputs(
-                    sample_data["aug_image"].to(device)
-                )
-
-            print(f"Loaded Image AutoencoderKL from {autoencoder_path}")
-
-            z           = LDM_SCALE_FACTOR / torch.std(z)
-            tup_image   = (aekl_image, z)
-
-    if mask:
-        if epoch_mask == N_EPOCHS: joint_dir = f'final_model.pth'
-        else                     : joint_dir = f'autoencoderkl_epoch_{epoch_mask}.pth'
-        
-        autoencoder_path = os.path.join(
-            AEKL_MASK_SNAPSHOT_DIR + "/models", joint_dir
-        )
-        autoencoder_params = AUTOENCODERKL_PARAMS
-
-        aekl_mask = AutoencoderKL(**autoencoder_params)
-        aekl_mask.load_state_dict(
-            torch.load(autoencoder_path, map_location=device, weights_only=True)
-        )
-        aekl_mask.to(device)
-        aekl_mask.eval()
-
-        sample_data = next(iter(train_loader))  # Get scale factor of latent space
-
-        with torch.no_grad():
-            with autocast("cuda", enabled=True):
-                z = aekl_mask.encode_stage_2_inputs(sample_data["aug_mask"].to(device))
-
-        print(f"Loaded Mask AutoencoderKL from {autoencoder_path}")
-        z           = LDM_SCALE_FACTOR / torch.std(z)
-        tup_mask    = (aekl_mask, z)
-
-    # return tup_image only if image == True and tup_mask only if mask == True and
-    # return both if both are true
     
-    if image and not mask:
-        return tup_image
-    elif mask and not image:
-        return tup_mask
-    else:
-        return tup_image, tup_mask
-
-# ------------------------------------------------------------------------------#
-def load_ldm_model(device, scale_factor):
-    """Load the trained LDM model and scheduler."""
-    model_path = (
-        os.path.join(LDM_SNAPSHOT_DIR + "/models", f"model_epoch_{do.MODEL_EPOCH}.pth")
-        if do.MODEL_EPOCH != -1
-        else os.path.join(LDM_SNAPSHOT_DIR, "models", "final_model.pth")
-    )
-    model_params = MODEL_PARAMS
-
-    unet = DiffusionModelUNet(**model_params)
-    unet.load_state_dict(torch.load(model_path, map_location = device, weights_only = True))
-    unet.to(device)
-    unet.eval()
-
-    scheduler = (
-        DDIMScheduler(num_train_timesteps=do.TRAIN_TIMESTEPS, schedule=NOISE_SCHEDULER)
-        if do.INFERER_SCHEDULER == "DDIM"
-        else DDPMScheduler(
-            num_train_timesteps=do.TRAIN_TIMESTEPS, schedule=NOISE_SCHEDULER
-        )
-    )
-    if do.INFERER_SCHEDULER == 'DDIM': scheduler.set_timesteps(num_inference_steps = do.INFERENCE_TIMESTEPS)
-    
-    inferer = LatentDiffusionInferer(scheduler=scheduler, scale_factor=scale_factor)
-    print(f"Loaded LDM model from {model_path} with {SCHEDULER} scheduler.")
-    return unet, scheduler, inferer
-
 # ------------------------------------------------------------------------------#
 def calculate_metrics(prediction, label):
     """
@@ -271,17 +160,3 @@ def visualize_samples(samples, output_dir):
     plt.close()
 
 #------------------------------------------------------------------------------#
-def postprocess_and_rescaling(aekl_model, aekl_input, mode='image'):
-    if aekl_model is None:
-        recon = aekl_input
-    else:
-        recon, _, _ = aekl_model(aekl_input)
-        recon       = torch.tanh(recon)
-    
-    if mode == 'image':
-        return (recon + 1) / 2.0  # For visualization
-    elif mode == 'mask':
-        return ((recon + 1) / 2.0 > 0.5).float()  # For binary output
-    else:
-        raise ValueError(f"Unsupported mode {mode}")
-#-------------------------------------------------------------------------------#

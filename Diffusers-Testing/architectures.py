@@ -7,16 +7,16 @@
 # Authors                   : Talha Ahmed, Nehal Ahmed Shaikh, Hassan Mohy-ud-Din
 # Email                     : 24100033@lums.edu.pk, 202410001@lums.edu.pk, hassan.mohyuddin@lums.edu.pk
 #
-# Last Modified             : April 2025
+# Last Modified             : April 28, 2025
 # ------------------------------------------------------------------------------#
 
-import torch
-import torch.nn as nn
-from config import *
-from diffusers import (AutoencoderKL, UNet2DModel, UNet2DConditionModel, DDPMScheduler, DDIMScheduler,)
-from modelling_utils import *
-from peft import get_peft_model, LoraConfig, TaskType
-# from diffusers.models.attention import CrossAttention
+import              torch
+import              torch.nn as nn
+
+from                config          import *
+from                diffusers       import (AutoencoderKL, UNet2DModel, UNet2DConditionModel, DDPMScheduler, DDIMScheduler,)
+from                modeling_utils  import *
+from                peft            import get_peft_model, LoraConfig, TaskType
 
 # ------------------------------------------------------------------------------#
 class LDM_Segmentor(nn.Module):
@@ -73,30 +73,30 @@ class LDM_Segmentor(nn.Module):
         # Step 3: Encode input image → zc
         zc = (self.image_encoder(image) * self.latent_scale)
 
-        # Step 5: Estimate z0_hat and decode to mask
-        noise_hat  = self.unet(torch.cat([zt, zc], dim=1), t).sample  # (B, 4, 32, 32), t is just (B,)
-        z0_hat, _  = denoise_and_decode_in_one_step(image.shape[0], noise_hat, t, zt, self.scheduler, 
-                                                    self.vae, self.latent_scale, self.device, False)
+         # Step 4: Concatenate and denoise followed by estimatation of z0_hat and decode to mask
         
-        return {"z0": z0, "z0_hat": z0_hat, "noise": noise, 'noise_hat': noise_hat}
+        noise_hat        = self.unet(torch.cat([zt, zc], dim = 1), t).sample  # (B, 4, 32, 32), t is just (B,)
+        z0_hat, mask_hat = denoise_and_decode_in_one_step(image.shape[0], noise_hat, t, zt, self.scheduler, 
+                                            self.vae, self.latent_scale, self.device, False)
 
+        return {"z0": z0, "zt": zt, "zc": zc, "z0_hat": z0_hat, "noise": noise, 'noise_pred': noise_hat}
+        
     def inference(self, image, t):
         if not isinstance(self.scheduler, DDIMScheduler):
             self.scheduler = switch_to_ddim(self.device)
-
-        zt = (torch.randn(1, 4, TRAINSIZE // 8, TRAINSIZE // 8, device = self.device, dtype = torch.float16) * self.latent_scale)
+            
+        zt = (torch.randn(1, 4, TRAINSIZE // 8, TRAINSIZE // 8, device=self.device, dtype=torch.float16)* self.latent_scale)
         zc = (self.image_encoder(image) * self.latent_scale)
-
+        
         if do.ONE_X_ONE:
-            noise_hat        = self.unet(torch.cat([zt, zc], dim=1), t).sample
-            z0_hat, mask_hat = denoise_and_decode_in_one_step(image.shape[0], noise_hat, t, zt, self.scheduler, 
-                                                              self.vae, self.latent_scale, self.device, True)
+            noise_hat        = self.unet(torch.cat([zt, zc], dim = 1), t).sample
+            z0_hat, mask_hat = denoise_and_decode_in_one_step(1, noise_hat, t, zt, self.scheduler, 
+                                                              self.vae, self.latent_scale, self.device, True) 
         else:
-            z0_hat, mask_hat = denoise_and_decode(image.shape[0], None, t, zt, self.scheduler, 
-                                                  self.vae, self.latent_scale, self.device, self.unet, zc)
+            z0_hat, mask_hat = denoise_and_decode(t, zt, self.scheduler, self.vae, self.latent_scale, 
+                                                  self.device, self.unet, zc)
 
-        return {'z0_hat': z0_hat, 'mask_hat': mask_hat} 
-
+        return {'z0_hat': z0_hat, 'mask_hat': mask_hat}
 # ------------------------------------------------------------------------------#
 class LDM_Segmentor_CrossAttention(nn.Module):
     """

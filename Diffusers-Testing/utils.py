@@ -2,27 +2,32 @@
 #
 # File name                 : utils.py
 # Purpose                   : Helper functions in general
-
+# Usage                     : Imported by train_ldm.py and inference_ldm.py
+#
 # Authors                   : Talha Ahmed, Nehal Ahmed Shaikh, Hassan Mohy-ud-Din
 # Email                     : 24100033@lums.edu.pk, 202410001@lums.edu.pk, hassan.mohyuddin@lums.edu.pk
 #
-# Last Date                 : March 24, 2025
+# Last Date                 : April 28, 2025
 #-------------------------------------------------------------------------------#
-import os, csv, sys, logging, re, subprocess, logging, torch
+import os, csv, sys, logging, logging, torch
 
-from config                   import *
-from diffusers                import AutoencoderKL
-from dataset                  import *
+from config                     import *
+from diffusers                  import AutoencoderKL
+from dataset                    import *
+from glob                       import glob
+from torch.optim                import AdamW
+from architectures              import *
 
-from   config import *
-from   safetensors.torch import save_model as save_safetensors
-from   safetensors.torch import load_file as load_safetensors
-from   glob import glob
-from   torch.optim import AdamW
-from   architectures import *
+from safetensors.torch          import save_model as save_safetensors
+from safetensors.torch          import load_file as load_safetensors
 
 #-----------------------------------------------------------------------------#
-
+def check_or_create_folder(folder):
+    """Check if folder exists, if not, create it."""
+    if not os.path.exists(folder):
+        os.makedirs(folder)
+        
+#-----------------------------------------------------------------------------#
 def prepare_and_write_csv_file(snapshot_dir, list_entries, write_header=False):
     """
     Write entries to logs.csv. Optionally write header if `write_header=True`.
@@ -35,6 +40,7 @@ def prepare_and_write_csv_file(snapshot_dir, list_entries, write_header=False):
         else:
             csv_logger.writerow(list_entries)
         csvfile.flush()
+        
 #------------------------------------------------------------------------------#
 def prepare_writer_layout():
     layout = {
@@ -44,6 +50,7 @@ def prepare_writer_layout():
     }
     
     return layout
+
 #-------------------------------------------------------------------------------#
 def setup_logging(snapshot_dir, log_filename="logs.txt", level=logging.INFO, console=True):
     """
@@ -80,7 +87,7 @@ def save_checkpoint(model, optimizer, epoch, path):
     save_safetensors(model, weights_path) 
 
     # 2) Save optimizer + epoch if and only if we are at last epoch
-    if epoch == 1500:
+    if epoch % MODEL_SAVE_INTERVAL == 0:
         opt_path     = path + ".opt.pt"
         ckpt = {
             "optimizer_state_dict": optimizer.state_dict(),

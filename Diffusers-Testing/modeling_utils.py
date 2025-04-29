@@ -12,7 +12,7 @@
 
 import torch, copy
 
-import torch.nn as nn
+import torch.nn             as nn
 
 from   diffusers            import AutoencoderKL, UNet2DConditionModel, DDIMScheduler
 from   config               import *
@@ -31,7 +31,42 @@ class TauEncoder(nn.Module):
     def forward(self, x):
         latent_dist = self.vae.encode(x).latent_dist
         return latent_dist.mean if DETERMINISTIC else latent_dist.sample()
-    
+
+#--------------------------------------------------------------------------------------
+class CombinedL1L2Loss(nn.Module):
+    """
+    Custom loss: L2 (MSE) on noise, L1 on z0.
+    """
+
+    def __init__(self, l1_weight = 1.0, l2_weight = 1.0, reduction = "mean"):
+        """
+        Args:
+            l1_weight (float): weight for L1 loss term.
+            l2_weight (float): weight for L2 loss term.
+            reduction (str): reduction method ("mean", "sum", etc.)
+        """
+        super().__init__()
+        self.l1_weight = l1_weight
+        self.l2_weight = l2_weight
+        self.reduction = reduction
+
+        self.l1_loss = nn.L1Loss(reduction  = self.reduction)
+        self.l2_loss = nn.MSELoss(reduction = self.reduction)
+
+    def forward(self, noise_hat, noise, z0_hat, z0):
+        """
+        Args:
+            noise_hat: Predicted noise
+            noise: True noise
+            z0_hat: Predicted z0
+            z0: True z0
+        """
+        l2      = self.l2_loss(noise_hat, noise)
+        l1      = self.l1_loss(z0_hat, z0)
+        loss    = self.l2_weight * l2 + self.l1_weight * l1
+        
+        return loss
+
 #--------------------------------------------------------------------------------------
 def load_hybrid_unet(pretrained_path: str, device: str = "cuda") -> UNet2DConditionModel:
     # Step 1: Load the original model to access weights and config

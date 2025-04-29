@@ -24,7 +24,7 @@ from medpy                                          import metric
 from monai.metrics                                  import MeanIoU
 from torch.amp                                      import autocast
 from monai.networks.nets                            import AutoencoderKL
-from config                                import *
+from config                                         import *
 from generative.networks.schedulers                 import DDPMScheduler, DDIMScheduler
 from generative.inferers                            import LatentDiffusionInferer
 from generative.networks.nets.diffusion_model_unet  import DiffusionModelUNet

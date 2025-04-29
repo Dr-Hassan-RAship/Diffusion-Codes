@@ -13,7 +13,6 @@
 import os, time, argparse, logging, torch
 
 from torch.amp                      import autocast, GradScaler
-from torch.nn.functional            import l1_loss
 from torch.optim                    import AdamW
 from torch.utils.tensorboard        import SummaryWriter
 
@@ -21,7 +20,7 @@ from config                         import *
 from dataset                        import get_dataloaders
 from architectures                  import *
 from utils                          import *
-from modeling_utils                import *
+from modeling_utils                 import *
 
 # ------------------------------------------------------------------------------ #
 def initialize_new_session(device):
@@ -33,7 +32,7 @@ def initialize_new_session(device):
 # ------------------------------------------------------------------------------ #
 def trainer(model, optimizer, train_loader, val_loader, device, scaler, snapshot_dir, writer, resume_epoch):
     
-    for epoch in range(resume_epoch, resume_epoch + N_EPOCHS):
+    for epoch in range(resume_epoch, resume_epoch + N_EPOCHS - 1000):
         print(f"\n🚀 Starting Epoch {epoch}")
         model.train()
         epoch_loss = 0.0
@@ -45,8 +44,7 @@ def trainer(model, optimizer, train_loader, val_loader, device, scaler, snapshot
 
             optimizer.zero_grad(set_to_none=True)
             with autocast(device, enabled=True):
-                out  = model(image, mask, t)
-                loss = l1_loss(out['noise_hat'], out['noise']) # + l1_loss(out["z0_hat"], out['z0']) [nehal flag version] 
+                _, loss  = model(image, mask, t) # [nehal flag version] 
 
             scaler.scale(loss).backward()
             scaler.step(optimizer)
@@ -88,8 +86,7 @@ def validator(model, val_loader, device, epoch, writer):
             t     = torch.randint(0, model.scheduler.config.num_train_timesteps, (image.size(0),), device=device).long()
 
             with autocast(device, enabled=True):
-                out  = model(image, mask, t)
-                loss = l1_loss(out['noise_pred'], out['noise']) # + l1_loss(out["z0_hat"], out['z0']) [nehal flag version]
+                _, loss  = model(image, mask, t)
 
             val_loss += loss.item()
             writer.add_scalar("Loss/Val Iteration", loss.item(), epoch * len(val_loader) + step)
@@ -116,7 +113,7 @@ def main():
     if args.resume:
         latest_epoch, weights_path, opt_path = get_latest_checkpoint(models_dir)
         if weights_path and opt_path:
-            model, optimizer, resume_epoch = load_model_and_optimizer(weights_path, opt_path, device)
+            model, optimizer, resume_epoch = load_model_and_optimizer(weights_path, opt_path, device, load_optim_dict = False)
             logging.info(f"✅ Resumed from epoch {resume_epoch} (model: {weights_path})")
         else:
             logging.warning("⚠️ No valid checkpoint found. Starting from scratch.")

@@ -55,7 +55,7 @@ def perform_inference(model, test_loader, device, output_dir, num_samples=5):
         B = image.size(0)
         
         # Run sampling
-        t = torch.full((B,), NUM_TRAIN_TIMESTEPS - 1, device=device).long() if do.ONE_X_ONE else model.scheduler.timesteps
+        t         = torch.full((B,), NUM_TRAIN_TIMESTEPS - 1, device=device).long() if do.ONE_X_ONE else model.scheduler.timesteps
         model_out = model.inference(image, t)
 
         predicted_mask    = model_out['mask_hat']

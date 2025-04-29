@@ -13,10 +13,10 @@
 import              torch
 import              torch.nn as nn
 
-from                config          import *
-from                diffusers       import (AutoencoderKL, UNet2DModel, UNet2DConditionModel, DDPMScheduler, DDIMScheduler,)
-from                modeling_utils  import *
-from                peft            import get_peft_model, LoraConfig, TaskType
+from config                         import *
+from diffusers                      import (AutoencoderKL, UNet2DModel, UNet2DConditionModel, DDPMScheduler, DDIMScheduler,)
+from modeling_utils                 import *
+from peft                           import get_peft_model, LoraConfig, TaskType
 
 # ------------------------------------------------------------------------------#
 class LDM_Segmentor(nn.Module):
@@ -45,6 +45,9 @@ class LDM_Segmentor(nn.Module):
 
         # Scheduler (set to DDPM by default)
         self.scheduler = DDPMScheduler(num_train_timesteps=scheduler_steps)
+        
+        # Loss Criterion (Custom class)
+        self.loss_criterion = CombinedL1L2Loss(l1_weight = 1.0, l2_weight = 1.0, reduction = 'mean')
 
     def forward(self, image: torch.Tensor, mask: torch.Tensor = None, t: torch.Tensor = None):
         """
@@ -78,8 +81,11 @@ class LDM_Segmentor(nn.Module):
         noise_hat        = self.unet(torch.cat([zt, zc], dim = 1), t).sample  # (B, 4, 32, 32), t is just (B,)
         z0_hat, mask_hat = denoise_and_decode_in_one_step(image.shape[0], noise_hat, t, zt, self.scheduler, 
                                             self.vae, self.latent_scale, self.device, False)
+        
+        out              = {"z0": z0, "zt": zt, "zc": zc, "z0_hat": z0_hat, "noise": noise, 'noise_hat': noise_hat}
+        loss             = self.loss_criterion(noise_hat, noise, z0_hat, z0)
 
-        return {"z0": z0, "zt": zt, "zc": zc, "z0_hat": z0_hat, "noise": noise, 'noise_pred': noise_hat}
+        return out, loss
         
     def inference(self, image, t):
         if not isinstance(self.scheduler, DDIMScheduler):
@@ -376,7 +382,7 @@ class LDM_Segmentor_NoCrossAttention(nn.Module):
             + list(base_unet.up_blocks)
         ):
             for name, module in block.named_children():
-                if isinstance(module, CrossAttention):
+                if isinstance(module, DDIMScheduler):
                     setattr(block, name, nn.Identity())
 
         self.unet = base_unet.train()

@@ -2,31 +2,31 @@
 #
 # File name                 : utils.py
 # Purpose                   : Helper functions in general
-# Usage                     : Imported by train_ldm.py and inference_ldm.py
-#
+
 # Authors                   : Talha Ahmed, Nehal Ahmed Shaikh, Hassan Mohy-ud-Din
 # Email                     : 24100033@lums.edu.pk, 202410001@lums.edu.pk, hassan.mohyuddin@lums.edu.pk
 #
-# Last Date                 : April 28, 2025
+# Last Date                 : March 24, 2025
 #-------------------------------------------------------------------------------#
-import os, csv, sys, logging, logging, torch
+import os, csv, sys, logging, re, subprocess, logging, torch
 
-from config                     import *
-from diffusers                  import AutoencoderKL
-from dataset                    import *
-from glob                       import glob
-from torch.optim                import AdamW
-from architectures              import *
+from config                   import *
+from diffusers                import AutoencoderKL
+from dataset                  import *
 
-from safetensors.torch          import save_model as save_safetensors
-from safetensors.torch          import load_file as load_safetensors
+from   config import *
+from   safetensors.torch import save_model as save_safetensors
+from   safetensors.torch import load_file as load_safetensors
+from   glob import glob
+from   torch.optim import AdamW
+from   architectures import *
 
 #-----------------------------------------------------------------------------#
 def check_or_create_folder(folder):
     """Check if folder exists, if not, create it."""
     if not os.path.exists(folder):
         os.makedirs(folder)
-        
+
 #-----------------------------------------------------------------------------#
 def prepare_and_write_csv_file(snapshot_dir, list_entries, write_header=False):
     """
@@ -115,9 +115,8 @@ def get_latest_checkpoint(models_dir):
 def load_model_and_optimizer(weights_path, opt_path, device, load_optim_dict = True):
     """Loads model and optimizer from safetensors + pt files without RAM duplication."""
     
-    epoch     = None
+    epoch     = 2000
     model     = LDM_Segmentor().to("cpu")
-    optimizer = AdamW(model.parameters(), lr=LR, betas=(0.9, 0.999), weight_decay=0.0001)
 
     # Load pretrained VAE weights directly into model.vae without retaining duplicate
     model.vae.load_state_dict(
@@ -130,6 +129,8 @@ def load_model_and_optimizer(weights_path, opt_path, device, load_optim_dict = T
     # Load deduplicated model weights from .safetensors
     state_dict = load_safetensors(weights_path)
     model.load_state_dict(state_dict, strict=False)
+    
+    optimizer = AdamW(model.parameters(), lr=LR, betas=(0.9, 0.999), weight_decay=0.0001)
     
     del state_dict
 

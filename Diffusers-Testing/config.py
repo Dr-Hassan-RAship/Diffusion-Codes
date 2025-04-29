@@ -32,9 +32,9 @@ DETERMINISTIC       = False         # Whether to use deterministic vae latent re
 
 # ------------------------------------------------------------------------------#
 # Experiment configuration
-OPTIONAL_INFO   = "with_l_noise"
+OPTIONAL_INFO   = "with_l_noise_and_l_latent"
 EXPERIMENT_NAME = f'machine--B{BATCH_SIZE}-E{N_EPOCHS}-V{VAL_INTERVAL}-T{NUM_TRAIN_TIMESTEPS}-S{SCHEDULER}'
-RUN             = '02_' + OPTIONAL_INFO
+RUN             = '03_' + OPTIONAL_INFO
 
 # ------------------------------------------------------------------------------#
 # Model configuration for Diffusion i.e., UNET --> matched with SDSeg
@@ -54,8 +54,7 @@ LDM_SCALE_FACTOR     = 1.0
 # Placeholder for inference configuration
 class InferenceConfig:
     N_PREDS             = 1
-    RESUME              = False
-    MODEL_EPOCH         = 1500               # Epoch of the model to load (-1 for final model)
+    MODEL_EPOCH         = 2000               # Epoch of the model to load (-1 for final model)
     NUM_SAMPLES         = 10                 # Number of samples 
     SAVE_FOLDER         = LDM_SNAPSHOT_DIR + f"/inference-M{MODEL_EPOCH if MODEL_EPOCH != -1 else N_EPOCHS}-E{N_EPOCHS}-t{NUM_TRAIN_TIMESTEPS}-S{SCHEDULER}-SP{NUM_SAMPLES}"  # Save folder for inference results
     INFERER_SCHEDULER   = 'DDIM'

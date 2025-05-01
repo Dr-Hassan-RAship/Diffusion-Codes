@@ -13,7 +13,7 @@
 # Dataset configuration
 BASE_DIR            = "/media/ee/DATA/Talha_Nehal/Datasets/Kvasir-SEG"        # Path to the dataset root directory
 TRAINSIZE           = 256                   # Target size for resizing images and masks
-BATCH_SIZE          = 4                     # Batch size for dataloaders
+BATCH_SIZE          = 2                     # Batch size for dataloaders
 SPLIT_RATIOS        = (800, 100, 100)       # Train, validation, test split ratios
 FORMAT              = True                  # If True, train/val/test subdirectories already exist
 CLASSIFICATION_TYPE = 'binary'              # 'binary' or 'multiclass'
@@ -24,7 +24,7 @@ LR               = 1e-4
 WEIGHT_DECAY     = 0.01
 BETAS            = (0.9, 0.999)
 PERIOD           = 0.5
-WARMUP_RATIO     = 0.01
+WARMUP_RATIO     = 0.1
 
 # ------------------------------------------------------------------------------#
 # Training configuration
@@ -39,9 +39,9 @@ DETERMINISTIC       = False         # Whether to use deterministic vae latent re
 
 # ------------------------------------------------------------------------------#
 # Experiment configuration
-OPTIONAL_INFO   = "with_warmup_and_cosine_annealing"
+OPTIONAL_INFO   = "with_warmup_and_cosine_annealing_as_tutorial"
 EXPERIMENT_NAME = f'machine--B{BATCH_SIZE}-E{N_EPOCHS}-V{VAL_INTERVAL}-T{NUM_TRAIN_TIMESTEPS}-S{SCHEDULER}'
-RUN             = '05_' + OPTIONAL_INFO
+RUN             = '06_' + OPTIONAL_INFO
 
 # ------------------------------------------------------------------------------#
 # Model configuration for Diffusion i.e., UNET --> matched with SDSeg

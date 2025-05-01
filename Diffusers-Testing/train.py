@@ -34,7 +34,7 @@ def initialize_new_session(device):
     # total_steps  = N_EPOCHS
     warmup_steps = int(WARMUP_RATIO * total_steps)
     scheduler    = get_cosine_schedule_with_warmup(optimizer = optimizer, num_warmup_steps = warmup_steps,
-                                                num_cycles = 0.1, num_training_steps=total_steps
+                                                num_cycles = PERIOD, num_training_steps=total_steps
     )
     
     return model, optimizer, scheduler, 0

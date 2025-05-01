@@ -18,6 +18,7 @@ from   diffusers                             import AutoencoderKL, UNet2DConditi
 from   config                                import *
 from   tqdm.auto                             import tqdm
 from   diffusers.models.autoencoders.vae     import DiagonalGaussianDistribution
+from   diffusers.models.modeling_outputs     import AutoencoderKLOutput
 
 #--------------------------------------------------------------------------------------
 class TauEncoder(nn.Module):
@@ -25,15 +26,17 @@ class TauEncoder(nn.Module):
     Learnable encoder for the input RGB image (τ_θ).
     Architecturally same as the VAE encoder but trainable.
     """
-    def __init__(self, encoder: AutoencoderKL.encoder):
+    def __init__(self, encoder):
         super().__init__()
         self.encoder   = encoder
+        latent_channels = 4
+        use_quant_conv = True
         self.quant_cov = nn.Conv2d(2 * latent_channels, 2 * latent_channels, 1) if use_quant_conv else None
 
     def forward(self, x):
         h         = self.encoder(x)
         h         = self.quant_cov(h) if self.quant_cov else h
-        h         = DiagonalGaussianDistribution(h).latent_dist
+        h         = AutoencoderKLOutput(DiagonalGaussianDistribution(h)).latent_dist
         return h.mean if DETERMINISTIC else h.sample()
 
 #--------------------------------------------------------------------------------------

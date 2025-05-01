@@ -12,11 +12,12 @@
 
 import torch, copy
 
-import torch.nn             as nn
+import torch.nn                              as nn
 
-from   diffusers            import AutoencoderKL, UNet2DConditionModel, DDIMScheduler
-from   config               import *
-from   tqdm.auto            import tqdm
+from   diffusers                             import AutoencoderKL, UNet2DConditionModel, DDIMScheduler
+from   config                                import *
+from   tqdm.auto                             import tqdm
+from   diffusers.models.autoencoders.vae     import DiagonalGaussianDistribution
 
 #--------------------------------------------------------------------------------------
 class TauEncoder(nn.Module):
@@ -24,13 +25,16 @@ class TauEncoder(nn.Module):
     Learnable encoder for the input RGB image (τ_θ).
     Architecturally same as the VAE encoder but trainable.
     """
-    def __init__(self, vae: AutoencoderKL):
+    def __init__(self, encoder: AutoencoderKL.encoder):
         super().__init__()
-        self.vae = vae
+        self.encoder   = encoder
+        self.quant_cov = nn.Conv2d(2 * latent_channels, 2 * latent_channels, 1) if use_quant_conv else None
 
     def forward(self, x):
-        latent_dist = self.vae.encode(x).latent_dist
-        return latent_dist.mean if DETERMINISTIC else latent_dist.sample()
+        h         = self.encoder(x)
+        h         = self.quant_cov(h) if self.quant_cov else h
+        h         = DiagonalGaussianDistribution(h).latent_dist
+        return h.mean if DETERMINISTIC else h.sample()
 
 #--------------------------------------------------------------------------------------
 class CombinedL1L2Loss(nn.Module):

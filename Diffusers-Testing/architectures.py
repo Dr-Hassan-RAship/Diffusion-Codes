@@ -10,8 +10,8 @@
 # Last Modified             : April 28, 2025
 # ------------------------------------------------------------------------------#
 
-import              torch
-import              torch.nn as nn
+import                              torch, copy
+import                              torch.nn as nn
 
 from config                         import *
 from diffusers                      import (AutoencoderKL, UNet2DModel, UNet2DConditionModel, DDPMScheduler, DDIMScheduler,)
@@ -38,7 +38,10 @@ class LDM_Segmentor(nn.Module):
             param.requires_grad = False
 
         # Learnable image encoder (Tau θ)
-        self.image_encoder = TauEncoder(self.vae).to(device).train()
+        encoder            = copy.deepcopy(self.vae.encoder)
+        self.image_encoder = TauEncoder(encoder).to(device).train()
+        for param in self.image_encoder.parameters():
+            param.requires_grad = True
 
         # UNet2DModel: receives zt || zc → predicts noise
         self.unet = UNet2DModel(**UNET_PARAMS).to(device).train()

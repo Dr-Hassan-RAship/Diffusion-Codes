@@ -20,18 +20,18 @@ CLASSIFICATION_TYPE = 'binary'              # 'binary' or 'multiclass'
 
 #-------------------------------------------------------------------------------#
 # Optimizer Configuration
-LR               = 1e-4
-WEIGHT_DECAY     = 1e-4
+LR               = 1e-4 
+WEIGHT_DECAY     = 0.01
 BETAS            = (0.9, 0.999)
-PERIOD           = 0.1
+PERIOD           = 0.5
 WARMUP_RATIO     = 0.01
 
 # ------------------------------------------------------------------------------#
 # Training configuration
 SEED                = 1337          # Random seed for reproducibility
-N_EPOCHS            = 1000          # Number of training epochs
+N_EPOCHS            = 5000          # Number of training epochs
 VAL_INTERVAL        = 500           # Validate every n epochs (can reduce)
-MODEL_SAVE_INTERVAL = 500           # Save model every n epochs
+MODEL_SAVE_INTERVAL = 50           # Save model every n epochs
 NUM_TRAIN_TIMESTEPS = 1000          # i.e., diffusion steps (T)
 NOISE_SCHEDULER     = "linear_beta" # {linear_beta, cosine_beta}
 SCHEDULER           = 'DDPM'        # {DDPM, DDIM}
@@ -55,7 +55,7 @@ UNET_PARAMS = { "sample_size"       : TRAINSIZE // 8,
               } # num_head_channels = model_channels (192) // num_heads (8)
 
 LDM_SNAPSHOT_DIR     = "./results/" + RUN + f"/ldm-" + EXPERIMENT_NAME
-LDM_SCALE_FACTOR     = 1.0
+# LDM_SCALE_FACTOR     = 1.0
 
 # ------------------------------------------------------------------------------#
 # Placeholder for inference configuration

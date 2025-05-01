@@ -16,7 +16,7 @@ from torch.amp                      import autocast, GradScaler
 from torch.optim                    import AdamW
 from torch.utils.tensorboard        import SummaryWriter
 
-from diffusers                      import get_cosine_schedule_with_warmup
+from diffusers.optimization         import get_cosine_schedule_with_warmup
 from config                         import *
 from dataset                        import get_dataloaders
 from architectures                  import *
@@ -27,10 +27,11 @@ from modeling_utils                 import *
 def initialize_new_session(device):
     """Creates a new model and optimizer from scratch."""
     model     = LDM_Segmentor().to(device)
-    optimizer = AdamW(model.parameters(), lr=LR, betas=(0.9, 0.999), weight_decay=0.0001)
+    optimizer = AdamW(model.parameters(), lr=LR, betas=BETAS, weight_decay=WEIGHT_DECAY)
     
     # Scheduler
     total_steps  = (SPLIT_RATIOS[0] // BATCH_SIZE) * N_EPOCHS # for periteration
+    # total_steps  = N_EPOCHS
     warmup_steps = int(WARMUP_RATIO * total_steps)
     scheduler    = get_cosine_schedule_with_warmup(optimizer = optimizer, num_warmup_steps = warmup_steps,
                                                 num_cycles = 0.1, num_training_steps=total_steps
@@ -43,10 +44,9 @@ def trainer(model, optimizer, scheduler, train_loader, val_loader, device, scale
     
     for epoch in range(resume_epoch, resume_epoch + N_EPOCHS):
         print(f"\n🚀 Starting Epoch {epoch}")
-        model.train()
-        epoch_loss = 0.0
 
-        torch.cuda.empty_cache()
+        torch.cuda.empty_cache(); model.train(); epoch_loss = 0.0
+        # ---- Training ---- #
         for step, batch in enumerate(train_loader):
             image = batch["aug_image"].to(device, dtype = torch.float16)
             mask  = batch["aug_mask"].to(device, dtype = torch.float16)
@@ -63,15 +63,14 @@ def trainer(model, optimizer, scheduler, train_loader, val_loader, device, scale
             epoch_loss += loss.item()
             writer.add_scalar("Loss/Train Iteration", loss.item(), epoch * len(train_loader) + step)
             logging.info(f"[train] epoch: {epoch} batch: {step} loss: {loss.item():.4f}")
-            scheduler.step()      
             
+            scheduler.step()        
             writer.add_scalar("LR", scheduler.get_last_lr()[0], epoch)
             
         epoch_loss /= len(train_loader)
         logging.info(f"[train] epoch: {epoch} mean loss: {epoch_loss:.4f}, LR: {scheduler.get_last_lr()[0]:.6f}")
         writer.add_scalar("loss/train epoch", epoch_loss, epoch)
           
-
         # ---- Validation ---- #
         if (epoch + 1) % VAL_INTERVAL == 0:
             val_loss = validator(model, val_loader, device, epoch, writer)
@@ -111,6 +110,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--resume", action="store_true")
     args   = parser.parse_args()
+    device = "cuda" if torch.cuda.is_available() else "cpu"
 
     snapshot_dir = LDM_SNAPSHOT_DIR
     models_dir   = os.path.join(snapshot_dir, "models")
@@ -120,8 +120,6 @@ def main():
     writer = SummaryWriter(os.path.join(snapshot_dir, "log" if args.resume else "log"))
     print(f"Results logged in: {snapshot_dir}, TensorBoard logs in: {snapshot_dir}/log, Models saved in: {models_dir}\n")
     torch.manual_seed(SEED)
-
-    device = "cuda" if torch.cuda.is_available() else "cpu"
 
     if args.resume:
         latest_epoch, weights_path, opt_path = get_latest_checkpoint(models_dir)

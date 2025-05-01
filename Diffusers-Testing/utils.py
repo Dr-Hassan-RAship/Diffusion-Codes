@@ -8,18 +8,18 @@
 #
 # Last Date                 : March 24, 2025
 #-------------------------------------------------------------------------------#
-import os, csv, sys, logging, re, subprocess, logging, torch
+import os, csv, sys, logging, logging, torch
 
-from config                   import *
-from diffusers                import AutoencoderKL
-from dataset                  import *
+from config                     import *
+from diffusers                  import AutoencoderKL
+from diffusers.optimization     import get_cosine_schedule_with_warmup
+from dataset                    import *
 
-from   config import *
-from   safetensors.torch import save_model as save_safetensors
-from   safetensors.torch import load_file as load_safetensors
-from   glob import glob
-from   torch.optim import AdamW
-from   architectures import *
+from safetensors.torch          import save_model as save_safetensors
+from safetensors.torch          import load_file as load_safetensors
+from glob                       import glob
+from torch.optim                import AdamW
+from architectures              import *
 
 #-----------------------------------------------------------------------------#
 def check_or_create_folder(folder):
@@ -77,7 +77,7 @@ def setup_logging(snapshot_dir, log_filename="logs.txt", level=logging.INFO, con
         logging.getLogger().addHandler(logging.StreamHandler(sys.stdout))
         
 #--------------------------------------------------------------------------------------#
-def save_checkpoint(model, optimizer, epoch, path):
+def save_checkpoint(model, optimizer, scheduler, epoch, path):
     """
     Save model weights (deduplicated) + optimizer state to disk.
     """
@@ -87,11 +87,12 @@ def save_checkpoint(model, optimizer, epoch, path):
     save_safetensors(model, weights_path) 
 
     # 2) Save optimizer + epoch if and only if we are at last epoch
-    if epoch % MODEL_SAVE_INTERVAL == 0:
+    if epoch % N_EPOCHS == 0:
         opt_path     = path + ".opt.pt"
         ckpt = {
-            "optimizer_state_dict": optimizer.state_dict(),
-            "epoch": epoch,
+        "optimizer_state_dict": optimizer.state_dict(),
+        "scheduler_state_dict": scheduler.state_dict(),
+        "epoch": epoch,
         }
         torch.save(ckpt, opt_path)
     
@@ -112,13 +113,13 @@ def get_latest_checkpoint(models_dir):
     return epoch_num, weights_path, opt_path
 
 #--------------------------------------------------------------------------------------#
-def load_model_and_optimizer(weights_path, opt_path, device, load_optim_dict = True):
-    """Loads model and optimizer from safetensors + pt files without RAM duplication."""
+def load_model_and_optimizer(weights_path, opt_path, device, load_optim_dict=True):
+    """Loads model, optimizer, and scheduler from safetensors + pt files."""
     
-    epoch     = 2000
-    model     = LDM_Segmentor().to("cpu")
+    epoch = 0
+    model = LDM_Segmentor().to("cpu")
 
-    # Load pretrained VAE weights directly into model.vae without retaining duplicate
+    # Reload VAE weights to avoid shared tensor duplication
     model.vae.load_state_dict(
         AutoencoderKL.from_pretrained("CompVis/stable-diffusion-v1-4", subfolder="vae").state_dict()
     )
@@ -126,30 +127,37 @@ def load_model_and_optimizer(weights_path, opt_path, device, load_optim_dict = T
         p.requires_grad = False
     model.vae.eval()
 
-    # Load deduplicated model weights from .safetensors
+    # Load deduplicated weights
     state_dict = load_safetensors(weights_path)
     model.load_state_dict(state_dict, strict=False)
-    
-    optimizer = AdamW(model.parameters(), lr=LR, betas=(0.9, 0.999), weight_decay=0.0001)
-    
     del state_dict
 
-    # Move to GPU
     model = model.to(device)
 
-    # Load optimizer state
-    if load_optim_dict:
-        opt_state = torch.load(opt_path, map_location="cpu", weights_only = True)
-        optimizer.load_state_dict(opt_state["optimizer_state_dict"])
-        epoch     = opt_state["epoch"] + 1
+    # Optimizer
+    optimizer = AdamW(model.parameters(), lr=LR, betas = BETAS, weight_decay = WEIGHT_DECAY)
 
+    # Scheduler
+    total_steps  = (SPLIT_RATIOS[0] // BATCH_SIZE) * N_EPOCHS
+    warmup_steps = int(WARMUP_RATIO * total_steps)
+    scheduler    = get_cosine_schedule_with_warmup(optimizer  = optimizer, num_warmup_steps = warmup_steps,
+                                                num_cycles = 0.1, num_training_steps=total_steps
+    )
+
+    if load_optim_dict and opt_path is not None and os.path.exists(opt_path):
+        opt_state = torch.load(opt_path, map_location="cpu")
+        optimizer.load_state_dict(opt_state["optimizer_state_dict"])
+        if "scheduler_state_dict" in opt_state:
+            scheduler.load_state_dict(opt_state["scheduler_state_dict"])
+        epoch = opt_state["epoch"] + 1
+        
         del opt_state
 
+        # Move optimizer tensors to device
         for state in optimizer.state.values():
             for k, v in state.items():
                 if isinstance(v, torch.Tensor):
                     state[k] = v.to(device)
-    
-    return model, optimizer, epoch
 
+    return model, optimizer, scheduler, epoch
 #--------------------------------------------------------------------------------------#

@@ -102,8 +102,8 @@ def main():
     model = LDM_Segmentor().to(device)
     model.scheduler.set_timesteps(do.INFERENCE_TIMESTEPS)
 
-    ckpt_path   = os.path.join(LDM_SNAPSHOT_DIR, "models", f"model_epoch_{do.MODEL_EPOCH}.safetensors")
-    model, _, _ = load_model_and_optimizer(ckpt_path, None, device, load_optim_dict = False)
+    ckpt_path      = os.path.join(LDM_SNAPSHOT_DIR, "models", f"model_epoch_{do.MODEL_EPOCH}.safetensors")
+    model, _, _, _ = load_model_and_optimizer(ckpt_path, None, device, load_optim_dict = False)
     print(f"🔁 Loaded full model checkpoint from: {ckpt_path}")
 
     perform_inference(model, test_loader, device, do.SAVE_FOLDER, num_samples=do.NUM_SAMPLES)

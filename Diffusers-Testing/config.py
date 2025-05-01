@@ -18,11 +18,18 @@ SPLIT_RATIOS        = (800, 100, 100)       # Train, validation, test split rati
 FORMAT              = True                  # If True, train/val/test subdirectories already exist
 CLASSIFICATION_TYPE = 'binary'              # 'binary' or 'multiclass'
 
+#-------------------------------------------------------------------------------#
+# Optimizer Configuration
+LR               = 1e-4
+WEIGHT_DECAY     = 1e-4
+BETAS            = (0.9, 0.999)
+PERIOD           = 0.1
+WARMUP_RATIO     = 0.01
+
 # ------------------------------------------------------------------------------#
 # Training configuration
 SEED                = 1337          # Random seed for reproducibility
-N_EPOCHS            = 2000          # Number of training epochs
-LR                  = 1.0e-5        # Learning rate for the optimizer # [talha] change it to be -5
+N_EPOCHS            = 1000          # Number of training epochs
 VAL_INTERVAL        = 500           # Validate every n epochs (can reduce)
 MODEL_SAVE_INTERVAL = 500           # Save model every n epochs
 NUM_TRAIN_TIMESTEPS = 1000          # i.e., diffusion steps (T)
@@ -32,19 +39,19 @@ DETERMINISTIC       = False         # Whether to use deterministic vae latent re
 
 # ------------------------------------------------------------------------------#
 # Experiment configuration
-OPTIONAL_INFO   = "with_l_noise_and_l_latent"
+OPTIONAL_INFO   = "with_warmup_and_cosine_annealing"
 EXPERIMENT_NAME = f'machine--B{BATCH_SIZE}-E{N_EPOCHS}-V{VAL_INTERVAL}-T{NUM_TRAIN_TIMESTEPS}-S{SCHEDULER}'
-RUN             = '03_' + OPTIONAL_INFO
+RUN             = '05_' + OPTIONAL_INFO
 
 # ------------------------------------------------------------------------------#
 # Model configuration for Diffusion i.e., UNET --> matched with SDSeg
-UNET_PARAMS = { "sample_size"        : TRAINSIZE // 8,
-                "in_channels"        : 8,  # Using latent space input (z = 4 + concatenation), so latent dimensions match autoencoder
-                "out_channels"       : 4,  # Latent space output before decoder
-                "layers_per_block"   : 2,
-                "block_out_channels" : (192, 384, 384, 768, 768), #  (128, 256, 256, 512)
-                "down_block_types"   : ("DownBlock2D",) * 3 + ("AttnDownBlock2D",) + ("DownBlock2D",), 
-                "up_block_types"     : ("UpBlock2D",) * 1 + ("AttnUpBlock2D",) + ("UpBlock2D",) * 3,
+UNET_PARAMS = { "sample_size"       : TRAINSIZE // 8,
+                "in_channels"       : 8,  # Using latent space input (z = 4 + concatenation), so latent dimensions match autoencoder
+                "out_channels"      : 4,  # Latent space output before decoder
+                "layers_per_block"  : 2,
+                "block_out_channels": (192, 384, 384, 768, 768), #  (128, 256, 256, 512)
+                "down_block_types"  : ("DownBlock2D",) * 3 + ("AttnDownBlock2D",) + ("DownBlock2D",), 
+                "up_block_types"    : ("UpBlock2D",) * 1 + ("AttnUpBlock2D",) + ("UpBlock2D",) * 3,
               } # num_head_channels = model_channels (192) // num_heads (8)
 
 LDM_SNAPSHOT_DIR     = "./results/" + RUN + f"/ldm-" + EXPERIMENT_NAME
@@ -54,12 +61,12 @@ LDM_SCALE_FACTOR     = 1.0
 # Placeholder for inference configuration
 class InferenceConfig:
     N_PREDS             = 1
-    MODEL_EPOCH         = 2000               # Epoch of the model to load (-1 for final model)
+    MODEL_EPOCH         = 500               # Epoch of the model to load (-1 for final model)
     NUM_SAMPLES         = 10                 # Number of samples 
     SAVE_FOLDER         = LDM_SNAPSHOT_DIR + f"/inference-M{MODEL_EPOCH if MODEL_EPOCH != -1 else N_EPOCHS}-E{N_EPOCHS}-t{NUM_TRAIN_TIMESTEPS}-S{SCHEDULER}-SP{NUM_SAMPLES}"  # Save folder for inference results
     INFERER_SCHEDULER   = 'DDIM'
     TRAIN_TIMESTEPS     = NUM_TRAIN_TIMESTEPS
-    ONE_X_ONE           = False # make it False if training
+    ONE_X_ONE           = True # make it False if training
     INFERENCE_TIMESTEPS = 100 if INFERER_SCHEDULER == 'DDIM' else NUM_TRAIN_TIMESTEPS
     SAVE_INTERMEDIATES  = False
     METRIC_REPORT       = True

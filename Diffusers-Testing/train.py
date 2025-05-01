@@ -16,6 +16,7 @@ from torch.amp                      import autocast, GradScaler
 from torch.optim                    import AdamW
 from torch.utils.tensorboard        import SummaryWriter
 
+from diffusers                      import get_cosine_schedule_with_warmup
 from config                         import *
 from dataset                        import get_dataloaders
 from architectures                  import *
@@ -27,19 +28,28 @@ def initialize_new_session(device):
     """Creates a new model and optimizer from scratch."""
     model     = LDM_Segmentor().to(device)
     optimizer = AdamW(model.parameters(), lr=LR, betas=(0.9, 0.999), weight_decay=0.0001)
-    return model, optimizer, 0
+    
+    # Scheduler
+    total_steps  = (SPLIT_RATIOS[0] // BATCH_SIZE) * N_EPOCHS # for periteration
+    warmup_steps = int(WARMUP_RATIO * total_steps)
+    scheduler    = get_cosine_schedule_with_warmup(optimizer = optimizer, num_warmup_steps = warmup_steps,
+                                                num_cycles = 0.1, num_training_steps=total_steps
+    )
+    
+    return model, optimizer, scheduler, 0
 
 # ------------------------------------------------------------------------------ #
-def trainer(model, optimizer, train_loader, val_loader, device, scaler, snapshot_dir, writer, resume_epoch):
+def trainer(model, optimizer, scheduler, train_loader, val_loader, device, scaler, snapshot_dir, writer, resume_epoch):
     
-    for epoch in range(resume_epoch, resume_epoch + N_EPOCHS - 1000):
+    for epoch in range(resume_epoch, resume_epoch + N_EPOCHS):
         print(f"\n🚀 Starting Epoch {epoch}")
         model.train()
         epoch_loss = 0.0
 
+        torch.cuda.empty_cache()
         for step, batch in enumerate(train_loader):
-            image = batch["aug_image"].to(device, dtype=torch.float16)
-            mask  = batch["aug_mask"].to(device, dtype=torch.float16)
+            image = batch["aug_image"].to(device, dtype = torch.float16)
+            mask  = batch["aug_mask"].to(device, dtype = torch.float16)
             t     = torch.randint(0, model.scheduler.config.num_train_timesteps, (image.size(0),), device=device).long()
 
             optimizer.zero_grad(set_to_none=True)
@@ -49,15 +59,18 @@ def trainer(model, optimizer, train_loader, val_loader, device, scaler, snapshot
             scaler.scale(loss).backward()
             scaler.step(optimizer)
             scaler.update()
-
-            torch.cuda.empty_cache()
+            
             epoch_loss += loss.item()
             writer.add_scalar("Loss/Train Iteration", loss.item(), epoch * len(train_loader) + step)
             logging.info(f"[train] epoch: {epoch} batch: {step} loss: {loss.item():.4f}")
-
+            scheduler.step()      
+            
+            writer.add_scalar("LR", scheduler.get_last_lr()[0], epoch)
+            
         epoch_loss /= len(train_loader)
-        logging.info(f"[train] epoch: {epoch} mean loss: {epoch_loss:.4f}")
+        logging.info(f"[train] epoch: {epoch} mean loss: {epoch_loss:.4f}, LR: {scheduler.get_last_lr()[0]:.6f}")
         writer.add_scalar("loss/train epoch", epoch_loss, epoch)
+          
 
         # ---- Validation ---- #
         if (epoch + 1) % VAL_INTERVAL == 0:
@@ -70,7 +83,7 @@ def trainer(model, optimizer, train_loader, val_loader, device, scaler, snapshot
         # ---- Save Model and Optimizer ---- #
         if (epoch + 1) % MODEL_SAVE_INTERVAL == 0:
             ckpt_path = os.path.join(snapshot_dir, "models", f"model_epoch_{epoch + 1}")
-            save_checkpoint(model, optimizer, epoch + 1, ckpt_path)
+            save_checkpoint(model, optimizer, scheduler, epoch + 1, ckpt_path)
             logging.info(f"Checkpoint saved to {ckpt_path}")
 
         prepare_and_write_csv_file(snapshot_dir, [epoch, epoch_loss, val_loss], write_header=(epoch == 0))
@@ -113,14 +126,14 @@ def main():
     if args.resume:
         latest_epoch, weights_path, opt_path = get_latest_checkpoint(models_dir)
         if weights_path and opt_path:
-            model, optimizer, resume_epoch = load_model_and_optimizer(weights_path, opt_path, device, load_optim_dict = False)
+            model, optimizer, scheduler, resume_epoch = load_model_and_optimizer(weights_path, opt_path, device, load_optim_dict = False)
             logging.info(f"✅ Resumed from epoch {resume_epoch} (model: {weights_path})")
         else:
             logging.warning("⚠️ No valid checkpoint found. Starting from scratch.")
-            model, optimizer, resume_epoch = initialize_new_session(device)
+            model, optimizer, scheduler, resume_epoch = initialize_new_session(device)
     else:
         logging.info("🚀 Starting new training session")
-        model, optimizer, resume_epoch = initialize_new_session(device)
+        model, optimizer, scheduler, resume_epoch = initialize_new_session(device)
 
     scaler       = GradScaler(device)
     train_loader = get_dataloaders(BASE_DIR, SPLIT_RATIOS, "train", TRAINSIZE, BATCH_SIZE, FORMAT)
@@ -128,7 +141,7 @@ def main():
 
     start = time.time()
 
-    trainer(model, optimizer, train_loader, val_loader, device, scaler, snapshot_dir, writer, resume_epoch)
+    trainer(model, optimizer, scheduler, train_loader, val_loader, device, scaler, snapshot_dir, writer, resume_epoch)
 
     total_time = (time.time() - start) / 60
     logging.info(f"✅ Training finished in {total_time:.2f} minutes.")

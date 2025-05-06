@@ -20,28 +20,30 @@ CLASSIFICATION_TYPE = 'binary'              # 'binary' or 'multiclass'
 
 #-------------------------------------------------------------------------------#
 # Optimizer Configuration
-LR               = 1e-4 
-WEIGHT_DECAY     = 0.01
-BETAS            = (0.9, 0.999)
-PERIOD           = 0.5
-WARMUP_RATIO     = 0.1
+OPT              = { "optimizer"      : "AdamW",
+                     "lr"              : 1e-4,
+                     "weight_decay"    : 0.01,
+                     "betas"           : (0.9, 0.999),
+                     "period"          : 0.5,
+                     "warmup_ratio"    : False,
+}
 
 # ------------------------------------------------------------------------------#
 # Training configuration
 SEED                = 1337          # Random seed for reproducibility
-N_EPOCHS            = 5000          # Number of training epochs
+N_EPOCHS            = 1000          # Number of training epochs
 VAL_INTERVAL        = 500           # Validate every n epochs (can reduce)
-MODEL_SAVE_INTERVAL = 50           # Save model every n epochs
+MODEL_SAVE_INTERVAL = 50            # Save model every n epochs
 NUM_TRAIN_TIMESTEPS = 1000          # i.e., diffusion steps (T)
 NOISE_SCHEDULER     = "linear_beta" # {linear_beta, cosine_beta}
 SCHEDULER           = 'DDPM'        # {DDPM, DDIM}
-DETERMINISTIC       = False         # Whether to use deterministic vae latent representation or not
+DETERMINISTIC       = True         # Whether to use deterministic vae latent representation or not
 
 # ------------------------------------------------------------------------------#
 # Experiment configuration
-OPTIONAL_INFO   = "with_warmup_and_cosine_annealing_as_tutorial"
+OPTIONAL_INFO   = "with_deterministic_and_unscaling"
 EXPERIMENT_NAME = f'machine--B{BATCH_SIZE}-E{N_EPOCHS}-V{VAL_INTERVAL}-T{NUM_TRAIN_TIMESTEPS}-S{SCHEDULER}'
-RUN             = '06_' + OPTIONAL_INFO
+RUN             = '07_' + OPTIONAL_INFO
 
 # ------------------------------------------------------------------------------#
 # Model configuration for Diffusion i.e., UNET --> matched with SDSeg
@@ -61,7 +63,7 @@ LDM_SNAPSHOT_DIR     = "./results/" + RUN + f"/ldm-" + EXPERIMENT_NAME
 # Placeholder for inference configuration
 class InferenceConfig:
     N_PREDS             = 1
-    MODEL_EPOCH         = 500               # Epoch of the model to load (-1 for final model)
+    MODEL_EPOCH         = 1000               # Epoch of the model to load (-1 for final model)
     NUM_SAMPLES         = 10                 # Number of samples 
     SAVE_FOLDER         = LDM_SNAPSHOT_DIR + f"/inference-M{MODEL_EPOCH if MODEL_EPOCH != -1 else N_EPOCHS}-E{N_EPOCHS}-t{NUM_TRAIN_TIMESTEPS}-S{SCHEDULER}-SP{NUM_SAMPLES}"  # Save folder for inference results
     INFERER_SCHEDULER   = 'DDIM'

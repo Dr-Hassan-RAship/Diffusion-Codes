@@ -27,14 +27,14 @@ from modeling_utils                 import *
 def initialize_new_session(device):
     """Creates a new model and optimizer from scratch."""
     model     = LDM_Segmentor().to(device)
-    optimizer = AdamW(model.parameters(), lr=LR, betas=BETAS, weight_decay=WEIGHT_DECAY)
+    optimizer = AdamW(model.parameters(), lr=OPT['lr'], betas=OPT['betas'], weight_decay=OPT['weight_decay'])
     
     # Scheduler
     total_steps  = (SPLIT_RATIOS[0] // BATCH_SIZE) * N_EPOCHS # for periteration
     # total_steps  = N_EPOCHS
-    warmup_steps = int(WARMUP_RATIO * total_steps)
+    warmup_steps = int(OPT['warmup_ratio'] * total_steps)
     scheduler    = get_cosine_schedule_with_warmup(optimizer = optimizer, num_warmup_steps = warmup_steps,
-                                                num_cycles = PERIOD, num_training_steps=total_steps
+                                                num_cycles = OPT['period'], num_training_steps=total_steps
     )
     
     return model, optimizer, scheduler, 0
@@ -50,11 +50,10 @@ def trainer(model, optimizer, scheduler, train_loader, val_loader, device, scale
         for step, batch in enumerate(train_loader):
             image = batch["aug_image"].to(device, dtype = torch.float16)
             mask  = batch["aug_mask"].to(device, dtype = torch.float16)
-            t     = torch.randint(0, model.scheduler.config.num_train_timesteps, (image.size(0),), device=device).long()
 
             optimizer.zero_grad(set_to_none=True)
             with autocast(device, enabled=True):
-                _, loss  = model(image, mask, t) # [nehal flag version] 
+                _, loss  = model(image, mask) # [nehal flag version] 
 
             scaler.scale(loss).backward()
             scaler.step(optimizer)
@@ -95,10 +94,9 @@ def validator(model, val_loader, device, epoch, writer):
         for step, batch in enumerate(val_loader):
             image = batch["aug_image"].to(device, dtype=torch.float16)
             mask  = batch["aug_mask"].to(device, dtype=torch.float16)
-            t     = torch.randint(0, model.scheduler.config.num_train_timesteps, (image.size(0),), device=device).long()
 
             with autocast(device, enabled=True):
-                _, loss  = model(image, mask, t)
+                _, loss  = model(image, mask)
 
             val_loss += loss.item()
             writer.add_scalar("Loss/Val Iteration", loss.item(), epoch * len(val_loader) + step)
@@ -110,17 +108,17 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--resume", action="store_true")
     args   = parser.parse_args()
-    device = "cuda" if torch.cuda.is_available() else "cpu"
 
     snapshot_dir = LDM_SNAPSHOT_DIR
     models_dir   = os.path.join(snapshot_dir, "models")
     os.makedirs(models_dir, exist_ok=True)
 
+    device = setup_environment(SEED, snapshot_dir)
     setup_logging(snapshot_dir)
     writer = SummaryWriter(os.path.join(snapshot_dir, "log" if args.resume else "log"))
     print(f"Results logged in: {snapshot_dir}, TensorBoard logs in: {snapshot_dir}/log, Models saved in: {models_dir}\n")
-    torch.manual_seed(SEED)
-
+    
+    
     if args.resume:
         latest_epoch, weights_path, opt_path = get_latest_checkpoint(models_dir)
         if weights_path and opt_path:

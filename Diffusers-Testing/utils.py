@@ -28,6 +28,32 @@ def check_or_create_folder(folder):
         os.makedirs(folder)
 
 #-----------------------------------------------------------------------------#
+def setup_environment(seed: int, snapshot_dir: str):
+    """Set up environment and determinism."""
+    
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+    os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
+    torch.multiprocessing.set_sharing_strategy("file_system")
+    
+    output_file = (
+        "params.txt"  # Define the output text file pathweights_only=True
+    )
+
+    with open(f"{snapshot_dir}/{output_file}", "w") as f:  # Write the dictionary to a text file
+        f.write(f"batch_size: {BATCH_SIZE}\n")
+        f.write("-----------------------------------------------------\n")
+        f.write("UNET_PARAMS:\n")
+        [f.write(f"{key}: {value}\n") for key, value in UNET_PARAMS.items()]
+        f.write("-----------------------------------------------------\n")
+        f.write("OPTIMIZER_PARAMS:\n")
+        [f.write(f"{key}: {value}\n") for key, value in OPT.items()]
+
+    print(f"UNET_PARAMS and OPTIMIZER_PARAMS written to {output_file}")
+
+    return "cuda" if torch.cuda.is_available() else "cpu"
+
+#-------------------------------------------------------------------#
 def prepare_and_write_csv_file(snapshot_dir, list_entries, write_header=False):
     """
     Write entries to logs.csv. Optionally write header if `write_header=True`.

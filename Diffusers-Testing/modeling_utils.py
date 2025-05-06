@@ -28,10 +28,10 @@ class TauEncoder(nn.Module):
     """
     def __init__(self, encoder):
         super().__init__()
-        self.encoder   = encoder
+        self.encoder    = encoder
         latent_channels = 4
-        use_quant_conv = True
-        self.quant_cov = nn.Conv2d(2 * latent_channels, 2 * latent_channels, 1) if use_quant_conv else None
+        use_quant_conv  = True
+        self.quant_cov  = nn.Conv2d(2 * latent_channels, 2 * latent_channels, 1) if use_quant_conv else None
 
     def forward(self, x):
         h         = self.encoder(x)
@@ -130,9 +130,10 @@ def denoise_and_decode_in_one_step(batch_size, noise_pred, timesteps, zt, schedu
         zt         = zt.to(device = 'cpu')
         
     for batch_idx in range(batch_size):
-        z0_hat   =  scheduler.step(noise_pred[batch_idx].unsqueeze(0), timesteps[batch_idx].unsqueeze(0), zt[batch_idx].unsqueeze(0)).pred_original_sample
+        z0_hat   = scheduler.step(noise_pred[batch_idx].unsqueeze(0), timesteps[batch_idx].unsqueeze(0), zt[batch_idx].unsqueeze(0)).pred_original_sample
+        z0_hat   = z0_hat / latent_scale
         z0_hat   = z0_hat.to(device) if inference else z0_hat
-        mask_hat = vae.decode(z0_hat / latent_scale).sample
+        mask_hat = vae.decode(z0_hat).sample
         z0_hat_list.append(z0_hat)
         mask_hat_list.append(mask_hat)
     

@@ -38,8 +38,7 @@ class LDM_Segmentor(nn.Module):
             param.requires_grad = False
 
         # Learnable image encoder (Tau θ)
-        encoder            = copy.deepcopy(self.vae.encoder)
-        self.image_encoder = TauEncoder(encoder).to(device).train()
+        self.image_encoder = TauEncoder(copy.deepcopy(self.vae.encoder)).to(device).train()
         for param in self.image_encoder.parameters():
             param.requires_grad = True
 
@@ -52,37 +51,35 @@ class LDM_Segmentor(nn.Module):
         # Loss Criterion (Custom class)
         self.loss_criterion = CombinedL1L2Loss(l1_weight = 1.0, l2_weight = 1.0, reduction = 'mean')
 
-    def forward(self, image: torch.Tensor, mask: torch.Tensor = None, t: torch.Tensor = None):
+    def forward(self, image: torch.Tensor, mask: torch.Tensor = None):
         """
         Forward pass for both training and inference.
 
         Args:
             image (B, 3, 256, 256): Input RGB image
             mask  (B, 3, 256, 256): Binary mask (optional during inference)
-            t     (B,)            : Diffusion timestep
-            inference (bool)      : If True, assumes inference mode
-            num_inference_steps   : # of DDIM steps during inference
 
         Returns:
-            dict containing z0, zt, zc, z0_hat, noise_pred, mask_hat
+            dict containing z0, zt, zc, z0_hat, noise, noise_hat
         """
 
         with torch.no_grad():
             # Encode GT mask via frozen VAE encoder
             posterior = self.vae.encode(mask).latent_dist
-            z0 = posterior.sample() * self.latent_scale
+            z0 = posterior.sample() * self.latent_scale if DETERMINISTIC else posterior.mode() * self.latent_scale
 
-            # Step 2: Add noise to z0 → zt
-            noise = torch.randn_like(z0)
-            zt = self.scheduler.add_noise(z0, noise, t)
+        # Step 2: Add noise to z0 → zt
+        t     = torch.randint(0, self.scheduler.config.num_train_timesteps, (image.size(0),), device=self.device).long()
+        noise = torch.randn_like(z0)
+        zt    = self.scheduler.add_noise(z0, noise, t)
 
         # Step 3: Encode input image → zc
-        zc = (self.image_encoder(image) * self.latent_scale)
+        zc    = (self.image_encoder(image) * self.latent_scale)
 
          # Step 4: Concatenate and denoise followed by estimatation of z0_hat and decode to mask
         
         noise_hat        = self.unet(torch.cat([zt, zc], dim = 1), t).sample  # (B, 4, 32, 32), t is just (B,)
-        z0_hat, mask_hat = denoise_and_decode_in_one_step(image.shape[0], noise_hat, t, zt, self.scheduler, 
+        z0_hat, _        = denoise_and_decode_in_one_step(BATCH_SIZE, noise_hat, t, zt, self.scheduler, 
                                             self.vae, self.latent_scale, self.device, False)
         
         out              = {"z0": z0, "zt": zt, "zc": zc, "z0_hat": z0_hat, "noise": noise, 'noise_hat': noise_hat}
@@ -94,7 +91,7 @@ class LDM_Segmentor(nn.Module):
         if not isinstance(self.scheduler, DDIMScheduler):
             self.scheduler = switch_to_ddim(self.device)
             
-        zt = (torch.randn(1, 4, TRAINSIZE // 8, TRAINSIZE // 8, device=self.device, dtype=torch.float16)* self.latent_scale)
+        zt = (torch.randn(1, 4, TRAINSIZE // 8, TRAINSIZE // 8, device=self.device, dtype=torch.float16) * self.latent_scale)
         zc = (self.image_encoder(image) * self.latent_scale)
         
         if do.ONE_X_ONE:

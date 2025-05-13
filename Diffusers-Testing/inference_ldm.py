@@ -59,7 +59,7 @@ def perform_inference(model, test_loader, device, output_dir, num_samples=5):
         model_out = model.inference(image, t)
 
         predicted_mask    = model_out['mask_hat']
-        predicted_mask    = (torch.sigmoid(predicted_mask) > 0.5).float().cpu().numpy().squeeze()
+        predicted_mask    = (torch.tanh(predicted_mask) > 0).float().cpu().numpy().squeeze()
         groundtruth_image = image.cpu().numpy().squeeze()
         groundtruth_mask  = mask.cpu().numpy().squeeze()
 

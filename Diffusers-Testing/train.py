@@ -28,14 +28,15 @@ def initialize_new_session(device):
     """Creates a new model and optimizer from scratch."""
     model     = LDM_Segmentor().to(device)
     optimizer = AdamW(model.parameters(), lr=OPT['lr'], betas=OPT['betas'], weight_decay=OPT['weight_decay'])
-    
+    scheduler = None 
     # Scheduler
-    total_steps  = (SPLIT_RATIOS[0] // BATCH_SIZE) * N_EPOCHS # for periteration
-    # total_steps  = N_EPOCHS
-    warmup_steps = int(OPT['warmup_ratio'] * total_steps)
-    scheduler    = get_cosine_schedule_with_warmup(optimizer = optimizer, num_warmup_steps = warmup_steps,
-                                                num_cycles = OPT['period'], num_training_steps=total_steps
-    )
+    if USE_SCHEDULER:
+        total_steps  = (SPLIT_RATIOS[0] // BATCH_SIZE) * N_EPOCHS # for periteration
+        # total_steps  = N_EPOCHS
+        warmup_steps = int(OPT['warmup_ratio'] * total_steps)
+        scheduler    = get_cosine_schedule_with_warmup(optimizer = optimizer, num_warmup_steps = warmup_steps,
+                                                    num_cycles = OPT['period'], num_training_steps=total_steps
+        )
     
     return model, optimizer, scheduler, 0
 
@@ -63,11 +64,13 @@ def trainer(model, optimizer, scheduler, train_loader, val_loader, device, scale
             writer.add_scalar("Loss/Train Iteration", loss.item(), epoch * len(train_loader) + step)
             logging.info(f"[train] epoch: {epoch} batch: {step} loss: {loss.item():.4f}")
             
-            scheduler.step()        
-            writer.add_scalar("LR", scheduler.get_last_lr()[0], epoch)
+            if USE_SCHEDULER:
+                scheduler.step()        
+                writer.add_scalar("LR", scheduler.get_last_lr()[0], epoch)
             
         epoch_loss /= len(train_loader)
-        logging.info(f"[train] epoch: {epoch} mean loss: {epoch_loss:.4f}, LR: {scheduler.get_last_lr()[0]:.6f}")
+        # logging.info(f"[train] epoch: {epoch} mean loss: {epoch_loss:.4f}, LR: {scheduler.get_last_lr()[0]:.6f}")
+        logging.info(f"[train] epoch: {epoch} mean loss: {epoch_loss:.4f}")
         writer.add_scalar("loss/train epoch", epoch_loss, epoch)
           
         # ---- Validation ---- #
@@ -120,9 +123,9 @@ def main():
     
     
     if args.resume:
-        latest_epoch, weights_path, opt_path = get_latest_checkpoint(models_dir)
+        resume_epoch, weights_path, opt_path = get_latest_checkpoint(models_dir)
         if weights_path and opt_path:
-            model, optimizer, scheduler, resume_epoch = load_model_and_optimizer(weights_path, opt_path, device, load_optim_dict = False)
+            model, optimizer, scheduler, _ = load_model_and_optimizer(weights_path, opt_path, device, load_optim_dict = False)
             logging.info(f"✅ Resumed from epoch {resume_epoch} (model: {weights_path})")
         else:
             logging.warning("⚠️ No valid checkpoint found. Starting from scratch.")

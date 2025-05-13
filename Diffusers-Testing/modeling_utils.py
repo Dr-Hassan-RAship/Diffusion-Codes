@@ -131,9 +131,8 @@ def denoise_and_decode_in_one_step(batch_size, noise_pred, timesteps, zt, schedu
         
     for batch_idx in range(batch_size):
         z0_hat   = scheduler.step(noise_pred[batch_idx].unsqueeze(0), timesteps[batch_idx].unsqueeze(0), zt[batch_idx].unsqueeze(0)).pred_original_sample
-        z0_hat   = z0_hat / latent_scale
         z0_hat   = z0_hat.to(device) if inference else z0_hat
-        mask_hat = vae.decode(z0_hat).sample
+        mask_hat = vae.decode(z0_hat / latent_scale).sample
         z0_hat_list.append(z0_hat)
         mask_hat_list.append(mask_hat)
     
@@ -149,12 +148,17 @@ def denoise_and_decode(timesteps, zt, scheduler, vae, latent_scale, device, unet
     Denoise and decode the latent zt to obtain the predicted mask in multiple steps
     """
 
-    z0_hat     = torch.cat([zt, zc], dim=1)
+    z0_hat      = torch.cat([zt, zc], dim=1)
+    prev_sample = zt
+    # print(f'Outside for loop; z0_hat.shape: {z0_hat.shape}')
     for t in tqdm(timesteps.to(device  = device)):
         print(f'Timestep: {t}')        
         noise_pred  = unet(z0_hat, t.expand(1)).sample.to(dtype = torch.float16, device = 'cpu') # (1, 4, 32, 32), t.shape = (1,)
-        prev_sample = scheduler.step(noise_pred, t.expand(1).to(device = 'cpu'), zt.to(device = 'cpu')).prev_sample.to(device)
+        # print(f'noise_pred.shape: {noise_pred.shape}')
+        prev_sample = scheduler.step(noise_pred, t.expand(1).to(device = 'cpu'), prev_sample.to(device = 'cpu')).prev_sample.to(device)
+        # print(f'prev_sample.shape: {prev_sample.shape}')
         z0_hat      = torch.cat([prev_sample, zc], dim=1)
+        # print(f'Inside for loop; z0_hat.shape: {z0_hat.shape}')
         
     return z0_hat, vae.decode(prev_sample / latent_scale).sample
 #--------------------------------------------------------------------------------------#
@@ -165,7 +169,7 @@ def switch_to_ddim(device):
     scheduler = DDIMScheduler(num_train_timesteps=NUM_TRAIN_TIMESTEPS)
     scheduler.set_timesteps(do.INFERENCE_TIMESTEPS, device = device)
     
-    print(f'Switching to DDIM scheduler with inference timesteps: {do.INFERENCE_TIMESTEPS}')
+    print(f'\nSwitching to DDIM scheduler with inference timesteps: {do.INFERENCE_TIMESTEPS}\n')
     
     return scheduler
 

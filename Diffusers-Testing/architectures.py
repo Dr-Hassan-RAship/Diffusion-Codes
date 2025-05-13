@@ -88,7 +88,7 @@ class LDM_Segmentor(nn.Module):
         return out, loss
         
     def inference(self, image, t):
-        if not isinstance(self.scheduler, DDIMScheduler):
+        if do.INFERER_SCHEDULER == 'DDIM' and not isinstance(self.scheduler, DDIMScheduler):
             self.scheduler = switch_to_ddim(self.device)
             
         zt = (torch.randn(1, 4, TRAINSIZE // 8, TRAINSIZE // 8, device=self.device, dtype=torch.float16) * self.latent_scale)

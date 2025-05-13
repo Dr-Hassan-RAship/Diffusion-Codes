@@ -1,6 +1,6 @@
 # ------------------------------------------------------------------------------#
 #
-# File name                 : config_ldm_ddpm.py
+# File name                 : config.py
 # Purpose                   : Configuration for 2D Latent Diffusion Model (LDM)
 # Usage                     : Imported by train_ldm.py and inference_ldm.py
 #
@@ -20,12 +20,13 @@ CLASSIFICATION_TYPE = 'binary'              # 'binary' or 'multiclass'
 
 #-------------------------------------------------------------------------------#
 # Optimizer Configuration
+USE_SCHEDULER    = False
 OPT              = { "optimizer"      : "AdamW",
                      "lr"              : 1e-4,
-                     "weight_decay"    : 0.01,
+                     "weight_decay"    : 1e-5,
                      "betas"           : (0.9, 0.999),
                      "period"          : 0.5,
-                     "warmup_ratio"    : False,
+                     "warmup_ratio"    : 0.1,
 }
 
 # ------------------------------------------------------------------------------#
@@ -41,7 +42,7 @@ DETERMINISTIC       = True         # Whether to use deterministic vae latent rep
 
 # ------------------------------------------------------------------------------#
 # Experiment configuration
-OPTIONAL_INFO   = "with_deterministic_and_unscaling"
+OPTIONAL_INFO   = "with_deterministic_and_constant_lr"
 EXPERIMENT_NAME = f'machine--B{BATCH_SIZE}-E{N_EPOCHS}-V{VAL_INTERVAL}-T{NUM_TRAIN_TIMESTEPS}-S{SCHEDULER}'
 RUN             = '07_' + OPTIONAL_INFO
 
@@ -57,18 +58,18 @@ UNET_PARAMS = { "sample_size"       : TRAINSIZE // 8,
               } # num_head_channels = model_channels (192) // num_heads (8)
 
 LDM_SNAPSHOT_DIR     = "./results/" + RUN + f"/ldm-" + EXPERIMENT_NAME
-# LDM_SCALE_FACTOR     = 1.0
+# LDM_SCALE_FACTOR   = 1.0
 
 # ------------------------------------------------------------------------------#
 # Placeholder for inference configuration
 class InferenceConfig:
     N_PREDS             = 1
-    MODEL_EPOCH         = 1000               # Epoch of the model to load (-1 for final model)
-    NUM_SAMPLES         = 10                 # Number of samples 
+    MODEL_EPOCH         = 1350               # Epoch of the model to load (-1 for final model)
+    NUM_SAMPLES         = 1                 # Number of samples 
     SAVE_FOLDER         = LDM_SNAPSHOT_DIR + f"/inference-M{MODEL_EPOCH if MODEL_EPOCH != -1 else N_EPOCHS}-E{N_EPOCHS}-t{NUM_TRAIN_TIMESTEPS}-S{SCHEDULER}-SP{NUM_SAMPLES}"  # Save folder for inference results
     INFERER_SCHEDULER   = 'DDIM'
     TRAIN_TIMESTEPS     = NUM_TRAIN_TIMESTEPS
-    ONE_X_ONE           = True # make it False if training
+    ONE_X_ONE           = False # make it False if training
     INFERENCE_TIMESTEPS = 100 if INFERER_SCHEDULER == 'DDIM' else NUM_TRAIN_TIMESTEPS
     SAVE_INTERMEDIATES  = False
     METRIC_REPORT       = True

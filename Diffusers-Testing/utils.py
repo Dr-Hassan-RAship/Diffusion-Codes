@@ -47,7 +47,9 @@ def setup_environment(seed: int, snapshot_dir: str):
         [f.write(f"{key}: {value}\n") for key, value in UNET_PARAMS.items()]
         f.write("-----------------------------------------------------\n")
         f.write("OPTIMIZER_PARAMS:\n")
-        [f.write(f"{key}: {value}\n") for key, value in OPT.items()]
+        f.write(f"use_scheduler: {USE_SCHEDULER}\n")
+        for key, value in (list(OPT.items())[:4] if USE_SCHEDULER else OPT.items()):
+            f.write(f"{key}: {value}\n")
 
     print(f"UNET_PARAMS and OPTIMIZER_PARAMS written to {output_file}")
 
@@ -115,12 +117,19 @@ def save_checkpoint(model, optimizer, scheduler, epoch, path):
     # 2) Save optimizer + epoch if and only if we are at last epoch
     if epoch % N_EPOCHS == 0:
         opt_path     = path + ".opt.pt"
-        ckpt = {
-        "optimizer_state_dict": optimizer.state_dict(),
-        "scheduler_state_dict": scheduler.state_dict(),
-        "epoch": epoch,
-        }
-        torch.save(ckpt, opt_path)
+        if USE_SCHEDULER:
+            ckpt = {
+            "optimizer_state_dict": optimizer.state_dict(),
+            "scheduler_state_dict": scheduler.state_dict(),
+            "epoch"               : epoch,
+            }
+            torch.save(ckpt, opt_path)
+        else:
+            ckpt = {
+                "optimizer_state_dict": optimizer.state_dict(),
+                "epoch"               : epoch,
+            }
+            torch.save(ckpt, opt_path)
     
 #--------------------------------------------------------------------------------------#
 def get_latest_checkpoint(models_dir):
@@ -142,7 +151,9 @@ def get_latest_checkpoint(models_dir):
 def load_model_and_optimizer(weights_path, opt_path, device, load_optim_dict=True):
     """Loads model, optimizer, and scheduler from safetensors + pt files."""
     
-    epoch = 0
+    epoch     = 0
+    scheduler = None
+    
     model = LDM_Segmentor().to("cpu")
 
     # Reload VAE weights to avoid shared tensor duplication
@@ -161,14 +172,14 @@ def load_model_and_optimizer(weights_path, opt_path, device, load_optim_dict=Tru
     model = model.to(device)
 
     # Optimizer
-    optimizer = AdamW(model.parameters(), lr=LR, betas = BETAS, weight_decay = WEIGHT_DECAY)
+    optimizer = AdamW(model.parameters(), lr=OPT['lr'], betas=OPT['betas'], weight_decay=OPT['weight_decay'])
 
     # Scheduler
-    total_steps  = (SPLIT_RATIOS[0] // BATCH_SIZE) * N_EPOCHS
-    warmup_steps = int(WARMUP_RATIO * total_steps)
-    scheduler    = get_cosine_schedule_with_warmup(optimizer  = optimizer, num_warmup_steps = warmup_steps,
-                                                num_cycles = 0.1, num_training_steps=total_steps
-    )
+    # total_steps  = (SPLIT_RATIOS[0] // BATCH_SIZE) * N_EPOCHS
+    # warmup_steps = int(WARMUP_RATIO * total_steps)
+    # scheduler    = get_cosine_schedule_with_warmup(optimizer  = optimizer, num_warmup_steps = warmup_steps,
+    #                                             num_cycles = 0.1, num_training_steps=total_steps
+    # )
 
     if load_optim_dict and opt_path is not None and os.path.exists(opt_path):
         opt_state = torch.load(opt_path, map_location="cpu")

@@ -55,11 +55,10 @@ def perform_inference(model, test_loader, device, output_dir, num_samples=5):
         B = image.size(0)
         
         # Run sampling
-        t         = torch.full((B,), NUM_TRAIN_TIMESTEPS - 1, device=device).long() if do.ONE_X_ONE else model.scheduler.timesteps
-        model_out = model.inference(image, t)
+        model_out = model.inference(image)
 
         predicted_mask    = model_out['mask_hat']
-        predicted_mask    = (torch.tanh(predicted_mask) > 0).float().cpu().numpy().squeeze()
+        predicted_mask    = (torch.sigmoid(predicted_mask) > 0.5).float().cpu().numpy().squeeze()
         groundtruth_image = image.cpu().numpy().squeeze()
         groundtruth_mask  = mask.cpu().numpy().squeeze()
 

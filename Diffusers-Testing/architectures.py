@@ -66,7 +66,7 @@ class LDM_Segmentor(nn.Module):
         with torch.no_grad():
             # Encode GT mask via frozen VAE encoder
             posterior = self.vae.encode(mask).latent_dist
-            z0 = posterior.sample() * self.latent_scale if DETERMINISTIC else posterior.mode() * self.latent_scale
+            z0        = posterior.sample() * self.latent_scale if DETERMINISTIC else posterior.mode() * self.latent_scale
 
         # Step 2: Add noise to z0 → zt
         t     = torch.randint(0, self.scheduler.config.num_train_timesteps, (image.size(0),), device=self.device).long()
@@ -87,19 +87,22 @@ class LDM_Segmentor(nn.Module):
 
         return out, loss
         
-    def inference(self, image, t):
+    def inference(self, image):
         if do.INFERER_SCHEDULER == 'DDIM' and not isinstance(self.scheduler, DDIMScheduler):
             self.scheduler = switch_to_ddim(self.device)
-            
+        else:
+            print(f'\n[INFO] Using {self.scheduler.__class__.__name__} scheduler for inference with timesteps {do.INFERENCE_TIMESTEPS}')
+            self.scheduler.set_timesteps(do.INFERENCE_TIMESTEPS, device = self.device)
         zt = (torch.randn(1, 4, TRAINSIZE // 8, TRAINSIZE // 8, device=self.device, dtype=torch.float16) * self.latent_scale)
         zc = (self.image_encoder(image) * self.latent_scale)
         
         if do.ONE_X_ONE:
+            t                = torch.full((1,), NUM_TRAIN_TIMESTEPS - 1, device=self.device).long()
             noise_hat        = self.unet(torch.cat([zt, zc], dim = 1), t).sample
             z0_hat, mask_hat = denoise_and_decode_in_one_step(1, noise_hat, t, zt, self.scheduler, 
                                                               self.vae, self.latent_scale, self.device, True) 
         else:
-            z0_hat, mask_hat = denoise_and_decode(t, zt, self.scheduler, self.vae, self.latent_scale, 
+            z0_hat, mask_hat = denoise_and_decode(zt, self.scheduler, self.vae, self.latent_scale, 
                                                   self.device, self.unet, zc)
 
         return {'z0_hat': z0_hat, 'mask_hat': mask_hat}

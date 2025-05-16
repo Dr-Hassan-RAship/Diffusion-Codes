@@ -19,8 +19,8 @@ import matplotlib
 
 matplotlib.use("Agg")
 
-from medpy                                          import metric
-from monai.metrics                                  import MeanIoU
+from monai.metrics                                  import DiceMetric, MeanIoU
+from medpy.metric.binary                            import assd, hd95
 from config                                         import *
 from utils                                          import *
 
@@ -34,32 +34,22 @@ def save_nifti(filename, savepath, data, affine=None, header=None):
     
 # ------------------------------------------------------------------------------#
 def calculate_metrics(prediction, label):
-    """
-    For calculating metrics such as dice, hd95, assd and miou.
-    """
-    miou_metric = MeanIoU()
-    pred = prediction > 0
-    gt = label > 0
+    # """
+    # For calculating metrics such as dice, hd95, assd and miou.
+    # """
+    
+    pred = (prediction > 0).astype(np.uint8)
+    gt   = (label > 0).astype(np.uint8)
 
-    if (pred.sum() > 0) and (gt.sum() > 0):  # Main calculation
-        dice = metric.binary.dc(pred, gt)
-        hd95 = metric.binary.hd95(pred, gt)
-        assd = metric.binary.assd(pred, gt)
-        miou = miou_metric(torch.tensor(pred).unsqueeze(0).unsqueeze(0), torch.tensor(gt).unsqueeze(0).unsqueeze(0)).item()
+    dice_metric = DiceMetric(include_background=False, reduction="mean")
+    miou_metric = MeanIoU(include_background=False)
 
-    elif (pred.sum() == 0) and (gt.sum() == 0):  # Safeguard no 2
-        dice = 1
-        hd95 = 0
-        assd = 0
-        miou = 1
-
-    else:
-        dice = 0
-        hd95 = np.inf
-        assd = np.inf
-        miou = 0
-
-    return dice, hd95, assd, miou
+    dice        = dice_metric(torch.tensor(pred)[None, None], torch.tensor(gt)[None, None]).item()
+    miou        = miou_metric(torch.tensor(pred)[None, None], torch.tensor(gt)[None, None]).item()
+    assd_val    = assd(pred, gt)
+    hd95_val    = hd95(pred, gt)
+    
+    return dice, hd95_val, assd_val, miou
 
 # ------------------------------------------------------------------------------#
 def save_groundtruth_image(image, save_folder, filename, mode="image"):

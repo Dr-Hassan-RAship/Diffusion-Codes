@@ -32,19 +32,21 @@ OPT              = { "optimizer"      : "AdamW",
 # ------------------------------------------------------------------------------#
 # Training configuration
 SEED                = 1337          # Random seed for reproducibility
-N_EPOCHS            = 1000          # Number of training epochs
+N_EPOCHS            = 10000          # Number of training epochs
 VAL_INTERVAL        = 500           # Validate every n epochs (can reduce)
-MODEL_SAVE_INTERVAL = 50            # Save model every n epochs
+MODEL_SAVE_INTERVAL = 100            # Save model every n epochs
 NUM_TRAIN_TIMESTEPS = 1000          # i.e., diffusion steps (T)
 NOISE_SCHEDULER     = "linear_beta" # {linear_beta, cosine_beta}
 SCHEDULER           = 'DDPM'        # {DDPM, DDIM}
-DETERMINISTIC       = True         # Whether to use deterministic vae latent representation or not
+ETA                 = 0.0           # Weight for noise added in DDIM (eta = 1 for DDPM, eta = 0 for deterministic and DDIM)
+VAR_NOISE           = False
+DETERMINISTIC       = True          # Whether to use deterministic vae latent representation or not
 
 # ------------------------------------------------------------------------------#
 # Experiment configuration
 OPTIONAL_INFO   = "with_deterministic_and_constant_lr"
 EXPERIMENT_NAME = f'machine--B{BATCH_SIZE}-E{N_EPOCHS}-V{VAL_INTERVAL}-T{NUM_TRAIN_TIMESTEPS}-S{SCHEDULER}'
-RUN             = '07_' + OPTIONAL_INFO
+RUN             = '08_' + OPTIONAL_INFO
 
 # ------------------------------------------------------------------------------#
 # Model configuration for Diffusion i.e., UNET --> matched with SDSeg
@@ -64,13 +66,13 @@ LDM_SNAPSHOT_DIR     = "./results/" + RUN + f"/ldm-" + EXPERIMENT_NAME
 # Placeholder for inference configuration
 class InferenceConfig:
     N_PREDS             = 1
-    MODEL_EPOCH         = 1350               # Epoch of the model to load (-1 for final model)
-    NUM_SAMPLES         = 1                 # Number of samples 
-    SAVE_FOLDER         = LDM_SNAPSHOT_DIR + f"/inference-M{MODEL_EPOCH if MODEL_EPOCH != -1 else N_EPOCHS}-E{N_EPOCHS}-t{NUM_TRAIN_TIMESTEPS}-S{SCHEDULER}-SP{NUM_SAMPLES}"  # Save folder for inference results
+    MODEL_EPOCH         = 1000               # Epoch of the model to load (-1 for final model)
+    NUM_SAMPLES         = 2                 # Number of samples 
     INFERER_SCHEDULER   = 'DDIM'
     TRAIN_TIMESTEPS     = NUM_TRAIN_TIMESTEPS
     ONE_X_ONE           = False # make it False if training
-    INFERENCE_TIMESTEPS = 100 if INFERER_SCHEDULER == 'DDIM' else NUM_TRAIN_TIMESTEPS
+    INFERENCE_TIMESTEPS = 2 if INFERER_SCHEDULER == 'DDIM' else NUM_TRAIN_TIMESTEPS
+    SAVE_FOLDER         = LDM_SNAPSHOT_DIR + f"/inference-M{MODEL_EPOCH if MODEL_EPOCH != -1 else N_EPOCHS}-E{N_EPOCHS}-t{NUM_TRAIN_TIMESTEPS}-S{SCHEDULER}-SP{NUM_SAMPLES}-It{INFERENCE_TIMESTEPS}"  # Save folder for inference results
     SAVE_INTERMEDIATES  = False
     METRIC_REPORT       = True
 

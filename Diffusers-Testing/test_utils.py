@@ -131,10 +131,8 @@ def denoise_and_decode_in_one_step(batch_size, noise_pred, timesteps, zt, schedu
         
     for batch_idx in range(batch_size):
         z0_hat   = scheduler.step(noise_pred[batch_idx].unsqueeze(0), timesteps[batch_idx].unsqueeze(0), zt[batch_idx].unsqueeze(0)).pred_original_sample
-        # alpha_t                     = scheduler.alphas_cumprod[timesteps[batch_idx].item()]
-        # z0_hat                      = (zt[batch_idx].unsqueeze(0) - (1 - alpha_t).sqrt() * noise_pred[batch_idx].unsqueeze(0)) / alpha_t.sqrt()
-        z0_hat                      = z0_hat.to(device) if inference else z0_hat
-        mask_hat                    = vae.decode(z0_hat / latent_scale).sample
+        z0_hat   = z0_hat.to(device) if inference else z0_hat
+        mask_hat = vae.decode(z0_hat / latent_scale).sample
         z0_hat_list.append(z0_hat)
         mask_hat_list.append(mask_hat)
     
@@ -159,47 +157,28 @@ def denoise_and_decode(zt, scheduler, vae, latent_scale, device, unet, zc):
     for idx in tqdm(range(0, do.INFERENCE_TIMESTEPS), desc="⏳ Denoising"):
         
         t = scheduler.timesteps[idx]  # Assumes B = 1
-
         # Run U-Net on GPU
         model_input = z0_hat.to(device)
         noise_pred  = unet(model_input, t.expand(1)).sample # .to(dtype=torch.float16, device="cpu")
 
         # Step through scheduler on CPU
         # prev_sample = scheduler.step(noise_pred, timestep.to("cpu"), prev_sample).prev_sample
-        if do.INFERER_SCHEDULER == 'DDIM':
-            prev_t                      = max(1, t.item() - (1000 // do.INFERENCE_TIMESTEPS))  # line (223 - 227) in source code
-            alpha_t                     = scheduler.alphas_cumprod[t.item()]
-            alpha_t_prev                = scheduler.alphas_cumprod[prev_t]
-            predicted_x0                = (prev_sample - (1 - alpha_t).sqrt() * noise_pred) / alpha_t.sqrt()
-            direction_pointing_to_xt    = (1 - alpha_t_prev).sqrt() * noise_pred
-            prev_sample                 = alpha_t_prev.sqrt() * predicted_x0 + direction_pointing_to_xt
+        prev_t                      = max(1, t.item() - (1000 // do.INFERENCE_TIMESTEPS))  # line (223 - 227) in source code
+        alpha_t                     = scheduler.alphas_cumprod[t.item()]
+        alpha_t_prev                = scheduler.alphas_cumprod[prev_t]
         
-        else:
-            prev_t                      = scheduler.previous_timestep(t.item())
-            print(f'prev_t: {prev_t}')
-            alpha_prod_t                = scheduler.alphas_cumprod[t.item()]
-            print(f'alpha_prod_t: {alpha_prod_t}')
-            alpha_prod_t_prev           = scheduler.alphas_cumprod[prev_t.item()]
-            print(f'alpha_prod_t_prev: {alpha_prod_t_prev}')
-            beta_prod_t                 = (1 - alpha_prod_t)
-            print(f'beta_prod_t: {beta_prod_t}')
-            beta_prod_t_prev            = (1 - alpha_prod_t_prev)
-            print(f'beta_prod_t_prev: {beta_prod_t_prev}')
-            current_alpha_t             = (alpha_prod_t / alpha_prod_t_prev)
-            print(f'current_alpha_t: {current_alpha_t}')
-            current_beta_t              = (1 - current_alpha_t)
-            print(f'current_beta_t: {current_beta_t}')
-            
-            predicted_x0                = (prev_sample - beta_prod_t.sqrt() * noise_pred) / alpha_prod_t.sqrt()
-            print(f'predicted_x0.shape: {predicted_x0.shape}')
-            pred_original_sample_coeff  = (alpha_prod_t_prev.sqrt() * current_beta_t) / beta_prod_t
-            print(f'pred_original_sample_coeff.shape: {pred_original_sample_coeff.shape}')
-            current_sample_coeff        = current_alpha_t.sqrt() * beta_prod_t_prev / beta_prod_t
-            print(f'current_sample_coeff.shape: {current_sample_coeff.shape}')
-            
-            prev_sample                 = predicted_x0 * pred_original_sample_coeff + prev_sample * current_sample_coeff
-            print(f'prev_sample.shape: {prev_sample.shape}')
-            
+        variance                    = get_variance(scheduler, t.item(), prev_t)
+        stdev                       = ETA * variance.sqrt()
+        
+        predicted_x0                = (prev_sample - (1 - alpha_t).sqrt() * noise_pred) / alpha_t.sqrt()
+        
+        var_noise                   = 0
+        if VAR_NOISE:
+            var_noise               = torch.randn_like(noise_pred, dtype = torch.float16, device = device) * stdev
+        
+        direction_pointing_to_xt    = (1 - alpha_t_prev - stdev ** 2).sqrt() * noise_pred
+        prev_sample                 = alpha_t_prev.sqrt() * predicted_x0 + direction_pointing_to_xt + var_noise
+
         # Concatenate again for next step
         z0_hat = torch.cat([prev_sample, zc], dim=1)
 
@@ -210,6 +189,16 @@ def denoise_and_decode(zt, scheduler, vae, latent_scale, device, unet, zc):
         return prev_sample, mask_hat
     else:
         return predicted_x0, mask_hat
+#--------------------------------------------------------------------------------------#
+def get_variance(scheduler, timestep, prev_timestep):
+        alpha_prod_t        = scheduler.alphas_cumprod[timestep]
+        alpha_prod_t_prev   = scheduler.alphas_cumprod[prev_timestep] if prev_timestep >= 0 else scheduler.final_alpha_cumprod
+        beta_prod_t         = 1 - alpha_prod_t
+        beta_prod_t_prev    = 1 - alpha_prod_t_prev
+
+        variance            = (beta_prod_t_prev / beta_prod_t) * (1 - alpha_prod_t / alpha_prod_t_prev)
+
+        return variance
 #--------------------------------------------------------------------------------------#
 def switch_to_ddim(device):
     """

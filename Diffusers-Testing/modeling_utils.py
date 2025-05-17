@@ -130,6 +130,7 @@ def denoise_and_decode_in_one_step(batch_size, noise_pred, timesteps, zt, schedu
         zt         = zt.to(device = 'cpu')
         
     for batch_idx in range(batch_size):
+        # z0_hat = (zt - ((1 - scheduler.alphas_cumprod).sqrt() * noise_pred)) / scheduler.alphas_cumprod.sqrt()
         z0_hat   = scheduler.step(noise_pred[batch_idx].unsqueeze(0), timesteps[batch_idx].unsqueeze(0), zt[batch_idx].unsqueeze(0)).pred_original_sample
         # alpha_t                     = scheduler.alphas_cumprod[timesteps[batch_idx].item()]
         # z0_hat                      = (zt[batch_idx].unsqueeze(0) - (1 - alpha_t).sqrt() * noise_pred[batch_idx].unsqueeze(0)) / alpha_t.sqrt()

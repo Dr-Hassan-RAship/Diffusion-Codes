@@ -66,7 +66,7 @@ class LDM_Segmentor(nn.Module):
         with torch.no_grad():
             # Encode GT mask via frozen VAE encoder
             posterior = self.vae.encode(mask).latent_dist
-            z0        = posterior.sample() * self.latent_scale if DETERMINISTIC else posterior.mode() * self.latent_scale
+            z0        = posterior.sample() * self.latent_scale if not DETERMINISTIC_ENC else posterior.mode() * self.latent_scale
 
         # Step 2: Add noise to z0 → zt
         t     = torch.randint(0, self.scheduler.config.num_train_timesteps, (image.size(0),), device=self.device).long()

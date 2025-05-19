@@ -37,7 +37,7 @@ class TauEncoder(nn.Module):
         h         = self.encoder(x)
         h         = self.quant_cov(h) if self.quant_cov else h
         h         = AutoencoderKLOutput(DiagonalGaussianDistribution(h)).latent_dist
-        return h.mean if DETERMINISTIC else h.sample()
+        return h.mean if DETERMINISTIC_TAU else h.sample() # Opposite to E
 
 #--------------------------------------------------------------------------------------
 class CombinedL1L2Loss(nn.Module):

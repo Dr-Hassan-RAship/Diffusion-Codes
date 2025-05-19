@@ -135,8 +135,8 @@ def main():
         model, optimizer, scheduler, resume_epoch = initialize_new_session(device)
 
     scaler       = GradScaler(device)
-    train_loader = get_dataloaders(BASE_DIR, SPLIT_RATIOS, "train", TRAINSIZE, BATCH_SIZE, FORMAT)
-    val_loader   = get_dataloaders(BASE_DIR, SPLIT_RATIOS, "val", TRAINSIZE, BATCH_SIZE, FORMAT)
+    train_loader = get_dataloaders(BASE_DIR, SPLIT_RATIOS, "train", TRAINSIZE, BATCH_SIZE, 2, FORMAT)
+    val_loader   = get_dataloaders(BASE_DIR, SPLIT_RATIOS, "val", TRAINSIZE, BATCH_SIZE, 2, FORMAT)
 
     start = time.time()
 

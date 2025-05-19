@@ -11,10 +11,10 @@
 #
 # ------------------------------------------------------------------------------#
 # Dataset configuration
-BASE_DIR            = "/media/ee/DATA/Talha_Nehal/Datasets/Kvasir-SEG"        # Path to the dataset root directory
+BASE_DIR            = "/media/ee/New Volume/Datasets/Kvasir-SEG"        # Path to the dataset root directory
 TRAINSIZE           = 256                   # Target size for resizing images and masks
 BATCH_SIZE          = 2                     # Batch size for dataloaders
-SPLIT_RATIOS        = (800, 100, 100)       # Train, validation, test split ratios
+SPLIT_RATIOS        = (800, 100, 100)       # Train, validation, test split ratios # (600, 200, 200)
 FORMAT              = True                  # If True, train/val/test subdirectories already exist
 CLASSIFICATION_TYPE = 'binary'              # 'binary' or 'multiclass'
 
@@ -40,7 +40,8 @@ NOISE_SCHEDULER     = "linear_beta" # {linear_beta, cosine_beta}
 SCHEDULER           = 'DDPM'        # {DDPM, DDIM}
 ETA                 = 0.0           # Weight for noise added in DDIM (eta = 1 for DDPM, eta = 0 for deterministic and DDIM)
 VAR_NOISE           = False
-DETERMINISTIC       = True          # Whether to use deterministic vae latent representation or not
+DETERMINISTIC_TAU   = True          # Whether to use deterministic vae latent representation or not
+DETERMINISTIC_ENC   = False
 
 # ------------------------------------------------------------------------------#
 # Experiment configuration

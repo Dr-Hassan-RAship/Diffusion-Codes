@@ -13,8 +13,8 @@
 # Dataset configuration
 BASE_DIR            = "/media/ee/New Volume/Datasets/Kvasir-SEG"        # Path to the dataset root directory
 TRAINSIZE           = 256                   # Target size for resizing images and masks
-BATCH_SIZE          = 2                     # Batch size for dataloaders
-SPLIT_RATIOS        = (800, 100, 100)       # Train, validation, test split ratios # (600, 200, 200)
+BATCH_SIZE          = 3                     # Batch size for dataloaders
+SPLIT_RATIOS        = (800, 100, 100)       # Train, validation, test split ratios # (800, 100, 100)
 FORMAT              = True                  # If True, train/val/test subdirectories already exist
 CLASSIFICATION_TYPE = 'binary'              # 'binary' or 'multiclass'
 
@@ -32,7 +32,7 @@ OPT              = { "optimizer"      : "AdamW",
 # ------------------------------------------------------------------------------#
 # Training configuration
 SEED                = 1337          # Random seed for reproducibility
-N_EPOCHS            = 10000          # Number of training epochs
+N_EPOCHS            = 1000          # Number of training epochs
 VAL_INTERVAL        = 500           # Validate every n epochs (can reduce)
 MODEL_SAVE_INTERVAL = 100            # Save model every n epochs
 NUM_TRAIN_TIMESTEPS = 1000          # i.e., diffusion steps (T)
@@ -45,9 +45,9 @@ DETERMINISTIC_ENC   = False
 
 # ------------------------------------------------------------------------------#
 # Experiment configuration
-OPTIONAL_INFO   = "with_deterministic_and_constant_lr"
+OPTIONAL_INFO   = "with_new_insights"
 EXPERIMENT_NAME = f'machine--B{BATCH_SIZE}-E{N_EPOCHS}-V{VAL_INTERVAL}-T{NUM_TRAIN_TIMESTEPS}-S{SCHEDULER}'
-RUN             = '08_' + OPTIONAL_INFO
+RUN             = '01_' + OPTIONAL_INFO
 
 # ------------------------------------------------------------------------------#
 # Model configuration for Diffusion i.e., UNET --> matched with SDSeg

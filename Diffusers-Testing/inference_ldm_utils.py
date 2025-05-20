@@ -54,7 +54,7 @@ def calculate_metrics(prediction, label):
 # ------------------------------------------------------------------------------#
 def save_groundtruth_image(image, save_folder, filename, mode="image"):
     """Save ground truth image as a JPEG file."""
-    image = np.squeeze(image)
+    # image = np.squeeze(image)
     filepath = os.path.join(save_folder, filename)
     if mode == "image":
         # tranpose image to (256, 256, 3) and normalize between 0 - 1 for each channel independantly for imsave

@@ -67,12 +67,12 @@ LDM_SNAPSHOT_DIR     = "./results/" + RUN + f"/ldm-" + EXPERIMENT_NAME
 # Placeholder for inference configuration
 class InferenceConfig:
     N_PREDS             = 1
-    MODEL_EPOCH         = 1000               # Epoch of the model to load (-1 for final model)
+    MODEL_EPOCH         = 300               # Epoch of the model to load (-1 for final model)
     NUM_SAMPLES         = 2                 # Number of samples 
     INFERER_SCHEDULER   = 'DDIM'
     TRAIN_TIMESTEPS     = NUM_TRAIN_TIMESTEPS
-    ONE_X_ONE           = False # make it False if training
-    INFERENCE_TIMESTEPS = 2 if INFERER_SCHEDULER == 'DDIM' else NUM_TRAIN_TIMESTEPS
+    ONE_X_ONE           = True # make it False if training
+    INFERENCE_TIMESTEPS = 100 if INFERER_SCHEDULER == 'DDIM' else NUM_TRAIN_TIMESTEPS
     SAVE_FOLDER         = LDM_SNAPSHOT_DIR + f"/inference-M{MODEL_EPOCH if MODEL_EPOCH != -1 else N_EPOCHS}-E{N_EPOCHS}-t{NUM_TRAIN_TIMESTEPS}-S{SCHEDULER}-SP{NUM_SAMPLES}-It{INFERENCE_TIMESTEPS}"  # Save folder for inference results
     SAVE_INTERMEDIATES  = False
     METRIC_REPORT       = True

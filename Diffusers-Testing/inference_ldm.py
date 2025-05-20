@@ -57,11 +57,17 @@ def perform_inference(model, test_loader, device, output_dir, num_samples=5):
         # Run sampling
         model_out = model.inference(image)
 
+	# [SDSeg inference practice] --> averaging the mask across channels and repeating the channel 3 times to reduce noise
         predicted_mask    = model_out['mask_hat']
-        predicted_mask    = (torch.sigmoid(predicted_mask) > 0.5).float().cpu().numpy().squeeze()
+        predicted_mask    = torch.clamp((predicted_mask + 1.0) / 2.0 , min=0.0, max=1.0)  
+        predicted_mask    = predicted_mask.mean(dim=1, keepdim=True).repeat(1, 3, 1, 1)
+        predicted_mask    = (predicted_mask > 0.5).float().cpu().numpy().squeeze()
         groundtruth_image = image.cpu().numpy().squeeze()
         groundtruth_mask  = mask.cpu().numpy().squeeze()
-
+	
+	# print(f'predicted_mask.shape: {predicted_mask.shape}, groundtruth_image.shape: {groundtruth_image.shape}')
+	# print(f'groundtruth_mask.shape: {groundtruth_mask.shape}')
+	
         # Save predictions
         patient_folder = os.path.join(output_dir, f"{int(patient_id)}")
         os.makedirs(patient_folder, exist_ok=True)

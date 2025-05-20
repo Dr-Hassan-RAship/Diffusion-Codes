@@ -13,3 +13,4 @@ Diffusers-Testing/results
 *.txt
 *.pyc
 *.tfevents.*
+*.yml*

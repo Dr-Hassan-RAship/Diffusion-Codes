@@ -22,8 +22,8 @@ CLASSIFICATION_TYPE = 'binary'              # 'binary' or 'multiclass'
 # Optimizer Configuration
 USE_SCHEDULER    = False
 OPT              = { "optimizer"      : "AdamW",
-                     "lr"              : 1e-4,
-                     "weight_decay"    : 1e-5,
+                     "lr"              : 1e-5,
+                     "weight_decay"    : 1e-2,
                      "betas"           : (0.9, 0.999),
                      "period"          : 0.5,
                      "warmup_ratio"    : 0.1,
@@ -67,7 +67,7 @@ LDM_SNAPSHOT_DIR     = "./results/" + RUN + f"/ldm-" + EXPERIMENT_NAME
 # Placeholder for inference configuration
 class InferenceConfig:
     N_PREDS             = 1
-    MODEL_EPOCH         = 2400               # Epoch of the model to load (-1 for final model)
+    MODEL_EPOCH         = 2400              # Epoch of the model to load (-1 for final model)
     NUM_SAMPLES         = 2                 # Number of samples 
     INFERER_SCHEDULER   = 'DDIM'
     TRAIN_TIMESTEPS     = NUM_TRAIN_TIMESTEPS

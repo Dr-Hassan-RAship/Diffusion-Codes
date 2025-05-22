@@ -93,6 +93,7 @@ class LDM_Segmentor(nn.Module):
         else:
             print(f'\n[INFO] Using {self.scheduler.__class__.__name__} scheduler for inference with timesteps {do.INFERENCE_TIMESTEPS}')
             self.scheduler.set_timesteps(do.INFERENCE_TIMESTEPS, device = self.device)
+            
         zt = (torch.randn(1, 4, TRAINSIZE // 8, TRAINSIZE // 8, device=self.device, dtype=torch.float16) * self.latent_scale)
         zc = (self.image_encoder(image) * self.latent_scale)
         

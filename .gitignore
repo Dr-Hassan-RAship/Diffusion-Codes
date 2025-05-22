@@ -5,7 +5,7 @@ Diffusers-Testing/results
 *.jpeg
 *.jpg
 
-# Ignore .zip, .h5, .pth, .csv, .txt files
+# Ignore .zip, .h5, .pth, .csv, .txt, .pyc or .yml/yaml files files
 *.zip
 *.h5
 *.pth

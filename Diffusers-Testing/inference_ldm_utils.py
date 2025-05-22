@@ -89,64 +89,70 @@ def save_metrics_to_csv(metrics, csv_path, mode):
         csv_writer.writerows(metrics)
         
     print(f"Metrics saved to {csv_path}")
-    
-# ------------------------------------------------------------------------------#
-def visualize_samples(samples, output_dir):
-    """
-    Visualizes samples in a horizontal grid:
-      - For AutoencoderKL Inference: 
-          Row 1: Ground Truth Images 
-          Row 2: Reconstructions
-      - For LDM Inference:
-          Row 1: Ground Truth Images
-          Row 2: Ground Truth Masks
-          Row 3: Predicted Masks
-
-    Args:
-      samples (list): A list of tuples where each tuple contains:
-                      - For autoencoder: (GT Image, Reconstruction)
-                      - For LDM: (GT Image, GT Mask, Predicted Mask)
-      output_dir (str): Directory where the visualization image will be saved.
-    """
-    num_samples = len(samples)
-    num_rows = len(samples[0])
-    assert num_rows in [2, 3], "Each sample tuple must have either 2 or 3 elements."
-
-    # Titles based on inference type
-    titles = {
-        2: ["Ground Truth", "Reconstruction"],
-        3: ["GT Image", "GT Mask", "Predicted Mask"]
-    }
-
-    # Create figure and axes
-    fig, axes = plt.subplots(num_rows, num_samples, figsize=(num_samples * 4, num_rows * 4))
-
-    # If only one sample, make axes 2D
-    if num_samples == 1:
-        axes = np.expand_dims(axes, axis=1)
-
-    for col_idx, sample in enumerate(samples):
-        for row_idx in range(num_rows):
-            ax = axes[row_idx][col_idx]
-            img = sample[row_idx]
-
-            # Convert CHW to HWC if needed
-            if img.ndim == 3 and img.shape[0] in [1, 3]:
-                img = np.transpose(img, (1, 2, 0))
-
-            # Squeeze grayscale channels
-            if img.shape[-1] == 1:
-                img = img.squeeze(-1)
-
-            ax.imshow(img, cmap="gray" if img.ndim == 2 else None)
-            ax.set_title(titles[num_rows][row_idx])
-            ax.axis("off")
-
-    plt.tight_layout()
-    filename = "sample_reconstructions.png" if num_rows == 2 else "sample_masks.png"
-    save_path = os.path.join(output_dir, filename)
-    plt.savefig(save_path)
-    print(f"Sample visualization saved at {save_path}")
-    plt.close()
-
 #------------------------------------------------------------------------------#
+def visualize_intermediate_steps(intermediates, output_dir):
+    """Visualize a horizontal grid of intermediate predictions."""
+    if not intermediates or not isinstance(intermediates, (list, tuple)):
+        print("No valid intermediates provided for visualization.")
+        return
+    decoded_images = [img.cpu() for img in intermediates]
+    try:
+        chain = torch.cat(decoded_images, dim=-1)
+        plt.figure(figsize=(len(intermediates) * 2, 4))
+        plt.imshow(chain[0, 0], vmin=0, vmax=1, cmap="gray")
+        plt.axis("off")
+        plt.tight_layout()
+        plt.savefig(os.path.join(output_dir, "intermediate_steps.png"))
+        plt.close()
+        print("Intermediate steps visualization saved.")
+    except Exception as e:
+        print(f"Error visualizing intermediates: {e}")
+#------------------------------------------------------------------------------#
+def visualize_predictions(predictions_list, output_dir, model_epoch=-1):
+    """Visualize ground truth images, masks, and predicted masks."""
+    vis_dir = os.path.join(output_dir, f"epoch_{model_epoch}", "visualizations")
+    os.makedirs(vis_dir, exist_ok=True)
+    for i, (gt_image, gt_mask, pred_mask) in enumerate(predictions_list):
+        plt.figure(figsize=(15, 5))
+        plt.subplot(1, 3, 1)
+        plt.imshow(gt_image, cmap="gray")
+        plt.title("Ground Truth Image")
+        plt.axis("off")
+        plt.subplot(1, 3, 2)
+        plt.imshow(gt_mask, cmap="gray")
+        plt.title("Ground Truth Mask")
+        plt.axis("off")
+        plt.subplot(1, 3, 3)
+        plt.imshow(pred_mask, cmap="gray")
+        plt.title("Predicted Mask")
+        plt.axis("off")
+        plt.tight_layout()
+        plt.savefig(os.path.join(vis_dir, f"sample_{i}.png"))
+        plt.close()
+    print(f"Visualizations saved in {vis_dir}")
+#---------------------------------------------------------------------------------#
+def compute_average_metrics(metrics_list):
+    """Compute average metrics (Dice, HD95, ASSD, mIoU) per model epoch."""
+    if not metrics_list:
+        return []
+    
+    # Group metrics by model_epoch
+    epoch_metrics = {}
+    for metric in metrics_list:
+        model_epoch = metric[0]
+        if model_epoch not in epoch_metrics:
+            epoch_metrics[model_epoch] = []
+        epoch_metrics[model_epoch].append(metric[2:])  # [dice, hd95, assd, mean_iou]
+
+    # Compute averages
+    avg_metrics = []
+    for model_epoch, metrics in epoch_metrics.items():
+        metrics_array = torch.tensor(metrics, dtype=torch.float32)
+        avg_dice = metrics_array[:, 0].mean().item()
+        avg_hd95 = metrics_array[:, 1].mean().item()
+        avg_assd = metrics_array[:, 2].mean().item()
+        avg_miou = metrics_array[:, 3].mean().item()
+        avg_metrics.append([model_epoch, avg_dice, avg_hd95, avg_assd, avg_miou])
+    
+    return avg_metrics
+#--------------------------------------------------------------------------------#

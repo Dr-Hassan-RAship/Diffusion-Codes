@@ -20,13 +20,20 @@ CLASSIFICATION_TYPE = 'binary'              # 'binary' or 'multiclass'
 
 #-------------------------------------------------------------------------------#
 # Optimizer Configuration
-USE_SCHEDULER    = False
 OPT              = { "optimizer"      : "AdamW",
                      "lr"              : 1e-5,
                      "weight_decay"    : 1e-2,
-                     "betas"           : (0.9, 0.999),
-                     "period"          : 0.5,
-                     "warmup_ratio"    : 0.1,
+                     "betas"           : (0.9, 0.999)
+}
+# Scheduler_Configuration
+USE_SCHEDULER    = False
+SCHEDULER_TYPE   = 'cosine_warmup'  # Options: 'cosine_warmup', 'lambda_warmup_cosine', 'cosine_annealing', 'ddpm'
+SCHEDULER_KWARGS = {
+    'lr_min': 1e-6,
+    'lr_max': 1.0,
+    'lr_start': 0.0,
+    'eta_min': 1e-6,
+    'verbosity_interval': 100
 }
 
 # ------------------------------------------------------------------------------#
@@ -67,7 +74,7 @@ LDM_SNAPSHOT_DIR     = "./results/" + RUN + f"/ldm-" + EXPERIMENT_NAME
 # Placeholder for inference configuration
 class InferenceConfig:
     N_PREDS             = 1
-    MODEL_EPOCHS        = [200]              # Epoch of the model to load (-1 for final model)
+    MODEL_EPOCHS        = [200]              # Epoch of the list of models to load. 
     NUM_SAMPLES         = 2                 # Number of samples 
     INFERER_SCHEDULER   = 'DDIM'
     TRAIN_TIMESTEPS     = NUM_TRAIN_TIMESTEPS

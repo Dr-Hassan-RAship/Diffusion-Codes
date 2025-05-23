@@ -16,28 +16,28 @@ from torch.amp                      import autocast, GradScaler
 from torch.optim                    import AdamW
 from torch.utils.tensorboard        import SummaryWriter
 
-from diffusers.optimization         import get_cosine_schedule_with_warmup
 from config                         import *
 from dataset                        import get_dataloaders
 from architectures                  import *
 from utils                          import *
 from modeling_utils                 import *
+from scheduler_switcher             import *
 
 # ------------------------------------------------------------------------------ #
 def initialize_new_session(device):
-    """Creates a new model and optimizer from scratch."""
-    model     = LDM_Segmentor().to(device)
+    model = LDM_Segmentor().to(device)
     optimizer = AdamW(model.parameters(), lr=OPT['lr'], betas=OPT['betas'], weight_decay=OPT['weight_decay'])
-    scheduler = None 
-    # Scheduler
+    scheduler = None
     if USE_SCHEDULER:
-        total_steps  = (SPLIT_RATIOS[0] // BATCH_SIZE) * N_EPOCHS # for periteration
-        # total_steps  = N_EPOCHS
+        total_steps = (SPLIT_RATIOS[0] // BATCH_SIZE) * N_EPOCHS
         warmup_steps = int(OPT['warmup_ratio'] * total_steps)
-        scheduler    = get_cosine_schedule_with_warmup(optimizer = optimizer, num_warmup_steps = warmup_steps,
-                                                    num_cycles = OPT['period'], num_training_steps=total_steps
+        scheduler = SchedulerSwitcher(
+            optimizer      = optimizer,
+            total_steps    = total_steps,
+            warmup_steps   = warmup_steps,
+            scheduler_type = SCHEDULER_TYPE,
+            kwargs         = SCHEDULER_KWARGS
         )
-    
     return model, optimizer, scheduler, 0
 
 # ------------------------------------------------------------------------------ #
@@ -69,8 +69,10 @@ def trainer(model, optimizer, scheduler, train_loader, val_loader, device, scale
                 writer.add_scalar("LR", scheduler.get_last_lr()[0], epoch)
             
         epoch_loss /= len(train_loader)
-        # logging.info(f"[train] epoch: {epoch} mean loss: {epoch_loss:.4f}, LR: {scheduler.get_last_lr()[0]:.6f}")
-        logging.info(f"[train] epoch: {epoch} mean loss: {epoch_loss:.4f}")
+        if USE_SCHEDULER:
+            logging.info(f"[train] epoch: {epoch} mean loss: {epoch_loss:.4f}, LR: {scheduler.get_last_lr()[0]:.6f}")
+        else:
+            logging.info(f"[train] epoch: {epoch} mean loss: {epoch_loss:.4f}")
         writer.add_scalar("loss/train epoch", epoch_loss, epoch)
           
         # ---- Validation ---- #

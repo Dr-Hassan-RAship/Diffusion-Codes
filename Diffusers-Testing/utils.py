@@ -20,6 +20,7 @@ from safetensors.torch          import load_file as load_safetensors
 from glob                       import glob
 from torch.optim                import AdamW
 from architectures              import *
+from scheduler_switcher         import *
 
 #-----------------------------------------------------------------------------#
 def check_or_create_folder(folder):
@@ -147,13 +148,15 @@ def get_latest_checkpoint(models_dir):
     opt_path     = os.path.join(models_dir, f"model_epoch_{epoch_num}.opt.pt")
     return epoch_num, weights_path, opt_path
 
-#--------------------------------------------------------------------------------------#
+
+# -----------------------------------------------------------------------------------#
 def load_model_and_optimizer(weights_path, opt_path, device, load_optim_dict=True):
     """Loads model, optimizer, and scheduler from safetensors + pt files."""
     
     epoch     = 0
     scheduler = None
     
+    # Initialize model
     model = LDM_Segmentor().to("cpu")
 
     # Reload VAE weights to avoid shared tensor duplication
@@ -169,23 +172,30 @@ def load_model_and_optimizer(weights_path, opt_path, device, load_optim_dict=Tru
     model.load_state_dict(state_dict, strict=False)
     del state_dict
 
+    # Move model to target device
     model = model.to(device)
 
-    # Optimizer
+    # Initialize optimizer
     optimizer = AdamW(model.parameters(), lr=OPT['lr'], betas=OPT['betas'], weight_decay=OPT['weight_decay'])
 
-    # Scheduler
-    # total_steps  = (SPLIT_RATIOS[0] // BATCH_SIZE) * N_EPOCHS
-    # warmup_steps = int(WARMUP_RATIO * total_steps)
-    # scheduler    = get_cosine_schedule_with_warmup(optimizer  = optimizer, num_warmup_steps = warmup_steps,
-    #                                             num_cycles = 0.1, num_training_steps=total_steps
-    # )
+    # Initialize scheduler if USE_SCHEDULER is True
+    if USE_SCHEDULER:
+        total_steps = (SPLIT_RATIOS[0] // BATCH_SIZE) * N_EPOCHS
+        warmup_steps = int(OPT['warmup_ratio'] * total_steps)
+        scheduler = SchedulerSwitcher(
+            optimizer      = optimizer,
+            total_steps    = total_steps,
+            warmup_steps   = warmup_steps,
+            scheduler_type = SCHEDULER_TYPE,
+            kwargs         = SCHEDULER_KWARGS
+        )
 
+    # Load optimizer and scheduler states if requested and available
     if load_optim_dict and opt_path is not None and os.path.exists(opt_path):
         opt_state = torch.load(opt_path, map_location="cpu")
         optimizer.load_state_dict(opt_state["optimizer_state_dict"])
-        if "scheduler_state_dict" in opt_state:
-            scheduler.load_state_dict(opt_state["scheduler_state_dict"])
+        if "scheduler_state_dict" in opt_state and scheduler is not None:
+            scheduler.scheduler.load_state_dict(opt_state["scheduler_state_dict"])
         epoch = opt_state["epoch"] + 1
         
         del opt_state

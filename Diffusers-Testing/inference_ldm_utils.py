@@ -25,14 +25,6 @@ from config                                         import *
 from utils                                          import *
 
 # ------------------------------------------------------------------------------#
-def save_nifti(filename, savepath, data, affine=None, header=None):
-    """Save data as a NIfTI file."""
-    save_path = os.path.join(savepath, f"{filename}.nii.gz")
-    check_or_create_folder(os.path.dirname(save_path))
-    nifti_image = nib.Nifti1Image(data.astype(np.uint8), affine, header=header)
-    nib.save(nifti_image, save_path)
-    
-# ------------------------------------------------------------------------------#
 def calculate_metrics(prediction, label):
     # """
     # For calculating metrics such as dice, hd95, assd and miou.
@@ -79,16 +71,7 @@ def save_groundtruth_image(image, save_folder, filename, mode="image"):
     print(f"{filename} saved at {save_folder}")
 
 # ------------------------------------------------------------------------------#
-def save_nifti(filename, savepath, data, affine, header, technique):
-    """Save data (ground truth or predictions) as a NIfTI file."""
-    full_path = os.path.join(savepath, f"{filename}_{technique}.nii.gz")
-    check_or_create_folder(os.path.dirname(full_path))
-    nifti_image = nib.Nifti1Image(data.astype(np.uint8), affine, header=header)
-    nib.save(nifti_image, full_path)
-    print(f"{technique.capitalize()} saved at {full_path}")
-
-# ------------------------------------------------------------------------------#
-def save_metrics_to_csv(metrics, csv_path, mode, headers=None):
+def save_metrics_to_csv(metrics, csv_path, headers=None):
     """Save computed metrics to a CSV file."""
     with open(csv_path, "w", newline="") as csvfile:
         csv_writer = csv.writer(csvfile)
@@ -163,3 +146,9 @@ def compute_average_metrics(metrics_list):
     
     return avg_metrics
 #--------------------------------------------------------------------------------#
+# Potential Improvements:
+
+# 1. Use multiprocessing or threading for parallel processing of metrics calculation.
+# from concurrent.futures import ThreadPoolExecutor
+# with ThreadPoolExecutor() as executor:
+#     metrics = list(executor.map(calculate_metrics, preds, labels))

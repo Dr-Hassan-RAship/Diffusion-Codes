@@ -64,50 +64,8 @@ class CombinedLatentNoiseLoss(nn.Module):
         l_noise  = self.l2_weight * l2_noise
         
         return l_latent + l_noise
-
-
-
 #--------------------------------------------------------------------------------------
-def load_hybrid_unet(pretrained_path: str, device: str = "cuda") -> UNet2DConditionModel:
-    # Step 1: Load the original model to access weights and config
-    unet_orig = UNet2DConditionModel.from_pretrained(
-        pretrained_path,
-        subfolder="unet",
-        torch_dtype=torch.float16
-    ).to(device)
 
-    # Step 2: Create a deep copy of the config and modify in_channels
-    config = copy.deepcopy(unet_orig.config)  # Avoid modifying the original config
-    config['in_channels'] = 8  # Update in_channels to 8
-
-    # Step 3: Create a new UNet model with modified in_channels
-    unet_new = UNet2DConditionModel(**config).to(device, dtype=torch.float16)
-
-    # Step 4: Get the original and new state dicts
-    orig_sd = unet_orig.state_dict()
-    new_sd = unet_new.state_dict()
-
-    # Step 5: Initialize new conv_in weights manually
-    old_conv = orig_sd["conv_in.weight"]  # Shape [320, 4, 3, 3]
-    out_ch, _, kH, kW = old_conv.shape
-
-    # New conv_in.weight: [320, 8, 3, 3]
-    new_conv = torch.zeros((out_ch, 8, kH, kW), dtype=torch.float16, device=device)
-    new_conv[:, :4, :, :] = old_conv  # Copy pretrained channels
-    nn.init.kaiming_normal_(new_conv[:, 4:, :, :], mode='fan_out', nonlinearity='leaky_relu')  # Random init rest
-
-    # Step 6: Update the state dict with the new conv_in.weight
-    new_sd["conv_in.weight"] = new_conv
-
-    # Step 7: Copy compatible weights from the original model
-    for key in new_sd:
-        if key != "conv_in.weight" and key in orig_sd and new_sd[key].shape == orig_sd[key].shape:
-            new_sd[key] = orig_sd[key]
-
-    # Step 8: Load updated state dict into the new model
-    unet_new.load_state_dict(new_sd)
-
-    return unet_new.requires_grad_(True)
 #--------------------------------------------------------------------------------------
 def denoise_and_decode_in_one_step(batch_size, noise_pred, timesteps, zt, scheduler, vae, latent_scale, device, inference = False):
     

@@ -38,7 +38,8 @@ def calculate_metrics(prediction, label):
     # For calculating metrics such as dice, hd95, assd and miou.
     # """
     
-    pred = (prediction > 0).astype(np.uint8)
+    # pred = (prediction > 0).astype(np.uint8)
+    pred = prediction
     gt   = (label > 0).astype(np.uint8)
 
     dice_metric = DiceMetric(include_background=False, reduction="mean")
@@ -46,8 +47,15 @@ def calculate_metrics(prediction, label):
 
     dice        = dice_metric(torch.tensor(pred)[None, None], torch.tensor(gt)[None, None]).item()
     miou        = miou_metric(torch.tensor(pred)[None, None], torch.tensor(gt)[None, None]).item()
-    assd_val    = assd(pred, gt)
-    hd95_val    = hd95(pred, gt)
+    if pred.sum() > 0 and gt.sum() > 0:
+        assd_val = assd(pred, gt)
+        hd95_val = hd95(pred, gt)
+    elif pred.sum() == 0 and gt.sum() == 0:
+        assd_val = 0.0
+        hd95_val = 0.0
+    else:
+        assd_val = float("inf")
+        hd95_val = float("inf")
     
     return dice, hd95_val, assd_val, miou
 
@@ -65,7 +73,7 @@ def save_groundtruth_image(image, save_folder, filename, mode="image"):
         plt.imsave(filepath, image)
     else:
         image = np.transpose(image, (1, 2, 0))
-        image = (((image + 1.0) / 2.0))[:, :, 0]
+        image = image[:, :, 0]
         
         plt.imsave(filepath, image, cmap="gray")
     print(f"{filename} saved at {save_folder}")
@@ -80,12 +88,11 @@ def save_nifti(filename, savepath, data, affine, header, technique):
     print(f"{technique.capitalize()} saved at {full_path}")
 
 # ------------------------------------------------------------------------------#
-def save_metrics_to_csv(metrics, csv_path, mode):
+def save_metrics_to_csv(metrics, csv_path, mode, headers=None):
     """Save computed metrics to a CSV file."""
     with open(csv_path, "w", newline="") as csvfile:
         csv_writer = csv.writer(csvfile)
-        csv_writer.writerow(["Patient ID", "Dice", "HD95", "ASSD", "Mean IoU"]) if mode == "mask" \
-        else csv_writer.writerow(["Patient ID", "MSE", "SSIM"])   
+        csv_writer.writerow(headers)
         csv_writer.writerows(metrics)
         
     print(f"Metrics saved to {csv_path}")

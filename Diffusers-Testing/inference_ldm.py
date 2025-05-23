@@ -41,28 +41,27 @@ def perform_inference(model, data_loader, device, output_dir, num_samples=5, mod
         predictions_list: List of (groundtruth_image, groundtruth_mask, predicted_mask) tuples
     """
     model.eval()
-    os.makedirs(output_dir, exist_ok=True)
     predictions_list    = []
     metrics_list        = []
 
     progress_bar = tqdm(data_loader, desc=f"🚀 Inference (Epoch {model_epoch}, {split})", ncols=100)
 
     for batch in progress_bar:
-        image       = batch["image"].to(device)
-        mask        = batch["mask"].to(device)
-        patient_id  = batch["patient_id"].item()
+        image       = batch["image"].to(device)  if split == "test" else batch["aug_image"].to(device)
+        mask        = batch["mask"].to(device)   if split == "test" else batch["aug_mask"].to(device)
+        patient_id  = batch["patient_id"].item() 
         B           = image.size(0)
 
         model_out           = model.inference(image)
         predicted_mask      = model_out['mask_hat']
-        predicted_mask      = torch.clamp((predicted_mask + 1.0) / 2.0, min=0.0, max=1.0)
+        predicted_mask      = torch.clamp((predicted_mask + 1.0 / 2.0), min=0.0, max=1.0)
         predicted_mask      = predicted_mask.mean(dim=1, keepdim = True).repeat(1, 3, 1, 1)
         predicted_mask      = (predicted_mask > 0.5).float().cpu().numpy().squeeze()
         groundtruth_image   = image.cpu().numpy().squeeze()
         groundtruth_mask    = mask.cpu().numpy().squeeze()
 
         if split == 'test':
-            patient_folder      = os.path.join(output_dir, f"epoch_{model_epoch}", f"{int(patient_id)}")
+            patient_folder      = os.path.join(output_dir, f"{int(patient_id)}")
             os.makedirs(patient_folder, exist_ok=True)
             save_groundtruth_image(groundtruth_image, patient_folder, "Image_groundtruth.jpg", mode="image")
             save_groundtruth_image(groundtruth_mask, patient_folder, "Mask_groundtruth.jpg", mode="mask")
@@ -110,7 +109,7 @@ def main():
         #     visualize_predictions(predictions_list, output_dir, model_epoch=model_epoch)
 
     if do.METRIC_REPORT and all_metrics:
-        metrics_path = os.path.join(do.SAVE_FOLDER, "val_metrics.csv")
+        metrics_path = os.path.join(do.SAVE_FOLDER, f"{split}_metrics_{do.MODEL_EPOCHS}.csv")
         if split == "val":
             # Compute and save averaged metrics for validation
             avg_metrics = compute_average_metrics(all_metrics)

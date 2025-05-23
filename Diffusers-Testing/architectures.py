@@ -30,7 +30,7 @@ class LDM_Segmentor(nn.Module):
     def __init__(self,pretrained_vae: str = "CompVis/stable-diffusion-v1-4", scheduler_steps: int = 1000, device: str = "cuda"):
         super().__init__()
         self.device = device
-        self.latent_scale = 0.18215
+        self.latent_scale = 1.0
 
         # Load pretrained VAE and freeze
         self.vae = (AutoencoderKL.from_pretrained(pretrained_vae, subfolder="vae").to(device).eval())
@@ -49,7 +49,7 @@ class LDM_Segmentor(nn.Module):
         self.scheduler = DDPMScheduler(num_train_timesteps=scheduler_steps)
         
         # Loss Criterion (Custom class)
-        self.loss_criterion = CombinedL1L2Loss(l1_weight = 1.0, l2_weight = 1.0, reduction = 'mean')
+        self.loss_criterion = CombinedLatentNoiseLoss()
 
     def forward(self, image: torch.Tensor, mask: torch.Tensor = None):
         """

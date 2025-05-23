@@ -40,39 +40,32 @@ class TauEncoder(nn.Module):
         return h.mean if DETERMINISTIC_TAU else h.sample() # Opposite to E
 
 #--------------------------------------------------------------------------------------
-class CombinedL1L2Loss(nn.Module):
-    """
-    Custom loss: L2 (MSE) on noise, L1 on z0.
-    """
-
-    def __init__(self, l1_weight = 1.0, l2_weight = 1.0, reduction = "mean"):
-        """
-        Args:
-            l1_weight (float): weight for L1 loss term.
-            l2_weight (float): weight for L2 loss term.
-            reduction (str): reduction method ("mean", "sum", etc.)
-        """
+class CombinedLatentNoiseLoss(nn.Module):
+    def __init__(self, l1_weight=1.0, l2_weight=1.0, bce_weight=1.0, reduction="mean"):
         super().__init__()
-        self.l1_weight = l1_weight
-        self.l2_weight = l2_weight
-        self.reduction = reduction
+        self.l1_loss  = nn.L1Loss(reduction=reduction)
+        self.l2_loss  = nn.MSELoss(reduction=reduction)
+        # self.bce_loss = nn.BCEWithLogitsLoss(reduction=reduction)  # ✅ SAFE FOR autocast
 
-        self.l1_loss = nn.L1Loss(reduction  = self.reduction)
-        self.l2_loss = nn.MSELoss(reduction = self.reduction)
+        self.l1_weight  = l1_weight
+        self.l2_weight  = l2_weight
+        # self.bce_weight = bce_weight
 
     def forward(self, noise_hat, noise, z0_hat, z0):
-        """
-        Args:
-            noise_hat: Predicted noise
-            noise: True noise
-            z0_hat: Predicted z0
-            z0: True z0
-        """
-        l2      = self.l2_loss(noise_hat, noise)
-        l1      = self.l1_loss(z0_hat, z0)
-        loss    = self.l2_weight * l2 + self.l1_weight * l1
+
+        # BCE expects logits → so we directly pass z0_hat
+        # bce             = self.bce_loss(z0_hat, z0)  # You can detach or not based on need
+        l1_latent       = self.l1_loss(z0_hat, z0)
+        # l2              = self.l2_loss(z0_hat, z0)
         
-        return loss
+        l2_noise        = self.l2_loss(noise_hat, noise)
+        
+        l_latent = (self.l1_weight * l1_latent) # + (self.l2_weight * l2) + (self.bce_weight * bce)
+        l_noise  = self.l2_weight * l2_noise
+        
+        return l_latent + l_noise
+
+
 
 #--------------------------------------------------------------------------------------
 def load_hybrid_unet(pretrained_path: str, device: str = "cuda") -> UNet2DConditionModel:
@@ -172,16 +165,18 @@ def denoise_and_decode(zt, scheduler, vae, latent_scale, device, unet, zc):
             alpha_t                     = scheduler.alphas_cumprod[t.item()]
             alpha_t_prev                = scheduler.alphas_cumprod[prev_t]
             
-            beta_t                      = 1 - alpha_t
-            beta_t_prev                 = 1 - alpha_t_prev
-            stdev                       = ETA * ((beta_t_prev / beta_t) * (1 - alpha_t / alpha_t_prev)).sqrt()
-            var_noise                   = stdev * torch.randn_like(noise_pred, dtype = torch.float16, device = device)
+            # beta_t                      = 1 - alpha_t
+            # beta_t_prev                 = 1 - alpha_t_prev
+            # stdev                       = ETA * ((beta_t_prev / beta_t) * (1 - alpha_t / alpha_t_prev)).sqrt()
+            # print(f'stdev: {stdev}')
+            # var_noise                   = stdev * torch.randn_like(noise_pred, dtype = torch.float16, device = device)
+            # print(f'var_noise: {var_noise}')
             
             predicted_x0                = (prev_sample - (1 - alpha_t).sqrt() * noise_pred) / alpha_t.sqrt()
             
-            direction_pointing_to_xt    = (1 - alpha_t_prev - stdev ** 2).sqrt() * noise_pred
+            direction_pointing_to_xt    = (1 - alpha_t_prev).sqrt() * noise_pred
             
-            prev_sample                 = (alpha_t_prev.sqrt() * predicted_x0) + direction_pointing_to_xt + var_noise
+            prev_sample                 = (alpha_t_prev.sqrt() * predicted_x0) + direction_pointing_to_xt
         
         else:
             prev_t                      = scheduler.previous_timestep(t.item())

@@ -45,9 +45,9 @@ DETERMINISTIC_ENC   = False
 
 # ------------------------------------------------------------------------------#
 # Experiment configuration
-OPTIONAL_INFO   = "with_new_data_split"
+OPTIONAL_INFO   = "with_latent_scale_1"
 EXPERIMENT_NAME = f'machine--B{BATCH_SIZE}-E{N_EPOCHS}-V{VAL_INTERVAL}-T{NUM_TRAIN_TIMESTEPS}-S{SCHEDULER}'
-RUN             = '09_' + OPTIONAL_INFO
+RUN             = '02_' + OPTIONAL_INFO
 
 # ------------------------------------------------------------------------------#
 # Model configuration for Diffusion i.e., UNET --> matched with SDSeg
@@ -67,13 +67,13 @@ LDM_SNAPSHOT_DIR     = "./results/" + RUN + f"/ldm-" + EXPERIMENT_NAME
 # Placeholder for inference configuration
 class InferenceConfig:
     N_PREDS             = 1
-    MODEL_EPOCH         = 2400              # Epoch of the model to load (-1 for final model)
+    MODEL_EPOCHS        = [200]              # Epoch of the model to load (-1 for final model)
     NUM_SAMPLES         = 2                 # Number of samples 
     INFERER_SCHEDULER   = 'DDIM'
     TRAIN_TIMESTEPS     = NUM_TRAIN_TIMESTEPS
     ONE_X_ONE           = False # make it False if training
-    INFERENCE_TIMESTEPS = 10 if INFERER_SCHEDULER == 'DDIM' else NUM_TRAIN_TIMESTEPS
-    SAVE_FOLDER         = LDM_SNAPSHOT_DIR + f"/inference-M{MODEL_EPOCH if MODEL_EPOCH != -1 else N_EPOCHS}-E{N_EPOCHS}-t{NUM_TRAIN_TIMESTEPS}-S{SCHEDULER}-SP{NUM_SAMPLES}-It{INFERENCE_TIMESTEPS}"  # Save folder for inference results
+    INFERENCE_TIMESTEPS = 100 if INFERER_SCHEDULER == 'DDIM' else NUM_TRAIN_TIMESTEPS
+    SAVE_FOLDER         = LDM_SNAPSHOT_DIR + f"/inference-M{MODEL_EPOCHS if MODEL_EPOCHS != -1 else N_EPOCHS}-E{N_EPOCHS}-t{NUM_TRAIN_TIMESTEPS}-S{SCHEDULER}-SP{NUM_SAMPLES}-It{INFERENCE_TIMESTEPS}"  # Save folder for inference results
     SAVE_INTERMEDIATES  = False
     METRIC_REPORT       = True
 

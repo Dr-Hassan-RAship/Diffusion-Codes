@@ -104,7 +104,7 @@ def analyze_uncertainty(folder_path):
         results.append([patient_id, gt_components, pred_components, component_diff, gt_smoothness_str, pred_smoothness_str, smoothness_diff])
         
     # Save results to CSV
-    output_csv = os.path.join(folder_path, "uncertainty_metrics.csv")
+    output_csv = os.path.join(do.SAVE_FOLDER, "uncertainty_metrics.csv")
     headers = ["Patient_ID", "GT_Components", "Pred_Components", "Component_Diff", "GT_Smoothness", "Pred_Smoothness", "Smoothness_Diff"]
     check_or_create_folder(folder_path)
     

@@ -98,8 +98,10 @@ def main():
         except Exception as e:
             print(f"Error loading model for epoch {model_epoch}: {e}")
             continue
-
-        output_dir = os.path.join(do.SAVE_FOLDER, f"inference_{split}_M{model_epoch}")
+        
+        if split == 'test':
+           output_dir = os.path.join(do.SAVE_FOLDER, f"inference_{split}_M{model_epoch}")
+           os.makedirs(output_dir, exist_ok = True)
         metrics_list, predictions_list = perform_inference(
             model, data_loader, device, output_dir, num_samples=do.NUM_SAMPLES,
             model_epoch=model_epoch, split=split
@@ -109,20 +111,21 @@ def main():
         #     visualize_predictions(predictions_list, output_dir, model_epoch=model_epoch)
 
     if do.METRIC_REPORT and all_metrics:
-        metrics_path = os.path.join(do.SAVE_FOLDER, f"{split}_metrics_{do.MODEL_EPOCHS}.csv")
         if split == "val":
+            metrics_path = os.path.join(do.SAVE_FOLDER, f'inference_{split}_M{do.MODEL_EPOCHS}.csv')	
             # Compute and save averaged metrics for validation
             avg_metrics = compute_average_metrics(all_metrics)
             avg_metrics.sort(key=lambda x: x[0])  # Sort by model_epoch
-            save_metrics_to_csv(avg_metrics, metrics_path, mode="mask", headers=["Model_Epoch", "Avg_Dice", "Avg_HD95", "Avg_ASSD", "Avg_mIoU"])
+            save_metrics_to_csv(avg_metrics, metrics_path, headers=["Model_Epoch", "Avg_Dice", "Avg_HD95", "Avg_ASSD", "Avg_mIoU"])
         else:
+            metrics_path = os.path.join(do.SAVE_FOLDER, f'inference_{split}_M{do.MODEL_EPOCHS}.csv')	
             # Save per-patient metrics for test
             all_metrics.sort(key=lambda x: x[0])  # Sort by patient_id
-            save_metrics_to_csv(all_metrics, metrics_path, mode="mask", headers=["Patient_ID", "Dice", "HD95", "ASSD", "mIoU"])
+            save_metrics_to_csv(all_metrics, metrics_path, headers=["Patient_ID", "Dice", "HD95", "ASSD", "mIoU"])
         print(f"✅ Metrics saved in: {metrics_path}")
 
     print(f"✅ Inference complete. Results saved in: {do.SAVE_FOLDER}")
 # ------------------------------------------------------------------------------#
 if __name__ == "__main__":
     main()
-# ------------------------------------------------------------------------------#
+# ------------------------------------------------------------------------------ #

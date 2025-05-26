@@ -93,7 +93,7 @@ def trainer(model, optimizer, scheduler, train_loader, val_loader, device, scale
 
 # ------------------------------------------------------------------------------ #
 def validator(model, val_loader, device, epoch, writer):
-    model.eval()
+    torch.cuda.empty_cache(); model.eval()
     val_loss = 0.0
     with torch.no_grad():
         for step, batch in enumerate(val_loader):

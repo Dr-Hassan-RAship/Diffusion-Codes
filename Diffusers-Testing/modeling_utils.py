@@ -80,7 +80,7 @@ def denoise_and_decode_in_one_step(batch_size, noise_pred, timesteps, zt, schedu
         timesteps  = timesteps.to(device = 'cpu') 
         zt         = zt.to(device = 'cpu')
         
-    for batch_idx in range(batch_size):
+    for batch_idx in range(noise_pred.shape[0]):
         # z0_hat = (zt - ((1 - scheduler.alphas_cumprod).sqrt() * noise_pred)) / scheduler.alphas_cumprod.sqrt()
         z0_hat   = scheduler.step(noise_pred[batch_idx].unsqueeze(0), timesteps[batch_idx].unsqueeze(0), zt[batch_idx].unsqueeze(0)).pred_original_sample
         # alpha_t                     = scheduler.alphas_cumprod[timesteps[batch_idx].item()]
@@ -168,7 +168,7 @@ def switch_to_ddim(device):
     """
     Replaces the current scheduler with a DDIM scheduler for faster inference.
     """
-    scheduler = DDIMScheduler(num_train_timesteps=NUM_TRAIN_TIMESTEPS)
+    scheduler = DDIMScheduler(num_train_timesteps=NUM_TRAIN_TIMESTEPS, beta_schedule = NOISE_SCHEDULER)
     scheduler.set_timesteps(do.INFERENCE_TIMESTEPS, device = device)
     
     print(f'\nSwitching to DDIM scheduler with inference timesteps: {do.INFERENCE_TIMESTEPS}\n')

@@ -18,9 +18,9 @@ import matplotlib.pyplot                            as plt
 import matplotlib
 
 matplotlib.use("Agg")
-
+from medpy                                          import metric
 from monai.metrics                                  import DiceMetric, MeanIoU
-from medpy.metric.binary                            import assd, hd95
+#from medpy.metric.binary                            import assd, hd95
 from config                                         import *
 from utils                                          import *
 
@@ -29,7 +29,7 @@ def calculate_metrics(prediction, label):
     # """
     # For calculating metrics such as dice, hd95, assd and miou.
     # """
-    
+
     # pred = (prediction > 0).astype(np.uint8)
     pred = prediction
     gt   = (label > 0).astype(np.uint8)
@@ -37,18 +37,28 @@ def calculate_metrics(prediction, label):
     dice_metric = DiceMetric(include_background=False, reduction="mean")
     miou_metric = MeanIoU(include_background=False)
 
-    dice        = dice_metric(torch.tensor(pred)[None, None], torch.tensor(gt)[None, None]).item()
-    miou        = miou_metric(torch.tensor(pred)[None, None], torch.tensor(gt)[None, None]).item()
+    #dice        = dice_metric(torch.tensor(pred)[None, None], torch.tensor(gt)[None, None]).item()
+    #miou        = miou_metric(torch.tensor(pred)[None, None], torch.tensor(gt)[None, None]).item()
     if pred.sum() > 0 and gt.sum() > 0:
-        assd_val = assd(pred, gt)
-        hd95_val = hd95(pred, gt)
+       dice     = metric.binary.dc(pred, gt)
+       #hd95    = metric.binary.hd95(pred, gt, voxelspacing=pixsize)
+       #assd    = metric.binary.assd(pred, gt, voxelspacing=pixsize)
+            
+       assd_val    = metric.binary.assd(pred, gt)
+       hd95_val    = metric.binary.hd95(pred, gt)
+       #dice        = dice_metric(torch.tensor(pred)[None, None], torch.tensor(gt)[None, None]).item()
+       miou        = miou_metric(torch.tensor(pred)[None, None], torch.tensor(gt)[None, None]).item()
+    elif pred.sum() == 0 or gt.sum() == 0:
+       dice        = 0.0
+       mIoU        = 0.0
+       assd_val    = np.nan
+       hd95_val    = np.nan
     elif pred.sum() == 0 and gt.sum() == 0:
-        assd_val = 0.0
-        hd95_val = 0.0
-    else:
-        assd_val = float("inf")
-        hd95_val = float("inf")
-    
+       dice        = 1.0
+       mIoU        = 1.0
+       assd_val    = 0.0
+       hd95_val    = 0.0
+
     return dice, hd95_val, assd_val, miou
 
 # ------------------------------------------------------------------------------#
@@ -59,14 +69,14 @@ def save_groundtruth_image(image, save_folder, filename, mode="image"):
     if mode == "image":
         # tranpose image to (256, 256, 3) and normalize between 0 - 1 for each channel independantly for imsave
         image  = np.transpose(image, (1, 2, 0))
-        # normalize 
+        # normalize
         image  = ((image + 1.0) / 2.0).clip(0, 1)
 
         plt.imsave(filepath, image)
     else:
         image = np.transpose(image, (1, 2, 0))
         image = image[:, :, 0]
-        
+
         plt.imsave(filepath, image, cmap="gray")
     print(f"{filename} saved at {save_folder}")
 
@@ -77,7 +87,7 @@ def save_metrics_to_csv(metrics, csv_path, headers=None):
         csv_writer = csv.writer(csvfile)
         csv_writer.writerow(headers)
         csv_writer.writerows(metrics)
-        
+
     print(f"Metrics saved to {csv_path}")
 #------------------------------------------------------------------------------#
 def visualize_intermediate_steps(intermediates, output_dir):
@@ -125,7 +135,7 @@ def compute_average_metrics(metrics_list):
     """Compute average metrics (Dice, HD95, ASSD, mIoU) per model epoch."""
     if not metrics_list:
         return []
-    
+
     # Group metrics by model_epoch
     epoch_metrics = {}
     for metric in metrics_list:
@@ -143,7 +153,7 @@ def compute_average_metrics(metrics_list):
         avg_assd = metrics_array[:, 2].mean().item()
         avg_miou = metrics_array[:, 3].mean().item()
         avg_metrics.append([model_epoch, avg_dice, avg_hd95, avg_assd, avg_miou])
-    
+
     return avg_metrics
 #--------------------------------------------------------------------------------#
 # Potential Improvements:

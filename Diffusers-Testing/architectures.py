@@ -14,7 +14,8 @@ import                              torch, copy
 import                              torch.nn as nn
 
 from config                         import *
-from diffusers                      import (AutoencoderKL, UNet2DModel, UNet2DConditionModel, DDPMScheduler, DDIMScheduler,)
+from diffusers                      import (AutoencoderKL, DDPMScheduler, UNet2DModel, DDIMScheduler)
+# from source_unet_2d                 import UNet2DModel
 from modeling_utils                 import *
 from peft                           import get_peft_model, LoraConfig, TaskType
 
@@ -47,7 +48,7 @@ class LDM_Segmentor(nn.Module):
 
         # Scheduler (set to DDPM by default)
         self.scheduler = DDPMScheduler(num_train_timesteps=scheduler_steps, beta_start = BETA_START, beta_end = BETA_END, beta_schedule = NOISE_SCHEDULER)
-        
+
         # Loss Criterion (Custom class)
         self.loss_criterion = CombinedLatentNoiseLoss()
 
@@ -77,34 +78,33 @@ class LDM_Segmentor(nn.Module):
         zc    = (self.image_encoder(image) * self.latent_scale)
 
          # Step 4: Concatenate and denoise followed by estimatation of z0_hat and decode to mask
-        
-        print(f'zt.shape:{zt.shape}, zc.shape: {zc.shape}')
+
         noise_hat        = self.unet(torch.cat([zt, zc], dim = 1), t).sample  # (B, 4, 32, 32), t is just (B,)
-        z0_hat, _        = denoise_and_decode_in_one_step(BATCH_SIZE, noise_hat, t, zt, self.scheduler, 
+        z0_hat, _        = denoise_and_decode_in_one_step(BATCH_SIZE, noise_hat, t, zt, self.scheduler,
                                             self.vae, self.latent_scale, self.device, False)
-        
+
         out              = {"z0": z0, "zt": zt, "zc": zc, "z0_hat": z0_hat, "noise": noise, 'noise_hat': noise_hat}
         loss             = self.loss_criterion(noise_hat, noise, z0_hat, z0)
 
         return out, loss
-        
+
     def inference(self, image):
         if do.INFERER_SCHEDULER == 'DDIM' and not isinstance(self.scheduler, DDIMScheduler):
             self.scheduler = switch_to_ddim(self.device)
         else:
             print(f'\n[INFO] Using {self.scheduler.__class__.__name__} scheduler for inference with timesteps {do.INFERENCE_TIMESTEPS}')
             self.scheduler.set_timesteps(do.INFERENCE_TIMESTEPS, device = self.device)
-            
+
         zt = (torch.randn(1, 4, TRAINSIZE // 8, TRAINSIZE // 8, device=self.device, dtype=torch.float16) * self.latent_scale)
         zc = (self.image_encoder(image) * self.latent_scale)
-        
+
         if do.ONE_X_ONE:
             t                = torch.full((1,), NUM_TRAIN_TIMESTEPS - 1, device=self.device).long()
             noise_hat        = self.unet(torch.cat([zt, zc], dim = 1), t).sample
-            z0_hat, mask_hat = denoise_and_decode_in_one_step(1, noise_hat, t, zt, self.scheduler, 
-                                                              self.vae, self.latent_scale, self.device, True) 
+            z0_hat, mask_hat = denoise_and_decode_in_one_step(1, noise_hat, t, zt, self.scheduler,
+                                                              self.vae, self.latent_scale, self.device, True)
         else:
-            z0_hat, mask_hat = denoise_and_decode(zt, self.scheduler, self.vae, self.latent_scale, 
+            z0_hat, mask_hat = denoise_and_decode(zt, self.scheduler, self.vae, self.latent_scale,
                                                   self.device, self.unet, zc)
 
         return {'z0_hat': z0_hat, 'mask_hat': mask_hat}
@@ -187,7 +187,7 @@ class LDM_Segmentor_CrossAttention(nn.Module):
         z0_hat, mask_hat = denoise_and_decode(
             B, noise_pred, t, zt, self.scheduler, self.vae, self.latent_scale, self.device
         )
-        
+
         return {"z0": z0, "zt": zt, "zc": zc, "z0_hat": z0_hat, "mask_hat": mask_hat}
 
 # ------------------------------------------------------------------------------#

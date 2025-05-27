@@ -12,8 +12,8 @@
 # ------------------------------------------------------------------------------#
 # Dataset configuration
 BASE_DIR            = "/media/ee/New Volume/Datasets/Kvasir-SEG"        # Path to the dataset root directory
-TRAINSIZE           = 352                   # Target size for resizing images and masks
-BATCH_SIZE          = 3                     # Batch size for dataloaders
+TRAINSIZE           = 384                   # Target size for resizing images and masks
+BATCH_SIZE          = 2                     # Batch size for dataloaders
 SPLIT_RATIOS        = (800, 100, 100)       # Train, validation, test split ratios # (800, 100, 100)
 FORMAT              = True                  # If True, train/val/test subdirectories already exist
 CLASSIFICATION_TYPE = 'binary'              # 'binary' or 'multiclass'
@@ -61,19 +61,19 @@ OPTIONAL_INFO   = f"with_{NOISE_SCHEDULER}_noise_scheduler"
 EXPERIMENT_NAME = f'machine--B{BATCH_SIZE}-E{N_EPOCHS}-V{VAL_INTERVAL}-T{NUM_TRAIN_TIMESTEPS}-S{SCHEDULER}'
 RUN             = '02_' + OPTIONAL_INFO
 
-#"block_out_channels": (192, 384, 384, 768, 768), #  (128, 256, 256, 512)
 # ------------------------------------------------------------------------------#
 # Model configuration for Diffusion i.e., UNET --> matched with SDSeg
-UNET_PARAMS = { "sample_size"       : TRAINSIZE // 8,
-                "in_channels"       : 8,  # Using latent space input (z = 4 + concatenation), so latent dimensions match autoencoder
-                "out_channels"      : 4,  # Latent space output before decoder
-                "layers_per_block"  : 2,
-                "block_out_channels": (44, 44, 88, 88, 176, 176), #  (1, 1, 2, 2, 4, 4)
-                "down_block_types"  : ("DownBlock2D",) * 4 + ("AttnDownBlock2D",) + ("DownBlock2D",), 
-                "up_block_types"    : ("UpBlock2D",) * 1 + ("AttnUpBlock2D",) + ("UpBlock2D",) * 4,
-                "norm_num_groups"   : 44,
-                "attention_head_dim": 8
-              } # num_head_channels = model_channels (192) // num_heads (8)
+UNET_PARAMS = {
+    "sample_size": TRAINSIZE // 8,  # 48
+    "in_channels": 8,
+    "out_channels": 4,
+    "layers_per_block": 2,
+    "block_out_channels": (48, 48, 96, 192, 192),  # 5 blocks
+    "down_block_types": ("DownBlock2D",) * 3 + ("AttnDownBlock2D",) + ("DownBlock2D",),
+    "up_block_types": ("UpBlock2D",) * 1 + ("AttnUpBlock2D",) + ("UpBlock2D",) * 3,
+    "norm_num_groups": 16,  # Divisor of 48
+    "attention_head_dim": 8
+}
 
 LDM_SNAPSHOT_DIR     = "./results/" + RUN + f"/ldm-" + EXPERIMENT_NAME
 # LDM_SCALE_FACTOR   = 1.0
@@ -82,8 +82,8 @@ LDM_SNAPSHOT_DIR     = "./results/" + RUN + f"/ldm-" + EXPERIMENT_NAME
 # Placeholder for inference configuration
 class InferenceConfig:
     N_PREDS             = 1
-    MODEL_EPOCHS        = [460]              # Epoch of the list of models to load. 
-    NUM_SAMPLES         = 2                 # Number of samples 
+    MODEL_EPOCHS        = [460]              # Epoch of the list of models to load.
+    NUM_SAMPLES         = 2                 # Number of samples
     INFERER_SCHEDULER   = 'DDIM'
     TRAIN_TIMESTEPS     = NUM_TRAIN_TIMESTEPS
     ONE_X_ONE           = True # make it False if training

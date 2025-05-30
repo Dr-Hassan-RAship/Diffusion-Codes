@@ -17,7 +17,7 @@ from torch.optim                    import AdamW
 from torch.utils.tensorboard        import SummaryWriter
 
 from config                         import *
-from dataset                        import get_dataloaders
+from dataset_ver2                   import get_dataloaders
 from architectures                  import *
 from utils                          import *
 from modeling_utils                 import *

@@ -64,8 +64,7 @@ class CombinedLatentNoiseLoss(nn.Module):
         l_noise  = self.l2_weight * l2_noise
         
         return l_latent + l_noise
-#--------------------------------------------------------------------------------------
-
+    
 #--------------------------------------------------------------------------------------
 def denoise_and_decode_in_one_step(batch_size, noise_pred, timesteps, zt, scheduler, vae, latent_scale, device, inference = False):
     
@@ -163,6 +162,7 @@ def denoise_and_decode(zt, scheduler, vae, latent_scale, device, unet, zc):
         return prev_sample, mask_hat
     else:
         return predicted_x0, mask_hat
+    
 #--------------------------------------------------------------------------------------#
 def switch_to_ddim(device):
     """

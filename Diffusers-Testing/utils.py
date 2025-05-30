@@ -13,7 +13,7 @@ import os, csv, sys, logging, logging, torch
 from config                     import *
 from diffusers                  import AutoencoderKL
 from diffusers.optimization     import get_cosine_schedule_with_warmup
-from dataset                    import *
+from dataset_ver2               import *
 
 from safetensors.torch          import save_model as save_safetensors
 from safetensors.torch          import load_file as load_safetensors

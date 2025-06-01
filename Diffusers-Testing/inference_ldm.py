@@ -99,6 +99,7 @@ def main():
             print(f"Error loading model for epoch {model_epoch}: {e}")
             continue
         
+        output_dir = None
         if split == 'test':
            output_dir = os.path.join(do.SAVE_FOLDER, f"inference_{split}_M{model_epoch}")
            os.makedirs(output_dir, exist_ok = True)
@@ -111,6 +112,7 @@ def main():
         #     visualize_predictions(predictions_list, output_dir, model_epoch=model_epoch)
 
     if do.METRIC_REPORT and all_metrics:
+        os.makedirs(do.SAVE_FOLDER, exist_ok = True)
         if split == "val":
             metrics_path = os.path.join(do.SAVE_FOLDER, f'inference_{split}_M{do.MODEL_EPOCHS}.csv')	
             # Compute and save averaged metrics for validation

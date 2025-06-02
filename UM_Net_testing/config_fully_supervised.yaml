@@ -1,0 +1,54 @@
+# Configuration File
+# Last Date             : October 15, 2024
+#------------------------------------------------------------------------------#
+data:
+  train_root_path       : '/media/ee/New Volume/HMD_World/Qatar_19/QaTa-19/Train_Set/LS_1500/'
+  val_root_path         : '/media/ee/New Volume/HMD_World/Qatar_19/QaTa-19/Val_Set/'
+  experiment_name       : 'LS_1500'
+  num_classes           : 2
+  input_channels        : 3
+#------------------------------------------------------------------------------#
+# Various random seeds:
+# (= 1337) used in numerous codes on Github.
+# (= 1234) used in Peng et al., Pattern Recognition, 2020 [1, 2].
+# (= 666) used in Li et al., IEEE TMI, 2024 [3].
+# [Ref # 1] github.com/AlanChou/Deep-Co-Training-for-Semi-Supervised-Image-Recognition/blob/master/main.py
+# [Ref # 2] twitter.com/fchollet/status/1612555896491749376
+# [Ref # 3] github.com/HUANGLIZI/LViT/blob/main/Config.py
+network:
+  net_model             : 'res_unet'
+  slice_size            : [224, 224]
+  initialization        :
+  fix_seed              : True
+  seed                  : 666
+  batch_size            : 24
+  epochs                : 1000
+  early_stop            : True
+  patience_interval     : 50
+  deterministic         : 1
+#------------------------------------------------------------------------------#
+# optimizer             : {'AdamW', 'Adam', 'SGD'}
+# learning rates        : {'PolyDecay', 'PolyGrowth', 'Constant', StepDecay, CosineLR}
+# PolyGrowth prameters  : {eta_zero = 1.0e-7, eta_N = 0.0075}
+optimization:
+  optimizer             : 'SGD'
+  LR_policy             : 'PolyDecay'
+
+  eta_N                 :
+  eta_zero              : 0.01
+  eta_min               : #1e-4             # for CosineAnnealingWarmRestarts
+  LR_decay_rate         : 0.85
+
+  LR_by_iter            : False
+#------------------------------------------------------------------------------#
+inference:
+  experiment_name       : 'LS_1500'
+  epoch_choice          :
+  slice_size            : [224, 224]
+
+  input_folder          : '/media/ee/New Volume/HMD_World/Qatar_19/QaTa-19/Test_Set/'
+  output_folder         : 'test_outputs_QaTa19'
+
+  num_classes           : 2
+  input_channels        : 3
+#------------------------------------------------------------------------------#

@@ -5,6 +5,25 @@ import torch.nn.functional as F
 
 
 class SELayer(nn.Module):
+    """
+    (SE) layer implementation.
+    This layer applies channel-wise attention to the input feature maps by
+    learning a set of weights for each channel. It uses global average pooling
+    to capture global spatial information, followed by a two-layer fully connected
+    network to compute the attention weights.
+    Args:
+        channel (int): The number of input channels.
+        reduction (int, optional): The reduction ratio for the intermediate
+            fully connected layer. Default is 16.
+    Methods:
+        forward(x):
+            Applies the SE operation to the input tensor.
+            Args:
+                x (torch.Tensor): Input tensor of shape (batch_size, channels, height, width).
+            Returns:
+                torch.Tensor: Output tensor with the same shape as the input, where
+                each channel is scaled by its corresponding attention weight.
+    """
     def __init__(self, channel, reduction=16):
         super(SELayer, self).__init__()
         self.avg_pool = nn.AdaptiveAvgPool2d(1)
@@ -23,6 +42,29 @@ class SELayer(nn.Module):
 
 
 class NonLocalBlock(nn.Module):
+    """
+    A PyTorch implementation of the Non-Local Block for capturing long-range dependencies in feature maps.
+    Args:
+        in_channels (int): Number of input channels.
+        inter_channels (int, optional): Number of intermediate channels. If None, it is set to `in_channels // 2`.
+        sub_sample (bool, optional): If True, applies max pooling to reduce spatial dimensions. Default is True.
+        bn_layer (bool, optional): If True, includes a BatchNorm2d layer after the final convolution. Default is True.
+    Attributes:
+        sub_sample (bool): Indicates whether max pooling is applied.
+        in_channels (int): Number of input channels.
+        inter_channels (int): Number of intermediate channels.
+        g (nn.Module): Convolutional layer or sequential module for generating g(x).
+        W (nn.Module): Sequential module or convolutional layer for generating W(y).
+        theta (nn.Conv2d): Convolutional layer for generating theta(x).
+        phi (nn.Module): Convolutional layer or sequential module for generating phi(x).
+    Methods:
+        forward(x):
+            Computes the output tensor by capturing long-range dependencies in the input tensor.
+            Args:
+                x (torch.Tensor): Input tensor of shape (batch_size, in_channels, height, width).
+            Returns:
+                torch.Tensor: Output tensor of the same shape as the input tensor.
+    """
     def __init__(self, in_channels, inter_channels=None, sub_sample=True, bn_layer=True):
         super(NonLocalBlock, self).__init__()
 
@@ -63,36 +105,63 @@ class NonLocalBlock(nn.Module):
             self.phi = nn.Sequential(self.phi, nn.MaxPool2d(kernel_size=(2, 2)))
 
     def forward(self, x):
-
+        
+        # Note: h * w is replaced with (h // 2) * (w // 2) if self.sub_sample == True
         batch_size = x.size(0)
 
         g_x = self.g(x).view(batch_size, self.inter_channels, -1)
-        g_x = g_x.permute(0, 2, 1)
+        g_x = g_x.permute(0, 2, 1) # (b, h * w, inter_channels)
 
+        # Query - Features
         theta_x = self.theta(x).view(batch_size, self.inter_channels, -1)
-        theta_x = theta_x.permute(0, 2, 1)
-        phi_x = self.phi(x).view(batch_size, self.inter_channels, -1)
-        f = torch.matmul(theta_x, phi_x)
+        theta_x = theta_x.permute(0, 2, 1) # (b, h * w, inter_channels)
+        
+        # Key - Features
+        phi_x = self.phi(x).view(batch_size, self.inter_channels, -1) # (b, inter_channels, h * w)
+        
+        # Attention Map - similarity between every pair of positions in the feature map 
+        f       = torch.matmul(theta_x, phi_x) # (b, h * w, inter_channels) @ (b, inter_channels, h * w) --> (b, h * w, h * w)
+        # Normalize Attention Weights along last dimension
         f_div_C = F.softmax(f, dim=-1)
 
-        y = torch.matmul(f_div_C, g_x)
-        y = y.permute(0, 2, 1).contiguous()
-        y = y.view(batch_size, self.inter_channels, *x.size()[2:])
-        W_y = self.W(y)
-        z = W_y + x
+        # Feature Aggregation 
+        y = torch.matmul(f_div_C, g_x) # (b, h * w, h * w) @ (b, h * w, inter_channels) --> (b, h * w, inter_channels)
+        y = y.permute(0, 2, 1).contiguous() # (b, inter_channels, h * w)
+        y = y.view(batch_size, self.inter_channels, *x.size()[2:]) # (b, inter_channels, h * w) if self.sub_sample = True
+        
+        W_y = self.W(y) # (b, c, h , w)
+        z = W_y + x # skip connection
 
         return z
 
 
 class HPPF(nn.Module):
+    """
+    Hierarchical Pooling and Feature Fusion (HPPF) module.
+    This module performs hierarchical pooling and feature fusion on input tensors 
+    to generate enhanced feature representations. It combines features from multiple 
+    input tensors, applies adaptive pooling, attention mechanisms, and convolutional 
+    operations to produce the output.
+    Args:
+        in_channels (int): Number of input channels for the module.
+    Methods:
+        forward(x1, x2, x3):
+            Forward pass of the HPPF module.
+            Args:
+                x1 (torch.Tensor): First input tensor with shape (batch_size, channels, height, width).
+                x2 (torch.Tensor): Second input tensor with shape (batch_size, channels, height, width).
+                x3 (torch.Tensor): Third input tensor with shape (batch_size, channels, height, width).
+            Returns:
+                torch.Tensor: Output tensor after hierarchical pooling, attention, and feature fusion.
+    """
     def __init__(self, in_channels):
         super(HPPF, self).__init__()
         self.conv1 = nn.Sequential(nn.Conv2d(in_channels, in_channels // 16, 1, 1), nn.ReLU(inplace=True))
         self.conv2 = nn.Sequential(nn.Conv2d(in_channels, in_channels // 64, 1, 1), nn.ReLU(inplace=True))
-        self.avg = nn.AdaptiveAvgPool2d(1)
-        self.max1 = nn.AdaptiveMaxPool2d(4)
-        self.max2 = nn.AdaptiveMaxPool2d(8)
-        self.mlp = nn.Sequential(
+        self.avg   = nn.AdaptiveAvgPool2d(1)
+        self.max1  = nn.AdaptiveMaxPool2d(4)
+        self.max2  = nn.AdaptiveMaxPool2d(8)
+        self.mlp   = nn.Sequential(
             nn.Conv2d(in_channels, in_channels // 8, kernel_size=1),
             nn.ReLU(inplace=True),
             nn.Conv2d(in_channels // 8, in_channels, kernel_size=1),
@@ -102,17 +171,27 @@ class HPPF(nn.Module):
                                        nn.ReLU(inplace=True))
 
     def forward(self, x1, x2, x3):
+        # Interpolate x2 and x3 to match the size of x1 at spatial dimensions (h, w)
         x2 = F.interpolate(x2, size=x1.size()[2:], mode='bilinear', align_corners=True)
         x3 = F.interpolate(x3, size=x1.size()[2:], mode='bilinear', align_corners=True)
-        feat = torch.cat((x1, x2, x3), 1)
+        
+        # Concatenate the input tensors along the channel dimension
+        feat = torch.cat((x1, x2, x3), 1) # (feat: [b, 3 * c, h, w])
 
         b, c, h, w = feat.size()
-        y1 = self.avg(feat)
-        y2 = self.conv1(self.max1(feat))
-        y3 = self.conv2(self.max2(feat))
+        
+        # Apply hierarchical pooling and feature fusion
+        y1 = self.avg(feat) # (y1: [b, c, 1, 1])
+        
+        y2 = self.conv1(self.max1(feat)) # (y2: [b, 3 * c, 4, 4] --> [b, 3 * c, 1, 1] after reshape)
+        
+        y3 = self.conv2(self.max2(feat)) # (y3: [b, 3 * c, 8, 8] --> [b, 3 * c, 1, 1] after reshape)
+        
+        # Reshape y1, y2, and y3 to match the expected dimensions for attention computation
         y2 = y2.reshape(b, c, 1, 1)
         y3 = y3.reshape(b, c, 1, 1)
-        z = (y1 + y2 + y3) // 3
+        z  = (y1 + y2 + y3) // 3 # (z: [b, 3 * c, 1, 1])
+        
         attention = self.mlp(z)
         output1 = attention * feat
         output2 = self.feat_conv(output1)
@@ -121,6 +200,33 @@ class HPPF(nn.Module):
 
 
 class ALGM(nn.Module):
+    """
+    ALGM (Adaptive Local-Global Module) is a PyTorch module designed for feature extraction and 
+    context aggregation using a combination of local and global operations. It supports cascading 
+    outputs and flexible output configurations.
+    Args:
+        mid_ch (int): The number of middle channels used for feature extraction.
+        pool_size (tuple): A tuple specifying the padding/dilation sizes for convolutional layers.
+        out_list (tuple): A tuple specifying the output channel sizes for each output layer.
+        cascade (bool): If True, enables cascading outputs with additional processing.
+    Attributes:
+        cascade (bool): Indicates whether cascading outputs are enabled.
+        out_list (tuple): Stores the output channel sizes for each output layer.
+        LGmodule (nn.ModuleList): A list of local-global modules for feature extraction.
+        LGoutmodel (nn.ModuleList): A list of output layers for generating final outputs.
+        conv1 (nn.Sequential): Initial convolutional layer for feature extraction.
+        conv2 (nn.Sequential): Convolutional layer used for cascading output processing.
+    Methods:
+        forward(x, y=None):
+            Performs forward propagation through the module.
+            Args:
+                x (torch.Tensor): Input tensor of shape (batch_size, mid_ch, height, width).
+                y (list of torch.Tensor, optional): List of tensors for cascading outputs. 
+                    Each tensor should match the spatial dimensions of the input tensor.
+            Returns:
+                list of torch.Tensor: A list of output tensors, each corresponding to an 
+                output layer defined in `out_list`.
+    """
     def __init__(self, mid_ch, pool_size=(), out_list=(), cascade=False):
         super(ALGM, self).__init__()
         in_channels = mid_ch // 4
@@ -173,6 +279,23 @@ class ALGM(nn.Module):
 
 
 class CBAM(nn.Module):
+    """
+    CBAM (Convolutional Block Attention Module) implementation.
+    CBAM is a lightweight attention module that can be integrated into 
+    convolutional neural networks to improve feature representation by 
+    focusing on important regions in both channel and spatial dimensions.
+    Args:
+        channel (int): Number of input channels.
+        reduction (int, optional): Reduction ratio for the channel attention module. 
+                                   Default is 16.
+    Methods:
+        forward(x):
+            Applies the CBAM attention mechanism to the input tensor.
+            Args:
+                x (torch.Tensor): Input tensor of shape (batch_size, channel, height, width).
+            Returns:
+                torch.Tensor: Output tensor after applying channel and spatial attention.
+    """
     def __init__(self, channel, reduction=16):
         super(CBAM, self).__init__()
         self.avg_pool = nn.AdaptiveAvgPool2d(1)
@@ -200,6 +323,25 @@ class CBAM(nn.Module):
 
 
 class RCG(nn.Module):
+    """
+    Residual Contextual Guidance (RCG) Module.
+    This module processes input feature maps and edge maps to refine features 
+    using attention mechanisms and residual connections.
+    Attributes:
+        conv1 (nn.Sequential): A sequential layer consisting of a 2D convolution, 
+            batch normalization, and ReLU activation for feature extraction.
+        mlp (nn.Sequential): A sequential layer consisting of a 1x1 convolution 
+            followed by a sigmoid activation for generating attention weights.
+    Methods:
+        forward(pre, edge, f):
+            Args:
+                pre (torch.Tensor): Pre-computed attention map (shape: [batch_size, 1, height, width]).
+                edge (torch.Tensor): Edge map (shape: [batch_size, 1, height, width]).
+                f (torch.Tensor): Input feature map (shape: [batch_size, channels, height, width]).
+            Returns:
+                torch.Tensor: Refined feature map after applying attention and residual connections 
+                (shape: [batch_size, channels, height, width]).
+    """
     def __init__(self):
         super(RCG, self).__init__()
         self.conv1 = nn.Sequential(nn.Conv2d(128, 64, 3, 1, 1), nn.BatchNorm2d(64), nn.ReLU(inplace=True))

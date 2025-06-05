@@ -54,7 +54,7 @@ def perform_inference(model, data_loader, device, output_dir, num_samples=5, mod
 
         model_out           = model.inference(image)
         predicted_mask      = model_out['mask_hat']
-        predicted_mask      = torch.clamp((predicted_mask + 1.0 / 2.0), min=0.0, max=1.0)
+        predicted_mask      = torch.clamp((predicted_mask + 1.0) / 2.0, min=0.0, max=1.0)
         predicted_mask      = predicted_mask.mean(dim=1, keepdim = True).repeat(1, 3, 1, 1)
         predicted_mask      = (predicted_mask > 0.5).float().cpu().numpy().squeeze()
         groundtruth_image   = image.cpu().numpy().squeeze()

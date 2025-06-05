@@ -181,7 +181,7 @@ class HPPF(nn.Module):
         b, c, h, w = feat.size()
         
         # Apply hierarchical pooling and feature fusion
-        y1 = self.avg(feat) # (y1: [b, c, 1, 1])
+        y1 = self.avg(feat) # (y1: [b, 3 * c, 1, 1])
         
         y2 = self.conv1(self.max1(feat)) # (y2: [b, 3 * c, 4, 4] --> [b, 3 * c, 1, 1] after reshape)
         
@@ -193,8 +193,8 @@ class HPPF(nn.Module):
         z  = (y1 + y2 + y3) // 3 # (z: [b, 3 * c, 1, 1])
         
         attention = self.mlp(z)
-        output1 = attention * feat
-        output2 = self.feat_conv(output1)
+        output1   = attention * feat
+        output2   = self.feat_conv(output1)
 
         return output2
 

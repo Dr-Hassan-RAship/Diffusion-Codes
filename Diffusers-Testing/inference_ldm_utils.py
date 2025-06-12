@@ -50,12 +50,12 @@ def calculate_metrics(prediction, label):
        miou        = miou_metric(torch.tensor(pred)[None, None], torch.tensor(gt)[None, None]).item()
     elif pred.sum() == 0 or gt.sum() == 0:
        dice        = 0.0
-       mIoU        = 0.0
+       miou        = 0.0
        assd_val    = np.nan
        hd95_val    = np.nan
     elif pred.sum() == 0 and gt.sum() == 0:
        dice        = 1.0
-       mIoU        = 1.0
+       miou        = 1.0
        assd_val    = 0.0
        hd95_val    = 0.0
 

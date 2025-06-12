@@ -18,21 +18,22 @@ SPLIT_RATIOS        = (800, 100, 100)       # Train, validation, test split rati
 FORMAT              = True                  # If True, train/val/test subdirectories already exist
 CLASSIFICATION_TYPE = 'binary'              # 'binary' or 'multiclass'
 
-#-------------------------------------------------------------------------------#
-OPT              = { "optimizer"       : "AdamW",
-                     "lr"              : 5e-5,
-                     "weight_decay"    : 1e-3,
-                     "betas"           : (0.9, 0.999),
-                     "warmup_ratio"    : 0.1
+# -------------------------------------------------------------------------------#
+OPT = {
+    "optimizer": "AdamW",
+    "lr": 5e-5,
+    "weight_decay": 1e-3,
+    "betas": (0.9, 0.999),
+    "warmup_ratio": 0.1,
 }
 # Scheduler_Configuration
-USE_SCHEDULER    = False
-SCHEDULER_TYPE   = 'ddpm'  # Options: 'cosine_warmup', 'lambda_warmup_cosine', 'cosine_annealing', 'ddpm'
+USE_SCHEDULER = False
+SCHEDULER_TYPE = "ddpm"  # Options: 'cosine_warmup', 'lambda_warmup_cosine', 'cosine_annealing', 'ddpm'
 SCHEDULER_KWARGS = {
-    'lr_min': 1e-6,
-    'lr_max': 5e-5,
-    'lr_start': 0.0,
-    'verbosity_interval': 100
+    "lr_min": 1e-6,
+    "lr_max": 5e-5,
+    "lr_start": 0.0,
+    "verbosity_interval": 100,
 }
 
 # ------------------------------------------------------------------------------#
@@ -43,18 +44,20 @@ VAL_INTERVAL        = 5             # Validate every n epochs (can reduce)
 MODEL_SAVE_INTERVAL = 10             # Save model every n epochs
 NUM_TRAIN_TIMESTEPS = 1000          # i.e., diffusion steps (T)
 
-#--------------------------------------------------------------------------------#
+# --------------------------------------------------------------------------------#
 # Diffusion Settings
 
-NUM_TRAIN_TIMESTEPS = 1000                  # i.e., diffusion steps (T)
-BETA_START          = 0.0015                # 0.0001 default
-BETA_END            = 0.0195                # 0.02 default
-NOISE_SCHEDULER     = "linear"              # {linear, scaled_linear, squaredcos_cap_v2}, squaredcos_cap_v2 is cosine schedule
-SCHEDULER           = 'DDPM'                # {DDPM, DDIM}
-ETA                 = 0.0                   # Weight for noise added in DDIM (eta = 1 for DDPM, eta = 0 for deterministic DDIM)
-VAR_NOISE           = False
-DETERMINISTIC_TAU   = True                  # Whether to use deterministic vae latent representation or not
-DETERMINISTIC_ENC   = False
+NUM_TRAIN_TIMESTEPS = 1000  # i.e., diffusion steps (T)
+BETA_START = 0.0015  # 0.0001 default
+BETA_END = 0.0195  # 0.02 default
+NOISE_SCHEDULER = "linear"  # {linear, scaled_linear, squaredcos_cap_v2}, squaredcos_cap_v2 is cosine schedule
+SCHEDULER = "DDPM"  # {DDPM, DDIM}
+ETA = 0.0  # Weight for noise added in DDIM (eta = 1 for DDPM, eta = 0 for deterministic DDIM)
+VAR_NOISE = False
+DETERMINISTIC_TAU = (
+    True  # Whether to use deterministic vae latent representation or not
+)
+DETERMINISTIC_ENC = False
 
 # ------------------------------------------------------------------------------#
 # Experiment configuration
@@ -75,6 +78,7 @@ UNET_PARAMS = { "sample_size"       : TRAINSIZE // 8,
 
 LDM_SNAPSHOT_DIR     = "./results/" + RUN + f"/ldm-" + EXPERIMENT_NAME
 LDM_SCALE_FACTOR     = 0.18125
+
 
 # ------------------------------------------------------------------------------#
 # Placeholder for inference configuration

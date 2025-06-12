@@ -15,7 +15,7 @@ import                              torch, copy
 import                              torch.nn as nn
 
 from config                         import *
-from diffusers                      import (AutoencoderKL, DDPMScheduler, UNet2DModel, DDIMScheduler)
+from diffusers                      import (AutoencoderKL, DDPMScheduler, AutoencoderTiny, UNet2DModel, DDIMScheduler)
 # from source_unet_2d                 import UNet2DModel
 from modeling_utils                 import *
 from peft                           import get_peft_model, LoraConfig, TaskType
@@ -34,6 +34,9 @@ class LDM_Segmentor(nn.Module):
         self.device = device
         self.latent_scale = LDM_SCALE_FACTOR
 
+        # ALTERNATIVE AEKL
+        self.vae = AutoencoderTiny.from_pretrained("madebyollin/taesd", torch_dtype=torch.float16).to(device).eval()
+
         # Load pretrained VAE and freeze
         self.vae         = (AutoencoderKL.from_pretrained(pretrained_vae, subfolder="vae"))
         self.vae_encoder = TauEncoder(self.vae.encoder, vae_encoder = True).to(device).eval()
@@ -41,10 +44,10 @@ class LDM_Segmentor(nn.Module):
             param.requires_grad = False
 
         # Learnable image encoder (Tau θ)
-        self.image_encoder = TauEncoder(copy.deepcopy(self.vae.encoder)).to(device).train()
+        self.image_encoder = TauEncoder(copy.deepcopy(self.vae.encoder)).to(device).eval()
         for param in self.image_encoder.parameters():
             param.requires_grad = True
-        
+
         # delete self.vae
         del self.vae
 

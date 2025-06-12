@@ -1,7 +1,7 @@
 # ------------------------------------------------------------------------------#
 #
 # File name                 : modeling_utils.py
-# Purpose                   : Architecture utilities for Latent Diffusion Model (LDM) segmentation 
+# Purpose                   : Architecture utilities for Latent Diffusion Model (LDM) segmentation
 # Usage                     : Used for forward pass, denoising, and decoding
 #
 # Authors                   : Talha Ahmed, Nehal Ahmed Shaikh, Hassan Mohy-ud-Din
@@ -114,18 +114,18 @@ def load_hybrid_unet(pretrained_path: str, device: str = "cuda") -> UNet2DCondit
 
 #--------------------------------------------------------------------------------------#
 def denoise_and_decode_in_one_step(batch_size, noise_pred, timesteps, zt, scheduler, vae, latent_scale, device, inference = False):
-    
+
     """
     Denoise and decode the latent zt to obtain the predicted mask.
     """
     z0_hat_list   = []
     mask_hat_list = []
-    
+
     if inference:
-        noise_pred = noise_pred.to(device = 'cpu') 
-        timesteps  = timesteps.to(device = 'cpu') 
+        noise_pred = noise_pred.to(device = 'cpu')
+        timesteps  = timesteps.to(device = 'cpu')
         zt         = zt.to(device = 'cpu')
-        
+
     for batch_idx in range(noise_pred.shape[0]):
         # z0_hat = (zt - ((1 - scheduler.alphas_cumprod).sqrt() * noise_pred)) / scheduler.alphas_cumprod.sqrt()
         z0_hat   = scheduler.step(noise_pred[batch_idx].unsqueeze(0), timesteps[batch_idx].unsqueeze(0), zt[batch_idx].unsqueeze(0)).pred_original_sample
@@ -136,11 +136,11 @@ def denoise_and_decode_in_one_step(batch_size, noise_pred, timesteps, zt, schedu
             mask_hat                = vae.decode(z0_hat / latent_scale).sample
             mask_hat_list.append(mask_hat)
         z0_hat_list.append(z0_hat)
-        
+
     z0_hat   = torch.cat(z0_hat_list,   dim = 0) # (B, 4, 32, 32)
     if inference:
         mask_hat = torch.cat(mask_hat_list, dim = 0) # (B, 3, 256, 256)
-    
+
     if inference:
         return z0_hat, mask_hat
     else:

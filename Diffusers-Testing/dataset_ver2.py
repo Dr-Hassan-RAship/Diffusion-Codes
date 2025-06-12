@@ -97,31 +97,31 @@ class KvasirPolypDataset(Dataset):
             transforms.GaussianBlur((25, 25), sigma=(0.001, 2.0)),
             transforms.ColorJitter(brightness=0.4, contrast=0.5, saturation=0.25, hue=0.01),
         ]), hflip = True, vflip = True, affine = True):
-        
+
         self.image_dir = os.path.join(base_dir, split, "images")
-        self.mask_dir  = os.path.join(base_dir, split, "masks") 
-        
+        self.mask_dir  = os.path.join(base_dir, split, "masks")
+
         self.image_files = sorted(os.listdir(self.image_dir))
         self.mask_files  = sorted(os.listdir(self.mask_dir))
-    
+
         # Check for matching number of files
         assert len(self.image_files) == len(self.mask_files), "Number of images and masks do not match!"
-        
+
         self.split           = split
         self.trainsize       = trainsize
         self.transform_img   = transform_img
-        
+
         self.common_transform = transforms.Compose(
             [
                 transforms.RandomHorizontalFlip(p=0.5),
                 transforms.RandomVerticalFlip(p=0.5),
             ]
         )
-    
-#-------------------------------------------------------------------------------#    
+
+#-------------------------------------------------------------------------------#
     def __len__(self):
         return len(self.image_files)
-    
+
 #-------------------------------------------------------------------------------#
     def __getitem__(self, idx):
         img_path = os.path.join(self.image_dir, self.image_files[idx])
@@ -192,8 +192,7 @@ def get_dataloaders(base_dir, split_ratio, split="train", trainsize=256, batch_s
     else:
         print(f"Dataset already split into train, val and test directories")
 
-    dataset = KvasirPolypDataset(base_dir, split = split, trainsize = trainsize)
-
+    dataset    = KvasirPolypDataset(base_dir, split = split, trainsize = trainsize)
     dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True if split == "train" else False,
                             num_workers=num_workers,
                             pin_memory=True,

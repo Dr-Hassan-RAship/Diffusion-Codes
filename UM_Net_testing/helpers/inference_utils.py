@@ -173,7 +173,7 @@ def performance_in_training(score, target, classes, mode):
     """
     metrics = []
     if mode == 'Training':
-        for i in range(1, classes):
+        for i in range(0, classes):
             # Extract the binary masks for the current class
             pred    = (score[:, i, :, :]).cpu().detach().numpy()
             label   = (target == i).squeeze(1).cpu().detach().numpy()

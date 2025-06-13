@@ -17,9 +17,12 @@ import torch.nn                     as nn
 import torch.nn.functional          as F
 import torch.optim                  as optim
 import torch.backends.cudnn         as cudnn
+import segmentation_models_pytorch  as smp
 
 from torch.utils.data               import DataLoader
 from torch.nn.modules.loss          import CrossEntropyLoss
+from monai.metrics                  import DiceMetric, MeanIoU
+from medpy                          import metric
 
 from tqdm                           import tqdm
 from torchinfo                      import summary
@@ -121,9 +124,11 @@ class TrainSession:
         if self.LR_policy == "StepDecay": lrVal = self.eta_zero
         else: lrVal     = []
 
-        #ce_loss         = CrossEntropyLoss()
-        bce_loss        = nn.BCELoss()
-        dice_loss       = DiceLoss(num_classes)
+        # ce_loss         = CrossEntropyLoss()
+        bce_loss        = smp.losses.SoftBCEWithLogitsLoss()
+        # bce_loss        = nn.BCELoss()
+        dice_loss       = smp.losses.DiceLoss(mode = 'binary', from_logits = True) # DiceLoss(num_classes)
+        # dice_loss       = DiceLoss(num_classes)
 
         # -------------------------------------------------------------------- #
         writer          = SummaryWriter(snapshot_path + '/log')
@@ -145,21 +150,17 @@ class TrainSession:
                 volume_batch, label_batch = sampled_batch['image'], sampled_batch['label']
                 volume_batch, label_batch = volume_batch.cuda(), label_batch.cuda()
 
-                print(torch.unique(label_batch))
-
-                outputs      = model(volume_batch)              # volume batch passed through model
-                outputs_soft = torch.sigmoid(outputs)           # compute softmax prob. maps
-
-                print(outputs.shape, torch.unique(torch.isnan(outputs_soft)), torch.unique(torch.isinf(outputs_soft)))
+                outputs      = model(volume_batch)       # volume batch passed through model
+                outputs_soft = torch.sigmoid(outputs)    # compute softmax prob. maps
+                #outputs_soft = torch.sigmoid(outputs)   # compute softmax prob. maps
 
                 train_dice_scores.append(performance_in_training(outputs_soft,
-                                                                 label_batch.unsqueeze(1),
+                                                                 label_batch,
                                                                  self.num_classes, 'Training'))
-                loss_ce      = 0.0  #bce_loss(outputs_soft, label_batch[:].float())
-                loss_dice    = 0.0  # dice_loss(outputs_soft, label_batch[:].float())
-                loss         = torch.mean((outputs_soft - label_batch) ** 2)  #loss_ce #0.5 * (loss_dice + loss_ce)
 
-                print('UUUUUuuuuU', loss)
+                loss_ce      = bce_loss(outputs, label_batch.float())
+                loss_dice    = dice_loss(outputs, label_batch.float())
+                loss         = 0.5 * (loss_dice + loss_ce)
 
                 optimizer.zero_grad(); loss.backward(); optimizer.step()
                 train_loss.append(loss.cpu().detach().numpy())
@@ -175,7 +176,7 @@ class TrainSession:
                 # log loss and dice scores on command window
                 logging.info(
                     'Batch %d : loss : %f, loss_ce: %f, loss_dice: %f, train_DSC: %f' %
-                    (i_batch, loss.item(), loss_ce.item(), loss_dice.item(), train_dice_scores[-1]))
+                    (i_batch, loss.item(), loss_ce.item(), loss_dice.item(), train_dice_scores[-1][0]))
 
             # ---------------------------------------------------------------- #
             # Varying learning rate by epoch
@@ -236,10 +237,10 @@ class TrainSession:
             if performance > best_performance:          # if dice score improves
                 best_epoch      = epoch_num
                 best_performance= performance
-                save_best       = os.path.join(snapshot_path, 'best_model.pth')
+                save_best       = os.path.join(snapshot_path, 'models', 'best_model.pth')
                 torch.save(model.state_dict(), save_best)
 
-            save_mode_path      = os.path.join(snapshot_path, 'epoch_num_{}.pth'.format(epoch_num))
+            save_mode_path      = os.path.join(snapshot_path, 'models', 'epoch_num_{}.pth'.format(epoch_num))
             torch.save(model.state_dict(), save_mode_path)
             logging.info("save model to {}".format(save_mode_path))
 
@@ -300,6 +301,8 @@ if __name__ == "__main__":
 
     # Check if path exists else make the directory
     if not os.path.exists(snapshot_path): os.makedirs(snapshot_path)
+
+    model_path      = os.makedirs(os.path.join(snapshot_path, 'models'))
 
     code_path       = os.path.join(snapshot_path, 'code')
     if not os.path.exists(code_path): os.makedirs(code_path)

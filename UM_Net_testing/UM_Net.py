@@ -1,7 +1,7 @@
 #------------------------------------------------------------------------------#
 # File name         : UM_Net.py
 # Purpose           : UM-Net architecture for Polyp segmentation
-# Reference         : https://github.com/dxqllp/UM-Net
+# Reference         : https:/github.com/dxqllp/UM-Net
 #------------------------------------------------------------------------------#
 
 import torch
@@ -16,10 +16,10 @@ from modules                        import *
 class DecoderBlock(nn.Module):
     def __init__(self, in_channels, out_channels):
         super(DecoderBlock, self).__init__()
-        self.conv1 = nn.Sequential(nn.Conv2d(in_channels, in_channels // 4,  3, 1, 1),
-                                   nn.BatchNorm2d(in_channels // 4),
+        self.conv1 = nn.Sequential(nn.Conv2d(in_channels, int(int(in_channels / 4)),  3, 1, 1),
+                                   nn.BatchNorm2d(int(in_channels / 4)),
                                    nn.ReLU(inplace=True))
-        self.conv2 = nn.Sequential(nn.Conv2d(in_channels // 4, out_channels, 3, 1, 1),
+        self.conv2 = nn.Sequential(nn.Conv2d(int(in_channels / 4), out_channels, 3, 1, 1),
                                    nn.BatchNorm2d(out_channels),
                                    nn.ReLU(inplace=True))
 
@@ -33,11 +33,11 @@ class DecoderBlock(nn.Module):
 class SideoutBlock(nn.Module):
     def __init__(self, in_channels, out_channels):
         super(SideoutBlock, self).__init__()
-        self.conv1 = nn.Sequential(nn.Conv2d(in_channels, in_channels // 4, 3, 1, 1),
-                                   nn.BatchNorm2d(in_channels // 4),
+        self.conv1 = nn.Sequential(nn.Conv2d(in_channels, int(in_channels / 4), 3, 1, 1),
+                                   nn.BatchNorm2d(int(in_channels / 4)),
                                    nn.ReLU(inplace=True))
         self.dropout = nn.Dropout2d(0.1)
-        self.conv2 = nn.Conv2d(in_channels // 4, out_channels, kernel_size=1)
+        self.conv2 = nn.Conv2d(int(in_channels / 4), out_channels, kernel_size=1)
 
     def forward(self, x):
         x = self.conv1(x)
@@ -151,14 +151,14 @@ class UM_Net(nn.Module):
         #   torch.sigmoid(p_c)
 
 #------------------------------------------------------------------------------#
-if __name__ == '__main__':
-    model = UM_Net(num_classes=1)
-    input = torch.randn([1, 3, 352, 352])
-    flops, params = profile(model, inputs=(input,))
-    flops, params = clever_format([flops, params], "%.2f")
-    print('[Statistics Information]\nFLOPs: {}\nParams: {}'.format(flops, params))
-
-    output = model(input)
-    print(f'Output: {output}')
+# if __name__ == '__main__':
+#     model = UM_Net(num_classes=1)
+#     input = torch.randn([1, 3, 352, 352])
+#     flops, params = profile(model, inputs=(input,))
+#     flops, params = clever_format([flops, params], "%.2f")
+#     print('[Statistics Information]\nFLOPs: {}\nParams: {}'.format(flops, params))
+#
+#     output = model(input)
+#     print(f'Output: {output}')
 
 #------------------------------------------------------------------------------#

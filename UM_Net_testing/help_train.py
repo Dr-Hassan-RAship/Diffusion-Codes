@@ -1,39 +1,35 @@
 #------------------------------------------------------------------------------#
+#
 # File name         : train_fully_supervised.py
-# Purpose           : Train U-Net fully supervised on the Kvasir dataset
+# Purpose           : Train a U-Net model (ResNet encoder) on QatCov-19 Dataset
 # Usage (command)   : python train_fully_supervised.py --config config_fully_supervised.yaml
-#                     tensorboard --logdir='snapshot/fully_supervised'
+#                     tensorboard --logdir='snapshot/FS_100p'
+#                     tensorboard --logdir='snapshot/LS_100/'
 #
-# Authors           : Talha Ahmed, Nehal Ahmed Shaikh, Hassan Mohy-ud-Din
-# Email             : hassan.mohyuddin@lums.edu.pk
+# Authors           : Shujah Ur Rehman, Syed Muqeem Mahmood, Hassan Mohy-ud-Din
+# Email             : 21060003@lums.edu.pk, 24100025@lums.edu.pk,
+#                     hassan.mohyuddin@lums.edu.pk
 #
-# Last Date         : June 11, 2025
+# Last Date         : October 15, 2024
+#
 #------------------------------------------------------------------------------#
 
 import torch, argparse, logging, os, random, shutil, sys, time, csv, time
 
 import numpy                        as np
-import torch.nn                     as nn
-import torch.nn.functional          as F
-import torch.optim                  as optim
 import torch.backends.cudnn         as cudnn
-import segmentation_models_pytorch  as smp
 
-from torch.utils.data               import DataLoader
-from torch.nn.modules.loss          import CrossEntropyLoss
-from monai.metrics                  import DiceMetric, MeanIoU
-from medpy                          import metric
-
+from tensorboardX                   import SummaryWriter
 from tqdm                           import tqdm
 from torchinfo                      import summary
+from torch.utils.data               import DataLoader
 from torchvision                    import transforms
-from tensorboardX                   import SummaryWriter
+from torch.nn.modules.loss          import CrossEntropyLoss
 
-from UM_Net                         import *
-from dataloaders.dataset            import *
+from networks.net_factory           import net_factory
+from dataloaders.dataset            import ImageToImage2D, RandomGenerator, ValGenerator
 
 from helpers.train_utils            import *
-from helpers.losses                 import DiceLoss
 from helpers.parse_yaml             import parse_yaml_config
 from helpers.fom                    import iou_on_batch, dice_coef, DiceLoss
 
@@ -64,13 +60,14 @@ class TrainSession:
         #-------------------------------------------------------------#
         config_net              = config['network']
 
-        self.slice_size         = config_net.get('slice_size')
-        self.initialize         = config_net.get('initialization')
-        self.fix_seed           = config_net.get('fix_seed')
         self.seed               = config_net.get('seed')
+        self.fix_seed           = config_net.get('fix_seed')
+        self.net_model          = config_net.get('net_model')
+        self.slice_size         = config_net.get('slice_size')
         self.batch_size         = config_net.get('batch_size')
         self.epochs             = config_net.get('epochs')
-        self.num_workers        = config_net.get('num_workers')
+        self.early_stop         = config_net.get('early_stop')
+        self.patience_interval  = config_net.get('patience_interval')
         self.deterministic      = config_net.get('deterministic')
 
         #-------------------------------------------------------------#
@@ -80,7 +77,9 @@ class TrainSession:
         self.LR_policy          = config_optim.get('LR_policy')
         self.eta_zero           = config_optim.get('eta_zero')
         self.eta_N              = config_optim.get('eta_N')
+        self.eta_min            = config_optim.get('eta_min')
         self.lr_decay_rate      = config_optim.get('LR_decay_rate')
+        self.lr_by_iter         = config_optim.get('LR_by_iter')
 
         #-------------------------------------------------------------#
         print ('Configuration Parameters = ', config_file, config_net, config_optim)
@@ -88,125 +87,150 @@ class TrainSession:
     #------------------------------------------------------------------------------#
     def train(self, snapshot_path):
 
+        input_channels  = self.input_channels
         num_classes     = self.num_classes
         batch_size      = self.batch_size
         epochs          = self.epochs
 
-        model           = UM_Net(num_classes = self.num_classes).cuda()
+        model           = net_factory(net_type      = self.net_model,
+                                      in_chns       = input_channels,
+                                      class_num     = num_classes,
+                                      pretrain      = True,
+                                      concatF       = True,
+                                      init          = None).cuda()
+
+        summary(model, input_size = (batch_size, input_channels, self.slice_size[0], self.slice_size[1]))
 
         # -------------------------------------------------------------------- #
         # Training data
-        db_train        = Polyp_Dataset(root        = self.train_root_path,
-                                        mode        = "train",
-                                        slice_size  = self.slice_size)
+        db_train        = ImageToImage2D(base_dir     = self.train_root_path,
+                                         split        = 'train_lab',
+                                         transform    = transforms.Compose([RandomGenerator(self.slice_size)]),
+                                         one_hot_mask = True,
+                                         image_size   = self.slice_size)
+
         # Validation data
-        db_val          = Polyp_Dataset(root        = self.val_root_path,
-                                        mode        = "val",
-                                        slice_size  = self.slice_size)
+        db_val          = ImageToImage2D(base_dir     = self.val_root_path,
+                                         split        = 'val',
+                                         transform    = transforms.Compose([ValGenerator(self.slice_size)]),
+                                         one_hot_mask = True,
+                                         image_size   = self.slice_size)
 
         def worker_init_fn(worker_id): random.seed(self.seed + worker_id)
 
         trainloader     = DataLoader(db_train,
                                      batch_size     = batch_size,
                                      shuffle        = True,
-                                     num_workers    = self.num_workers,
+                                     num_workers    = 6,
                                      pin_memory     = True,
                                      worker_init_fn = worker_init_fn)
 
         valloader       = DataLoader(db_val,
-                                     batch_size     = batch_size,
-                                     shuffle        = False,
-                                     num_workers    = self.num_workers)
+                                     batch_size   = batch_size,
+                                     shuffle      = False,
+                                     num_workers  = 6)
+        model.train()
+
+        # -------------------------------------------------------------------- #
+        max_iters       = len(trainloader) * epochs
+        print ('Total # of iterations = ', max_iters)
 
         # -------------------------------------------------------------------- #
         # Define optimizer and Losses
         optimizer       = optim_policy(self, model)
+
         if self.LR_policy == "StepDecay": lrVal = self.eta_zero
         else: lrVal     = []
 
-        # ce_loss         = CrossEntropyLoss()
-        bce_loss        = smp.losses.SoftBCEWithLogitsLoss()
-        # bce_loss        = nn.BCELoss()
-        dice_loss       = smp.losses.DiceLoss(mode = 'binary', from_logits = True) # DiceLoss(num_classes)
-        # dice_loss       = DiceLoss(num_classes)
-
+        dice_loss       = DiceLoss(num_classes)
+        ce_loss         = CrossEntropyLoss()
         # -------------------------------------------------------------------- #
         writer          = SummaryWriter(snapshot_path + '/log')
         logging.info("{} iterations per epoch".format(len(trainloader)))
 
         iter_num                        = 0
-        best_performance, best_epoch    = 0.0, 0
+        best_performance, best_epoch    = float('-inf'), 0
         iterator                        = tqdm(range(epochs), ncols = 70)
         self.total_iterations           = len(trainloader) * epochs
-        print ('Total # of iterations = ', self.total_iterations)
 
         for epoch_num in iterator:
             train_loss, train_dice_scores, train_mIoU_scores = [], [], []
 
+            torch.cuda.empty_cache()
             # ******************* Training ******************* #
-            torch.cuda.empty_cache(); model.train()
             for i_batch, sampled_batch in enumerate(trainloader):
 
-                volume_batch, label_batch = sampled_batch['image'], sampled_batch['label']
-                volume_batch, label_batch = volume_batch.cuda(), label_batch.cuda()
+                volume_batch, label_batch   = sampled_batch['image'], sampled_batch['mask']
+                volume_batch, label_batch   = volume_batch.cuda(), label_batch.cuda()
 
-                outputs      = model(volume_batch)       # volume batch passed through model
-                outputs_soft = torch.sigmoid(outputs)    # compute softmax prob. maps
-                pred         = (outputs_soft > 0.5).detach()
-                #outputs_soft = torch.sigmoid(outputs)   # compute softmax prob. maps
+                outputs                     = model(volume_batch)
+                outputs_soft                = torch.softmax(outputs, dim = 1)
+                pred                        = torch.argmax(outputs_soft, dim=1).detach()
 
-                train_dice_scores.append(dice_coef(outputs_soft[:,0,:,:], label_batch[:,0,:,:]))
-                train_mIoU_scores.append(iou_on_batch(pred, label_batch[:,0,:,:]))
+                train_dice_scores.append(dice_coef(outputs_soft[:,1,:,:], label_batch[:,1,:,:]))
+                train_mIoU_scores.append(iou_on_batch(pred, label_batch[:,1,:,:]))
 
-                loss_ce      = bce_loss(outputs, label_batch.float())
-                loss_dice    = dice_loss(outputs, label_batch.float())
-                loss         = 0.5 * (loss_dice + loss_ce)
+                loss_ce                     = ce_loss(outputs, label_batch[:].float())
+                loss_dice                   = dice_loss(outputs_soft, label_batch)
+                loss                        = 0.5 * (loss_dice + loss_ce)
 
                 optimizer.zero_grad(); loss.backward(); optimizer.step()
                 train_loss.append(loss.cpu().detach().numpy())
 
                 # Increment the iteration number
-                iter_num     = iter_num + 1
+                iter_num                    = iter_num + 1
 
                 # Log the learning rate and losses againt the iteration number for Tensorboard plots
-                writer.add_scalar('Train_Loss/total_loss'   , loss      , iter_num)
-                writer.add_scalar('Train_Loss/loss_ce'      , loss_ce   , iter_num)
-                writer.add_scalar('Train_Loss/loss_dice'    , loss_dice , iter_num)
+                writer.add_scalar('Train_Loss/total_loss'   , loss                  , iter_num)
+                writer.add_scalar('Train_Loss/loss_ce'      , loss_ce               , iter_num)
+                writer.add_scalar('Train_Loss/loss_dice'    , loss_dice             , iter_num)
+                writer.add_scalar('Train_mIoU/train_mIoU'   , train_mIoU_scores[-1] , iter_num)
 
-                # log loss and dice scores on command window
+                # log loss and scores on command window
                 logging.info(
                     'Batch %d : loss : %f, loss_ce: %f, loss_dice: %f, dice_score: %f, mIoU_score: %f' %
                     (i_batch, loss.item(), loss_ce.item(), loss_dice.item(),
                      train_dice_scores[-1], train_mIoU_scores[-1]))
 
-            # ---------------------------------------------------------------- #
-            # Varying learning rate by epoch
-            param_group, optimizer, lrVal  = LR_schedule(self, optimizer, iter_num, lrVal)
-            writer.add_scalar('Learning_Rate/lr', lrVal, iter_num)
-            # ---------------------------------------------------------------- #
+                # Varying learning rate by iteration (if the flag is True)
+                if self.lr_by_iter:
+                    if self.LR_policy != "StepDecay": self.LR_policy = "PolyDecay"
+                    param_group, optimizer, lrVal = LR_schedule(self, optimizer, iter_num, lrVal)
+                    writer.add_scalar('Learning_Rate/lr', lrVal, iter_num)
+
+                # ---------------------------------------------------------- #
+
+            # Varying learning rate by epoch (if the lr_by_iter flag is False)
+            if self.lr_by_iter == False:
+                param_group, optimizer, lrVal = LR_schedule(self, optimizer, iter_num, lrVal)
+                writer.add_scalar('Learning_Rate/lr', lrVal, iter_num)
 
             # ******************* Validation BEGINS ******************* #
             torch.cuda.empty_cache(); model.eval()
-            val_loss, val_loss_ce, val_loss_dice, val_dice_scores, val_mIoU_scores = [], [], [], [], []
+
+            # Validation Losses
+            val_loss, val_loss_ce, val_loss_dice    = [], [], []
+            val_dice_scores, val_mIoU_scores        = [], []
 
             with torch.no_grad():
                 for i_batch, sampled_batch in enumerate(valloader):
-                    volume_batch, label_batch = sampled_batch['image'], sampled_batch['label']
-                    volume_batch, label_batch = volume_batch.cuda(), label_batch.cuda()
+                    volume_batch, label_batch   = sampled_batch['image'], sampled_batch['mask']
+                    volume_batch, label_batch   = volume_batch.cuda(), label_batch.cuda()
 
-                    outputs      = model(volume_batch)
-                    outputs_soft = torch.sigmoid(outputs)
+                    outputs                     = model(volume_batch)
+                    outputs_soft                = torch.softmax(outputs, dim = 1)
+                    pred                        = torch.argmax(outputs_soft, dim=1).detach()
 
-                    val_dice_scores.append(dice_coef(outputs_soft[:, 0, :, :], label_batch[:, 1, :, :]))
-                    val_mIoU_scores.append(iou_on_batch(pred, label_batch[:, 1, :, :]))
+                    val_dice_scores.append(dice_coef(outputs_soft[:,1,:,:], label_batch[:,1,:,:]))
+                    val_mIoU_scores.append(iou_on_batch(pred, label_batch[:,1,:,:]))
 
-                    loss_ce     = bce_loss(outputs, label_batch.float())
-                    loss_dice   = dice_loss(outputs, label_batch.float())
-                    loss        = 0.5 * (loss_dice + loss_ce)
+                    loss_ce                     = ce_loss(outputs, label_batch.float())
+                    loss_dice                   = dice_loss(outputs_soft, label_batch.long())
+                    loss                        = 0.5 * (loss_ce + loss_dice)
 
-                    val_loss.append(loss.cpu().detach().numpy())
                     val_loss_ce.append(loss_ce.cpu().detach().numpy())
                     val_loss_dice.append(loss_dice.cpu().detach().numpy())
+                    val_loss.append(loss.cpu().detach().numpy())
 
             # Losses
             mean_train_loss     = np.mean(np.array(train_loss))
@@ -275,32 +299,35 @@ class TrainSession:
                     break
 
             # -----------------------------------------------------------------#
-            writer.close()
+        writer.close()
 
         print('Best performance: ', best_epoch, best_performance)
         return "Training Finished!"
 
 ################################################################################
 if __name__ == "__main__":
-    # get the start time
-    st      = time.time()
+    import argparse
 
-    parser  = argparse.ArgumentParser(description = 'Train fully supervised U-Net')
+    # get the start time
+    st                      = time.time()
+
+    parser                  = argparse.ArgumentParser(description = 'Train fully supervised U-Net')
     parser.add_argument('--config', type = str, required = True, help = '.yaml config file')
-    args    = parser.parse_args()
-    sess    = TrainSession(config_file = args.config)
+    args                    = parser.parse_args()
+    sess                    = TrainSession(config_file = args.config)
 
     if sess.fix_seed:
         print("Seed is being fixed")
-        os.environ['PYTHONHASHSEED']    = str(sess.seed)
-        os.environ['PL_GLOBAL_SEED']    = str(sess.seed)
-        os.environ['PL_SEED_WORKERS']   = str(sess.num_workers)
+        os.environ['PYTHONHASHSEED'] = str(sess.seed)
         random.seed(sess.seed)
         np.random.seed(sess.seed)
         np.random.default_rng(sess.seed)
         torch.manual_seed(sess.seed)
         torch.cuda.manual_seed(sess.seed)
         torch.cuda.manual_seed_all(sess.seed)
+
+    # # Optimizing memory fragmentation
+    # os.environ['PYTORCH_CUDA_ALLOC_CONF'] = 'max_split_size_mb:128'
 
     if not sess.deterministic:
         cudnn.benchmark     = True
@@ -310,18 +337,15 @@ if __name__ == "__main__":
         cudnn.deterministic = True
 
     # model directory path is defined
-    snapshot_path   = "snapshot/{}".format(sess.experiment_name)
-
-    # Check if path exists else make the directory
+    snapshot_path           = "snapshot/{}".format(sess.experiment_name)
     if not os.path.exists(snapshot_path): os.makedirs(snapshot_path)
 
-    model_path      = os.makedirs(os.path.join(snapshot_path, 'models'))
-
-    code_path       = os.path.join(snapshot_path, 'code')
+    code_path               = os.path.join(snapshot_path, 'code')
     if not os.path.exists(code_path): os.makedirs(code_path)
 
     shutil.copy(sys.argv[0], snapshot_path + '/code')
     shutil.copy(sys.argv[2], snapshot_path + '/code')
+
     logging.basicConfig(filename    =   snapshot_path + "/log.txt",
                         level       =   logging.INFO,                               # This means that only messages with a level of INFO or higher will be logged.
                         format      =   '[%(asctime)s.%(msecs)03d] %(message)s',    # format of time
@@ -331,16 +355,16 @@ if __name__ == "__main__":
     logging.info(str(sess))
 
     with open(snapshot_path + '/logs.csv', 'a') as csvfile:
-        csv_logger = csv.writer(csvfile)
-        csv_logger.writerow(['Epoch', 'Train DSC'   , 'mean_train_loss',
-                                      'Val_DSC'     , 'mean_val_loss'])
+        csv_logger          = csv.writer(csvfile)
+        csv_logger.writerow(['Epoch', 'train_dice'  , 'train_mIoU'  , 'mean_train_loss',
+                                      'val_dice'    , 'val_mIoU'    , 'mean_val_loss'])
         sess.train(snapshot_path)
 
     # get the end time
-    et          = time.time()
+    et                      = time.time()
 
     # get the execution time
-    res         = et - st; final_res = res / 60
+    res                     = et - st; final_res = res / 60
     print('Execution time:', final_res, 'minutes')
 
 ################################################################################

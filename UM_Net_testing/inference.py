@@ -21,7 +21,8 @@ from torch.utils.data               import DataLoader
 from networks.net_factory           import net_factory
 from helpers.fom                    import test_single_slice
 from helpers.parse_yaml             import parse_yaml_config
-from dataloaders.dataset            import ImageToImage2D, ValGenerator
+from UM_Net                         import *
+from dataloaders.dataset            import *
 
 from torch.nn                       import functional               as Fun
 from torchvision.transforms         import functional               as F
@@ -47,18 +48,14 @@ class inference_routine:
         self.test_root_path     = config_inf.get('input_folder')
         self.output_folder      = config_inf.get('output_folder')
         self.num_classes        = config_inf.get('num_classes')
+        self.num_workers        = config_inf.get('num_workers')
         self.input_channels     = config_inf.get('input_channels')
         self.net_model          = config_inf.get('net_model')
         
     #------------------------------------------------------------------------------#
     def predict(self):
 
-        model                   = net_factory(net_type      = self.net_model,
-                                              in_chns       = self.input_channels,
-                                              class_num     = self.num_classes,
-                                              pretrain      = False,
-                                              concatF       = True,
-                                              init          = None).cuda()
+        model           = UM_Net(num_classes = self.num_classes).cuda()
 
         if not self.epoch_choice:
             model_path = os.path.join('snapshot', self.experiment_name, 'best_model.pth')
@@ -71,34 +68,28 @@ class inference_routine:
 
         #----------------------------------------------------------------------#
         # Test Data. We use ValGenerator because the test dataset is (also) 2D.
-        db_test          = ImageToImage2D(base_dir     = self.test_root_path,
-                                          split        = 'val',
-                                          transform    = transforms.Compose([ValGenerator(self.slice_size)]),
-                                          one_hot_mask = True,
-                                          image_size   = self.slice_size)
+        db_test        = Polyp_Dataset(root         = self.test_root_path,
+                                       mode        = "test",
+                                       slice_size  = self.slice_size)
 
         def worker_init_fn(worker_id): random.seed(self.seed + worker_id)
 
-        testloader       = DataLoader(db_test,
-                                      batch_size   = 1,
-                                      shuffle      = False,
-                                      num_workers  = 6)
-
+        testloader     = DataLoader(db_test,
+                                    batch_size   = 1,
+                                    shuffle      = False,
+                                    num_workers  = self.num_workers)
         with torch.no_grad():
             for i_batch, sampled_batch in enumerate(testloader):
-
-                case                        = sampled_batch['case'][0]; print([i_batch, case])
-
-                volume_batch, label_batch   = sampled_batch['image'], sampled_batch['mask']
-                volume_batch, label_batch   = volume_batch.cuda(), label_batch.cuda()
+                patient_id, volume_batch, label_batch = sampled_batch['file_name'], sampled_batch['image'], sampled_batch['label']
+                volume_batch, label_batch = volume_batch.cuda(), label_batch.cuda()
 
                 outputs                     = model(volume_batch)
-                outputs_soft                = torch.softmax(outputs, dim = 1)
-                pred                        = torch.argmax(outputs_soft, dim=1).squeeze(0).detach().cpu().numpy()
-                mask                        = label_batch[:,1,:,:].squeeze(0).detach().cpu().numpy()
+                outputs_soft                = torch.sigmoid(outputs)
+                pred                        = (outputs_soft > 0.5).squeeze(0).detach().cpu().numpy()
+                mask                        = label_batch[:, 0, :, :].squeeze(0).detach().cpu().numpy()
                 dice_score, IoU_score       = test_single_slice(pred, mask)
 
-                csv_logger.writerow([case, dice_score, IoU_score])
+                csv_logger.writerow([patient_id, dice_score, IoU_score])
                 csvfile.flush()
 
 #------------------------------------------------------------------------------#
@@ -106,7 +97,7 @@ if __name__== '__main__':
 
     import argparse
 
-    parser          = argparse.ArgumentParser(description = 'Inference over QaTa-COV19 dataset')
+    parser          = argparse.ArgumentParser(description = 'Inference over Kvasir-SEG dataset')
     parser.add_argument('--config', type = str, required = True, help = '.yaml config file')
     args            = parser.parse_args()
 

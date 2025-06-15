@@ -7,7 +7,7 @@
 # Email             : 24100025@lums.edu.pk, 21060003@lums.edu.pk,
 #                     hassan.mohyuddin@lums.edu.pk
 #
-# Last Date         : March 17, 2025
+# Last Date         : March 3, 2025
 #------------------------------------------------------------------------------#
 
 import torch, cv2, math
@@ -22,6 +22,47 @@ from functools                      import wraps
 from medpy                          import metric
 from numpy                          import average, dot, linalg
 from sklearn.metrics                import roc_auc_score, jaccard_score
+
+#------------------------------------------------------------------------------#
+class DiceLoss(nn.Module):
+    def __init__(self, n_classes):
+        super(DiceLoss, self).__init__()
+        self.n_classes  = n_classes
+
+    def _one_hot_encoder(self, input_tensor):
+        # Shape will be [24, 224, 224, 2]
+        one_hot_labels  = F.one_hot(input_tensor, num_classes=2)
+
+        # Rearrange the dimensions to [24, 2, 224, 224]
+        one_hot_labels  = one_hot_labels.permute(0, 3, 1, 2)
+        return one_hot_labels.float()
+
+    def _dice_loss(self, score, target):
+        target          = target.float()
+        smooth          = 1e-10
+        intersect       = torch.sum(score * target)
+        y_sum           = torch.sum(target * target)
+        z_sum           = torch.sum(score * score)
+        loss            = (2 * intersect + smooth) / (z_sum + y_sum + smooth)
+        loss            = 1 - loss
+        return loss
+
+    def forward(self, inputs, target, weight=None, softmax=False):
+        if softmax:         inputs = torch.softmax(inputs, dim=1)
+        if weight is None:  weight = [1] * self.n_classes
+
+        # Already one-hot encoded
+        #target          = self._one_hot_encoder(target)
+
+        assert inputs.size() == target.size(), 'predict & target shape do not match'
+
+        class_wise_dice, loss = [], 0.0
+        for i in range(0, self.n_classes):
+            dice        = self._dice_loss(inputs[:, i], target[:, i])
+            class_wise_dice.append(1.0 - dice.item())
+            loss        += dice * weight[i]
+
+        return loss / self.n_classes
 
 #------------------------------------------------------------------------------#
 def auc_on_batch(masks, pred):
@@ -142,5 +183,93 @@ def test_single_slice(pred, label):
         IoU     = 1
 
     return (dice, IoU)
+
+#------------------------------------------------------------------------------#
+# https://github.com/mmany/pytorch-GDL
+class GradientDifferenceLoss(nn.Module):
+    def __init__(self, weight=None, size_average=True):
+        super(GradientDifferenceLoss, self).__init__()
+
+    def forward(self, inputs, targets, by_batch):
+        gradient_diff_i = (torch.diff(inputs, dim=-1) - torch.diff(targets, dim=-1)).pow(2)
+        gradient_diff_j = (torch.diff(inputs, dim=-2) - torch.diff(targets, dim=-2)).pow(2)
+        gradient_diff   = torch.sum(gradient_diff_i) + torch.sum(gradient_diff_j)
+
+        if by_batch == True:
+            norm_div    = inputs.shape[0] * inputs.shape[1]
+            loss_gdl    = gradient_diff/norm_div
+        else:
+            loss_gdl    = gradient_diff/inputs.numel()
+
+        return loss_gdl
+
+#------------------------------------------------------------------------------#
+# https://github.com/mmany/pytorch-GDL
+class MSE_L1_and_GDL(nn.Module):
+    def __init__(self, weight=None, size_average=True):
+        super(MSE_L1_and_GDL, self).__init__()
+
+    def forward(self, inputs, targets, lambda_mse_l1, lambda_gdl, by_batch, type='l2'):
+
+        if type == 'l2':
+            error           = torch.sum((inputs - targets).pow(2))
+        elif type == 'l1':
+            l1_error        = torch.nn.L1Loss(reduction='sum')
+            error           = l1_error(inputs, targets)
+            #error           = torch.sum(torch.abs(inputs - targets))
+
+        if by_batch == True:
+            norm_div        = inputs.shape[0] * inputs.shape[1]
+            error           = error/norm_div
+        else:
+            error           = error/inputs.numel()
+
+        gradient_diff_i     = (torch.diff(inputs, dim=-1) - torch.diff(targets, dim=-1)).pow(2)
+        gradient_diff_j     = (torch.diff(inputs, dim=-2) - torch.diff(targets, dim=-2)).pow(2)
+        gradient_diff       = torch.sum(gradient_diff_i) + torch.sum(gradient_diff_j)
+
+        if by_batch == True:
+            norm_div        = inputs.shape[0] * inputs.shape[1]
+            loss_gdl        = gradient_diff/norm_div
+        else:
+            loss_gdl        = gradient_diff/inputs.numel()
+
+        loss                = (lambda_mse_l1*error) + (lambda_gdl*loss_gdl)
+
+        return loss, error, loss_gdl
+
+#------------------------------------------------------------------------------#
+# github.com/chongyangma/cs231n/blob/master/assignments/assignment3/style_transfer_pytorch.py
+def tv_loss(Imat, tv_weight=0.01):
+    """
+    Compute total variation loss.
+
+    Inputs:
+    - Imat: PyTorch Variable of shape (1, 3, H, W) holding an input image.
+    - tv_weight: Scalar giving the weight w_t to use for the TV loss.
+
+    Returns:
+    - loss: PyTorch Variable holding a scalar giving the total variation loss
+      for Imat weighted by tv_weight.
+    """
+    w_variance  = torch.sum(torch.pow(Imat[:,:,:,:-1] - Imat[:,:,:,1:], 2))
+    h_variance  = torch.sum(torch.pow(Imat[:,:,:-1,:] - Imat[:,:,1:,:], 2))
+    loss        = tv_weight * (h_variance + w_variance)
+    return loss
+
+#------------------------------------------------------------------------------#
+def off_diagonal(x):
+    # return a flattened view of the off-diagonal elements of a square matrix
+    n, m = x.shape
+    assert n == m
+    return x.flatten()[:-1].view(n - 1, n + 1)[:, 1:].flatten()
+
+#------------------------------------------------------------------------------#
+def barlow_loss(c, lam=0.0051):
+    "Compute loss for Barlow twins."
+    on_diag             = torch.diagonal(c).add_(-1).pow_(2).sum()
+    off_diag            = off_diagonal(c).pow_(2).sum()
+    loss                = on_diag + lam * off_diag
+    return loss
 
 #------------------------------------------------------------------------------#

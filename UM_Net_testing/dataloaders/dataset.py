@@ -127,7 +127,7 @@ class Polyp_Dataset(Dataset):
             data        = {'image': img, 'label': gt}
             data        = self.transform(data)
 
-            #data['file_name'] = file_name
+            data['file_name'] = file_name
             return data
 
 #------------------------------------------------------------------------------#

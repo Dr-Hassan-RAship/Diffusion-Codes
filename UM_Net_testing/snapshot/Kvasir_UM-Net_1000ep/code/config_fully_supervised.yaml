@@ -8,7 +8,6 @@ data:
 
   num_classes           : 1
   input_channels        : 3
-  
 #------------------------------------------------------------------------------#
 # Various random seeds:
 # (= 1337) used in numerous codes on Github.

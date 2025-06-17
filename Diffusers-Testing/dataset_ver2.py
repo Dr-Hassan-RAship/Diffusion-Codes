@@ -13,15 +13,15 @@
 
 import os, random, shutil, cv2, torch, PIL, glob
 
-import numpy                                as np
-import torchvision.transforms.functional    as TF
+import numpy as np
+import torchvision.transforms.functional as TF
 
-from skimage.io                             import imread
-from PIL                                    import Image
-from torchvision                            import transforms
+from skimage.io import imread
+from PIL import Image
+from torchvision import transforms
 
-from torch.utils.data                       import DataLoader, Dataset
-from config                                 import *
+from torch.utils.data import DataLoader, Dataset
+from config import *
 
 
 # ------------------------------------------------------------------------------#
@@ -90,39 +90,53 @@ def split_dataset(base_dir, split_ratios=(800, 100, 100)):
     print("✅ Dataset successfully split into train, val, and test.")
 
 
-#-------------------------------------------------------------------------------#
+# -------------------------------------------------------------------------------#
 class KvasirPolypDataset(Dataset):
-    def __init__(self, base_dir = BASE_DIR, split = 'train', trainsize = 256,
-        transform_img           =   transforms.Compose([
-            transforms.GaussianBlur((25, 25), sigma=(0.001, 2.0)),
-            transforms.ColorJitter(brightness=0.4, contrast=0.5, saturation=0.25, hue=0.01),
-        ]), hflip = True, vflip = True, affine = True):
-        
+    def __init__(
+        self,
+        base_dir=BASE_DIR,
+        split="train",
+        trainsize=256,
+        transform_img=transforms.Compose(
+            [
+                transforms.GaussianBlur((25, 25), sigma=(0.001, 2.0)),
+                transforms.ColorJitter(
+                    brightness=0.4, contrast=0.5, saturation=0.25, hue=0.01
+                ),
+            ]
+        ),
+        hflip=True,
+        vflip=True,
+        affine=True,
+    ):
+
         self.image_dir = os.path.join(base_dir, split, "images")
-        self.mask_dir  = os.path.join(base_dir, split, "masks") 
-        
+        self.mask_dir = os.path.join(base_dir, split, "masks")
+
         self.image_files = sorted(os.listdir(self.image_dir))
-        self.mask_files  = sorted(os.listdir(self.mask_dir))
-    
+        self.mask_files = sorted(os.listdir(self.mask_dir))
+
         # Check for matching number of files
-        assert len(self.image_files) == len(self.mask_files), "Number of images and masks do not match!"
-        
-        self.split           = split
-        self.trainsize       = trainsize
-        self.transform_img   = transform_img
-        
+        assert len(self.image_files) == len(
+            self.mask_files
+        ), "Number of images and masks do not match!"
+
+        self.split = split
+        self.trainsize = trainsize
+        self.transform_img = transform_img
+
         self.common_transform = transforms.Compose(
             [
                 transforms.RandomHorizontalFlip(p=0.5),
                 transforms.RandomVerticalFlip(p=0.5),
             ]
         )
-    
-#-------------------------------------------------------------------------------#    
+
+    # -------------------------------------------------------------------------------#
     def __len__(self):
         return len(self.image_files)
-    
-#-------------------------------------------------------------------------------#
+
+    # -------------------------------------------------------------------------------#
     def __getitem__(self, idx):
         img_path = os.path.join(self.image_dir, self.image_files[idx])
         mask_path = os.path.join(self.mask_dir, self.mask_files[idx])
@@ -144,7 +158,7 @@ class KvasirPolypDataset(Dataset):
         # however we will still do it and then later map to 0-1 in inference if needed
 
         if self.split == "train" or self.split == "val":
-            img       = self.transform_img(img)
+            img = self.transform_img(img)
             img, mask = utilize_transformation(img, mask, self.common_transform)
 
             # Adjust dynamic range in [-1, +1]; np.float32
@@ -184,22 +198,33 @@ class KvasirPolypDataset(Dataset):
 
 
 # ------------------------------------------------------------------------------#
-def get_dataloaders(base_dir, split_ratio, split="train", trainsize=256, batch_size=16, num_workers=4, format=True):
+def get_dataloaders(
+    base_dir,
+    split_ratio,
+    split="train",
+    trainsize=256,
+    batch_size=16,
+    num_workers=4,
+    format=True,
+):
     """Get train, validation, and test dataloaders."""
 
     if not format:
-        split_dataset(base_dir, split_ratios = split_ratio)
+        split_dataset(base_dir, split_ratios=split_ratio)
     else:
         print(f"Dataset already split into train, val and test directories")
 
-    dataset = KvasirPolypDataset(base_dir, split = split, trainsize = trainsize)
-
-    dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True if split == "train" else False,
-                            num_workers=num_workers,
-                            pin_memory=True,
+    dataset = KvasirPolypDataset(base_dir, split=split, trainsize=trainsize)
+    dataloader = DataLoader(
+        dataset,
+        batch_size=batch_size,
+        shuffle=True if split == "train" else False,
+        num_workers=num_workers,
+        pin_memory=True,
     )
 
     return dataloader
+
 
 # -----------------------------------------------------------------------------#
 def utilize_transformation(img, mask, transforms_op):

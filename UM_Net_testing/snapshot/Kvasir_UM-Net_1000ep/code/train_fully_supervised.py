@@ -26,6 +26,7 @@ from medpy                          import metric
 
 from tqdm                           import tqdm
 from torchinfo                      import summary
+from torchvision                    import transforms
 from tensorboardX                   import SummaryWriter
 
 from UM_Net                         import *
@@ -34,7 +35,7 @@ from dataloaders.dataset            import *
 from helpers.train_utils            import *
 from helpers.losses                 import DiceLoss
 from helpers.parse_yaml             import parse_yaml_config
-from helpers.fom                    import dice_coef, DiceLoss
+from helpers.fom                    import iou_on_batch, dice_coef, DiceLoss
 
 #------------------------------------------------------------------------------#
 class TrainSession:

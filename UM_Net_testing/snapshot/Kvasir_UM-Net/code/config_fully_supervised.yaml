@@ -4,11 +4,10 @@
 data:
   train_root_path       : '/media/ee/New Volume/Datasets/Kvasir-SEG/'
   val_root_path         : '/media/ee/New Volume/Datasets/Kvasir-SEG/'
-  experiment_name       : 'Kvasir_UM-Net_1000ep'
+  experiment_name       : 'Kvasir_UM-Net'
 
   num_classes           : 1
   input_channels        : 3
-  
 #------------------------------------------------------------------------------#
 # Various random seeds:
 # (= 1337) used in numerous codes on Github.
@@ -21,7 +20,7 @@ network:
   fix_seed              : True
   seed                  : 1337
   batch_size            : 32
-  epochs                : 1000
+  epochs                : 300
   num_workers           : 6
   deterministic         : 1
 #------------------------------------------------------------------------------#
@@ -38,10 +37,10 @@ optimization:
 #------------------------------------------------------------------------------#
 inference:
   experiment_name       : 'Kvasir_UM-Net'
-  epoch_choice          :  299
+  epoch_choice          :  151
 
   input_folder          : '/media/ee/New Volume/Datasets/Kvasir-SEG/'
-  output_folder         : 'outputs_Kvasir_299'
+  output_folder         : 'outputs_Kvasir_151'
 
   num_workers           : 6
   num_classes           : 1

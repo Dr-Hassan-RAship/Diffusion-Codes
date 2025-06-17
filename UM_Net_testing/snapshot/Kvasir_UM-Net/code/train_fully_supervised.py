@@ -26,6 +26,7 @@ from medpy                          import metric
 
 from tqdm                           import tqdm
 from torchinfo                      import summary
+from torchvision                    import transforms
 from tensorboardX                   import SummaryWriter
 
 from UM_Net                         import *
@@ -34,7 +35,7 @@ from dataloaders.dataset            import *
 from helpers.train_utils            import *
 from helpers.losses                 import DiceLoss
 from helpers.parse_yaml             import parse_yaml_config
-from helpers.fom                    import dice_coef, DiceLoss
+from helpers.fom                    import iou_on_batch, dice_coef, DiceLoss
 
 #------------------------------------------------------------------------------#
 class TrainSession:
@@ -193,9 +194,8 @@ class TrainSession:
                 loss_dice_5     = dice_loss(out5, label_batch.float())
                 loss_5          = 0.5 * (loss_dice_5 + loss_ce_5)
 
-                #loss            = (omega1 * loss_1 + omega2 * loss_2 + omega3 * loss_3 + \
-                #omega4 * loss_4 + omega5 * loss_5) / omega_sum # + loss_var
-                loss = (1/5) * (loss_1 + loss_2 + loss_3 + loss_4 + loss_5)
+                loss            = (omega1 * loss_1 + omega2 * loss_2 + omega3 * loss_3 + \
+                omega4 * loss_4 + omega5 * loss_5) / omega_sum # + loss_var
 
                 optimizer.zero_grad(); loss.backward(); optimizer.step()
                 train_loss.append(loss.cpu().detach().numpy())

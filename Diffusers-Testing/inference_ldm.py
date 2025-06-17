@@ -17,7 +17,7 @@ import matplotlib.pyplot as plt
 
 from tqdm                import tqdm
 from config              import *
-from dataset             import get_dataloaders
+from dataset_ver2        import get_dataloaders
 from architectures       import *
 from utils               import *
 from inference_ldm_utils import *
@@ -27,7 +27,7 @@ from inference_ldm_utils import *
 def perform_inference(model, data_loader, device, output_dir, num_samples=5, model_epoch=-1, split="test"):
     """
     Perform inference on a dataset and save results.
-    
+
     Args:
         model           : LDM_Segmentor model
         data_loader     : DataLoader for test or validation set
@@ -49,7 +49,7 @@ def perform_inference(model, data_loader, device, output_dir, num_samples=5, mod
     for batch in progress_bar:
         image       = batch["image"].to(device)  if split == "test" else batch["aug_image"].to(device)
         mask        = batch["mask"].to(device)   if split == "test" else batch["aug_mask"].to(device)
-        patient_id  = batch["patient_id"].item() 
+        patient_id  = batch["patient_id"].item()
         B           = image.size(0)
 
         model_out           = model.inference(image)
@@ -90,7 +90,7 @@ def main():
     all_metrics = []
     for model_epoch in do.MODEL_EPOCHS:
         print(f"📦 Loading trained LDM model for epoch {model_epoch}...")
-        try:            
+        try:
             ckpt_path       = os.path.join(LDM_SNAPSHOT_DIR, "models", f"model_epoch_{model_epoch}.safetensors")
             model, _, _, _  = load_model_and_optimizer(ckpt_path, None, device, load_optim_dict=False)
             model.scheduler.set_timesteps(do.INFERENCE_TIMESTEPS)
@@ -98,7 +98,7 @@ def main():
         except Exception as e:
             print(f"Error loading model for epoch {model_epoch}: {e}")
             continue
-        
+
         output_dir = None
         if split == 'test':
            output_dir = os.path.join(do.SAVE_FOLDER, f"inference_{split}_M{model_epoch}")
@@ -114,16 +114,17 @@ def main():
     if do.METRIC_REPORT and all_metrics:
         os.makedirs(do.SAVE_FOLDER, exist_ok = True)
         if split == "val":
-            metrics_path = os.path.join(do.SAVE_FOLDER, f'inference_{split}_M{do.MODEL_EPOCHS}.csv')	
+            metrics_path = os.path.join(do.SAVE_FOLDER, f'inference_{split}_M{do.MODEL_EPOCHS}.csv')
             # Compute and save averaged metrics for validation
             avg_metrics = compute_average_metrics(all_metrics)
             avg_metrics.sort(key=lambda x: x[0])  # Sort by model_epoch
             save_metrics_to_csv(avg_metrics, metrics_path, headers=["Model_Epoch", "Avg_Dice", "Avg_HD95", "Avg_ASSD", "Avg_mIoU"])
         else:
-            metrics_path = os.path.join(do.SAVE_FOLDER, f'inference_{split}_M{do.MODEL_EPOCHS}.csv')	
+            metrics_path = os.path.join(do.SAVE_FOLDER, f'inference_{split}_M{do.MODEL_EPOCHS}.csv')
             # Save per-patient metrics for test
             all_metrics.sort(key=lambda x: x[0])  # Sort by patient_id
             save_metrics_to_csv(all_metrics, metrics_path, headers=["Patient_ID", "Dice", "HD95", "ASSD", "mIoU"])
+            
         print(f"✅ Metrics saved in: {metrics_path}")
 
     print(f"✅ Inference complete. Results saved in: {do.SAVE_FOLDER}")

@@ -59,38 +59,82 @@ DETERMINISTIC_ENC   = False
 
 # ------------------------------------------------------------------------------#
 # Experiment configuration
-OPTIONAL_INFO   = f"with_reduced_params"
-EXPERIMENT_NAME = f"machine--B{BATCH_SIZE}-E{N_EPOCHS}-V{VAL_INTERVAL}-T{NUM_TRAIN_TIMESTEPS}-S{SCHEDULER}"
-RUN             = "05_" + OPTIONAL_INFO
+OPTIONAL_INFO   = f"tau_theta_learnable_and_backend_z0"
+EXPERIMENT_NAME = f'machine--B{BATCH_SIZE}-E{N_EPOCHS}-V{VAL_INTERVAL}-T{NUM_TRAIN_TIMESTEPS}-S{SCHEDULER}'
+RUN             = '02_' + OPTIONAL_INFO
 
 # ------------------------------------------------------------------------------#
 # Model configuration for Diffusion i.e., UNET --> matched with SDSeg
-UNET_PARAMS = {
-    "sample_size"           : TRAINSIZE // 8,
-    "in_channels"           : 8,  # Using latent space input (z = 4 + concatenation), so latent dimensions match autoencoder
-    "out_channels"          : 4,  # Latent space output before decoder
-    "layers_per_block"      : 2,
-    "block_out_channels"    : (192, 192, 384, 384),  #  (128, 256, 256, 512)
-    "down_block_types"      : ("DownBlock2D",) * 4,
-    "up_block_types"        : ("UpBlock2D",) * 4,
-}  # num_head_channels = model_channels (192) // num_heads (8)
+UNET_PARAMS = { "sample_size"       : TRAINSIZE // 8,
+                "in_channels"       : 8,  # Using latent space input (z = 4 + concatenation), so latent dimensions match autoencoder
+                "out_channels"      : 4,  # Latent space output before decoder
+                "layers_per_block"  : 2,
+                "block_out_channels": (192, 384, 384, 768, 768), #  (128, 256, 256, 512)
+                "down_block_types"  : ("DownBlock2D",) * 3 + ('AttnDownBlock2D',) * 1 + ('DownBlock2D',) * 1,
+                "up_block_types"    : ("UpBlock2D",) * 1 + ('AttnUpBlock2D',) * 1 + ('UpBlock2D',) * 3,
+              } # num_head_channels = model_channels (192) // num_heads (8)
 
-LDM_SNAPSHOT_DIR = "./results/" + RUN + f"/ldm-" + EXPERIMENT_NAME
-# LDM_SCALE_FACTOR   = 1.0
+LDM_SNAPSHOT_DIR     = "./results/" + RUN + f"/ldm-" + EXPERIMENT_NAME
+LDM_SCALE_FACTOR     = 0.18125
 
 
 # ------------------------------------------------------------------------------#
 # Placeholder for inference configuration
 class InferenceConfig:
-    MODEL_EPOCHS        = [450]  # 400: 78.27, 800: 80.77, 895: 79.02, 500: 76.3, 450: 79.06            # Epoch of the list of models to load.
-    NUM_SAMPLES         = 2  # Number of samples
-    INFERER_SCHEDULER   = "DDIM"
+    N_PREDS             = 1
+    MODEL_EPOCHS        = [x for x in range(10, 771, 10)]            # Epoch of the list of models to load.
+    NUM_SAMPLES         = 2                  # Number of samples
+    INFERER_SCHEDULER   = 'DDIM'
     TRAIN_TIMESTEPS     = NUM_TRAIN_TIMESTEPS
-    ONE_X_ONE           = False  # make it False if training
-    INFERENCE_TIMESTEPS = 10 if INFERER_SCHEDULER == "DDIM" else NUM_TRAIN_TIMESTEPS
-    SAVE_FOLDER         = LDM_SNAPSHOT_DIR + f"/inference-M{MODEL_EPOCHS if MODEL_EPOCHS != -1 else N_EPOCHS}-E{N_EPOCHS}-t{NUM_TRAIN_TIMESTEPS}-S{SCHEDULER}-SP{NUM_SAMPLES}-It{INFERENCE_TIMESTEPS}"  # Save folder for inference results
+    ONE_X_ONE           = False # make it False if training
+    INFERENCE_TIMESTEPS = 10 if INFERER_SCHEDULER == 'DDIM' else NUM_TRAIN_TIMESTEPS
+    SAVE_FOLDER         = LDM_SNAPSHOT_DIR + f"/inference-M{MODEL_EPOCHS}-E{N_EPOCHS}-t{NUM_TRAIN_TIMESTEPS}-S{SCHEDULER}-SP{NUM_SAMPLES}-It{INFERENCE_TIMESTEPS}"  # Save folder for inference results
     SAVE_INTERMEDIATES  = False
     METRIC_REPORT       = True
 
 do = InferenceConfig()
 # ------------------------------------------------------------------------------#
+
+# CONSIDER THE USAGE OF AUTOENCODER TINY FOR INCREASED BATCH SIZE
+"""
+AutoencoderTiny.from_pretrained("madebyollin/taesd", torch_dtype=torch.float16)
+{
+  "_class_name": "AutoencoderTiny",
+  "_diffusers_version": "0.30.0",
+  "act_fn": "relu",
+  "decoder_block_out_channels": [
+    64,
+    64,
+    64,
+    64
+  ],
+  "encoder_block_out_channels": [
+    64,
+    64,
+    64,
+    64
+  ],
+  "force_upcast": false,
+  "in_channels": 3,
+  "latent_channels": 4,
+  "latent_magnitude": 3,
+  "latent_shift": 0.5,
+  "num_decoder_blocks": [
+    3,
+    3,
+    3,
+    1
+  ],
+  "num_encoder_blocks": [
+    1,
+    3,
+    3,
+    3
+  ],
+  "out_channels": 3,
+  "scaling_factor": 1.0,
+  "shift_factor": 0.0,
+  "upsample_fn": "nearest",
+  "upsampling_scaling_factor": 2
+}
+"""

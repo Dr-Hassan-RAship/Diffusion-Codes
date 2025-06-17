@@ -1,7 +1,7 @@
 # ------------------------------------------------------------------------------#
 #
 # File name                 : modeling_utils.py
-# Purpose                   : Architecture utilities for Latent Diffusion Model (LDM) segmentation 
+# Purpose                   : Architecture utilities for Latent Diffusion Model (LDM) segmentation
 # Usage                     : Used for forward pass, denoising, and decoding
 #
 # Authors                   : Talha Ahmed, Nehal Ahmed Shaikh, Hassan Mohy-ud-Din
@@ -26,18 +26,21 @@ class TauEncoder(nn.Module):
     Learnable encoder for the input RGB image (τ_θ).
     Architecturally same as the VAE encoder but trainable.
     """
-    def __init__(self, encoder):
+    def __init__(self, encoder, vae_encoder = False):
         super().__init__()
-        self.encoder    = encoder
-        latent_channels = 4
-        use_quant_conv  = True
-        self.quant_cov  = nn.Conv2d(2 * latent_channels, 2 * latent_channels, 1) if use_quant_conv else None
-
+        self.encoder         = encoder
+        latent_channels      = 4
+        self.use_quant_conv  = True
+        self.quant_conv      = nn.Conv2d(2 * latent_channels, 2 * latent_channels, 1) if self.use_quant_conv else None
+        self.vae_encoder     = vae_encoder
     def forward(self, x):
         h         = self.encoder(x)
-        h         = self.quant_cov(h) if self.quant_cov else h
+        h         = self.quant_conv(h) if self.use_quant_conv else h
         h         = AutoencoderKLOutput(DiagonalGaussianDistribution(h)).latent_dist
-        return h.mean if DETERMINISTIC_TAU else h.sample() # Opposite to E
+        if self.vae_encoder:
+            return h.sample() if not DETERMINISTIC_ENC else h.mode()
+        else:
+            return h.mean if DETERMINISTIC_TAU else h.sample() # Opposite to E
 
 #--------------------------------------------------------------------------------------
 class CombinedLatentNoiseLoss(nn.Module):
@@ -57,14 +60,14 @@ class CombinedLatentNoiseLoss(nn.Module):
         # bce             = self.bce_loss(z0_hat, z0)  # You can detach or not based on need
         l1_latent       = self.l1_loss(z0_hat, z0)
         # l2              = self.l2_loss(z0_hat, z0)
-        
+
         l2_noise        = self.l2_loss(noise_hat, noise)
-        
+
         l_latent = (self.l1_weight * l1_latent) # + (self.l2_weight * l2) + (self.bce_weight * bce)
         l_noise  = self.l2_weight * l2_noise
-        
+
         return l_latent + l_noise
-        
+
 #--------------------------------------------------------------------------------------#
 def load_hybrid_unet(pretrained_path: str, device: str = "cuda") -> UNet2DConditionModel:
 
@@ -107,36 +110,41 @@ def load_hybrid_unet(pretrained_path: str, device: str = "cuda") -> UNet2DCondit
     # Step 8: Load updated state dict into the new model
     unet_new.load_state_dict(new_sd)
 
-    return unet_new.requires_grad_(True)    
-    
+    return unet_new.requires_grad_(True)
+
 #--------------------------------------------------------------------------------------#
 def denoise_and_decode_in_one_step(batch_size, noise_pred, timesteps, zt, scheduler, vae, latent_scale, device, inference = False):
-    
+
     """
     Denoise and decode the latent zt to obtain the predicted mask.
     """
     z0_hat_list   = []
     mask_hat_list = []
-    
+
     if inference:
-        noise_pred = noise_pred.to(device = 'cpu') 
-        timesteps  = timesteps.to(device = 'cpu') 
+        noise_pred = noise_pred.to(device = 'cpu')
+        timesteps  = timesteps.to(device = 'cpu')
         zt         = zt.to(device = 'cpu')
-        
+
     for batch_idx in range(noise_pred.shape[0]):
         # z0_hat = (zt - ((1 - scheduler.alphas_cumprod).sqrt() * noise_pred)) / scheduler.alphas_cumprod.sqrt()
         z0_hat   = scheduler.step(noise_pred[batch_idx].unsqueeze(0), timesteps[batch_idx].unsqueeze(0), zt[batch_idx].unsqueeze(0)).pred_original_sample
         # alpha_t                     = scheduler.alphas_cumprod[timesteps[batch_idx].item()]
         # z0_hat                      = (zt[batch_idx].unsqueeze(0) - (1 - alpha_t).sqrt() * noise_pred[batch_idx].unsqueeze(0)) / alpha_t.sqrt()
         z0_hat                      = z0_hat.to(device) if inference else z0_hat
-        mask_hat                    = vae.decode(z0_hat / latent_scale).sample
+        if inference:
+            mask_hat                = vae.decode(z0_hat / latent_scale).sample
+            mask_hat_list.append(mask_hat)
         z0_hat_list.append(z0_hat)
-        mask_hat_list.append(mask_hat)
-    
+
     z0_hat   = torch.cat(z0_hat_list,   dim = 0) # (B, 4, 32, 32)
-    mask_hat = torch.cat(mask_hat_list, dim = 0) # (B, 3, 256, 256)
-    
-    return z0_hat, mask_hat
+    if inference:
+        mask_hat = torch.cat(mask_hat_list, dim = 0) # (B, 3, 256, 256)
+
+    if inference:
+        return z0_hat, mask_hat
+    else:
+        return z0_hat
 
 #---------------------------------------------------------------------------------------
 def denoise_and_decode(zt, scheduler, vae, latent_scale, device, unet, zc):
@@ -152,7 +160,7 @@ def denoise_and_decode(zt, scheduler, vae, latent_scale, device, unet, zc):
     z0_hat = torch.cat([prev_sample, zc], dim=1).to(device)  # (B, 8, 32, 32)
 
     for idx in tqdm(range(0, do.INFERENCE_TIMESTEPS), desc="⏳ Denoising"):
-        
+
         t = scheduler.timesteps[idx]  # Assumes B = 1
 
         # Run U-Net on GPU
@@ -165,20 +173,20 @@ def denoise_and_decode(zt, scheduler, vae, latent_scale, device, unet, zc):
             prev_t                      = max(1, t.item() - (1000 // do.INFERENCE_TIMESTEPS))  # line (223 - 227) in source code
             alpha_t                     = scheduler.alphas_cumprod[t.item()]
             alpha_t_prev                = scheduler.alphas_cumprod[prev_t]
-            
+
             # beta_t                      = 1 - alpha_t
             # beta_t_prev                 = 1 - alpha_t_prev
             # stdev                       = ETA * ((beta_t_prev / beta_t) * (1 - alpha_t / alpha_t_prev)).sqrt()
             # print(f'stdev: {stdev}')
             # var_noise                   = stdev * torch.randn_like(noise_pred, dtype = torch.float16, device = device)
             # print(f'var_noise: {var_noise}')
-            
+
             predicted_x0                = (prev_sample - (1 - alpha_t).sqrt() * noise_pred) / alpha_t.sqrt()
-            
+
             direction_pointing_to_xt    = (1 - alpha_t_prev).sqrt() * noise_pred
-            
+
             prev_sample                 = (alpha_t_prev.sqrt() * predicted_x0) + direction_pointing_to_xt
-        
+
         else:
             prev_t                      = scheduler.previous_timestep(t.item())
             alpha_prod_t                = scheduler.alphas_cumprod[t.item()]
@@ -187,26 +195,26 @@ def denoise_and_decode(zt, scheduler, vae, latent_scale, device, unet, zc):
             beta_prod_t_prev            = (1 - alpha_prod_t_prev)
             current_alpha_t             = (alpha_prod_t / alpha_prod_t_prev)
             current_beta_t              = (1 - current_alpha_t)
-            
+
             predicted_x0                = (prev_sample - beta_prod_t.sqrt() * noise_pred) / alpha_prod_t.sqrt()
             predicted_x0                = predicted_x0.clamp(-1.0, 1.0)
-            
+
             pred_original_sample_coeff  = (alpha_prod_t_prev.sqrt() * current_beta_t) / beta_prod_t
             current_sample_coeff        = current_alpha_t.sqrt() * beta_prod_t_prev / beta_prod_t
-            
+
             prev_sample                 = pred_original_sample_coeff * predicted_x0 + current_sample_coeff * prev_sample
-            
+
         # Concatenate again for next step
         z0_hat = torch.cat([prev_sample, zc], dim=1)
 
     # Final decode via VAE (on CPU)
     mask_hat = vae.decode(prev_sample / latent_scale).sample
-    
+
     if do.INFERENCE_TIMESTEPS > 1:
         return prev_sample, mask_hat
     else:
         return predicted_x0, mask_hat
-    
+
 #--------------------------------------------------------------------------------------#
 def switch_to_ddim(device):
     """
@@ -214,9 +222,9 @@ def switch_to_ddim(device):
     """
     scheduler = DDIMScheduler(num_train_timesteps=NUM_TRAIN_TIMESTEPS, beta_schedule = NOISE_SCHEDULER)
     scheduler.set_timesteps(do.INFERENCE_TIMESTEPS, device = device)
-    
-    print(f'\nSwitching to DDIM scheduler with inference timesteps: {do.INFERENCE_TIMESTEPS}\n')
-    
+
+    print(f'\nSwitching to DDIM Scheduler with inference timesteps: {do.INFERENCE_TIMESTEPS}\n')
+
     return scheduler
 
 #----------------------------------------------------------------

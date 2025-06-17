@@ -31,20 +31,24 @@ class LDM_Segmentor(nn.Module):
     def __init__(self,pretrained_vae: str = "CompVis/stable-diffusion-v1-4", scheduler_steps: int = 1000, device: str = "cuda"):
         super().__init__()
         self.device = device
-        self.latent_scale = 0.18125
+        self.latent_scale = LDM_SCALE_FACTOR
 
         # ALTERNATIVE AEKL
         self.vae = AutoencoderTiny.from_pretrained("madebyollin/taesd", torch_dtype=torch.float16).to(device).eval()
-        
+
         # Load pretrained VAE and freeze
-        # self.vae = (AutoencoderKL.from_pretrained(pretrained_vae, subfolder="vae").to(device).eval())
-        for param in self.vae.parameters():
+        self.vae         = (AutoencoderKL.from_pretrained(pretrained_vae, subfolder="vae"))
+        self.vae_encoder = TauEncoder(self.vae.encoder, vae_encoder = True).to(device).eval()
+        for param in self.vae_encoder.parameters():
             param.requires_grad = False
 
         # Learnable image encoder (Tau θ)
         self.image_encoder = TauEncoder(copy.deepcopy(self.vae.encoder)).to(device).eval()
         for param in self.image_encoder.parameters():
-            param.requires_grad = False
+            param.requires_grad = True
+
+        # delete self.vae
+        del self.vae
 
         # UNet2DModel: receives zt || zc → predicts noise
         self.unet = UNet2DModel(**UNET_PARAMS).to(device).train()
@@ -69,8 +73,9 @@ class LDM_Segmentor(nn.Module):
 
         with torch.no_grad():
             # Encode GT mask via frozen VAE encoder
-            posterior = self.vae.encode(mask).latent_dist
-            z0        = posterior.sample() * self.latent_scale if not DETERMINISTIC_ENC else posterior.mode() * self.latent_scale
+            # posterior = self.vae.encode(mask).latent_dist
+            # z0        = posterior.sample() * self.latent_scale if not DETERMINISTIC_ENC else posterior.mode() * self.latent_scale
+            z0          = self.vae_encoder(mask) * self.latent_scale
 
         # Step 2: Add noise to z0 → zt
         t     = torch.randint(0, self.scheduler.config.num_train_timesteps, (image.size(0),), device=self.device).long()
@@ -83,8 +88,8 @@ class LDM_Segmentor(nn.Module):
          # Step 4: Concatenate and denoise followed by estimatation of z0_hat and decode to mask
 
         noise_hat        = self.unet(torch.cat([zt, zc], dim = 1), t).sample  # (B, 4, 32, 32), t is just (B,)
-        z0_hat, _        = denoise_and_decode_in_one_step(BATCH_SIZE, noise_hat, t, zt, self.scheduler,
-                                            self.vae, self.latent_scale, self.device, False)
+        z0_hat           = denoise_and_decode_in_one_step(BATCH_SIZE, noise_hat, t, zt, self.scheduler,
+                                            None, self.latent_scale, self.device, False)
 
         out              = {"z0": z0, "zt": zt, "zc": zc, "z0_hat": z0_hat, "noise": noise, 'noise_hat': noise_hat}
         loss             = self.loss_criterion(noise_hat, noise, z0_hat, z0)

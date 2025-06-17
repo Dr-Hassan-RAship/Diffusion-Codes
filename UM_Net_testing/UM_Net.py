@@ -146,7 +146,12 @@ class UM_Net(nn.Module):
         out1    = self.final(p)
         out1    = F.interpolate(out1, size=x.size()[2:], mode='bilinear', align_corners=True)
 
-        return out1
+        out2    = F.interpolate(out2, size=x.size()[2:], mode='bilinear', align_corners=True)
+        out3    = F.interpolate(out3, size=x.size()[2:], mode='bilinear', align_corners=True)
+        out4    = F.interpolate(out4, size=x.size()[2:], mode='bilinear', align_corners=True)
+        out5    = F.interpolate(out5, size=x.size()[2:], mode='bilinear', align_corners=True)
+
+        return out1, out2, out3, out4, out5
         # return torch.sigmoid(out1), torch.sigmoid(out2), torch.sigmoid(out3), torch.sigmoid(out4), torch.sigmoid(out5),\
         #   torch.sigmoid(p_c)
 

@@ -19,8 +19,8 @@ network:
   initialization        :
   fix_seed              : True
   seed                  : 1337
-  batch_size            : 4
-  epochs                : 5000
+  batch_size            : 32
+  epochs                : 300
   num_workers           : 6
   deterministic         : 1
 #------------------------------------------------------------------------------#
@@ -31,20 +31,21 @@ optimization:
   optimizer             : 'AdamW'
   LR_policy             : 'Constant'
 
-  eta_N                 :           #0.0075
-  eta_zero              : 0.0001    #1.0e-7
-  LR_decay_rate         :           #0.90
+  eta_N                 :           # 0.0075
+  eta_zero              : 0.0001    # 1.0e-7
+  LR_decay_rate         :           # 0.90
 #------------------------------------------------------------------------------#
 inference:
   experiment_name       : 'Kvasir_UM-Net'
-  epoch_choice          :
+  epoch_choice          :  151
 
   input_folder          : '/media/ee/New Volume/Datasets/Kvasir-SEG/'
-  output_folder         : 'outputs_Kvasir'
+  output_folder         : 'outputs_Kvasir_151'
 
+  num_workers           : 6
   num_classes           : 1
   input_channels        : 1
-  crop_factor           : [256, 256]
+  slice_size            : [256, 256]
   resolution            :                                   # [1.50, 1.50]
 
   save_FOMs_report      : True                              # save figures of merit

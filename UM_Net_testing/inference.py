@@ -18,7 +18,6 @@ import glob                         as glob
 from torchvision                    import transforms
 from torch.utils.data               import DataLoader
 
-from networks.net_factory           import net_factory
 from helpers.fom                    import test_single_slice
 from helpers.parse_yaml             import parse_yaml_config
 from UM_Net                         import *
@@ -58,13 +57,13 @@ class inference_routine:
         model           = UM_Net(num_classes = self.num_classes).cuda()
 
         if not self.epoch_choice:
-            model_path = os.path.join('snapshot', self.experiment_name, 'best_model.pth')
+            model_path = os.path.join('snapshot', self.experiment_name, 'models', 'best_model.pth')
             print ('\n -------- Loading Best Model Weights -------- \n')
         else:
-            model_path = os.path.join('snapshot', self.experiment_name, 'epoch_num_{}.pth'.format(self.epoch_choice))
+            model_path = os.path.join('snapshot', self.experiment_name, 'models', 'epoch_num_{}.pth'.format(self.epoch_choice))
             print ('\n -------- Loading Epoch Weights -------- \n')
 
-        model.load_state_dict(torch.load(model_path)); model.eval()
+        model.load_state_dict(torch.load(model_path, weights_only = True)); model.eval()
 
         #----------------------------------------------------------------------#
         # Test Data. We use ValGenerator because the test dataset is (also) 2D.
@@ -81,14 +80,15 @@ class inference_routine:
         with torch.no_grad():
             for i_batch, sampled_batch in enumerate(testloader):
                 patient_id, volume_batch, label_batch = sampled_batch['file_name'], sampled_batch['image'], sampled_batch['label']
-                volume_batch, label_batch = volume_batch.cuda(), label_batch.cuda()
+                volume_batch, label_batch   = volume_batch.cuda(), label_batch.cuda()
 
                 outputs                     = model(volume_batch)
                 outputs_soft                = torch.sigmoid(outputs)
                 pred                        = (outputs_soft > 0.5).squeeze(0).detach().cpu().numpy()
                 mask                        = label_batch[:, 0, :, :].squeeze(0).detach().cpu().numpy()
                 dice_score, IoU_score       = test_single_slice(pred, mask)
-
+                
+                # print(patient_id, dice_score, IoU_score)
                 csv_logger.writerow([patient_id, dice_score, IoU_score])
                 csvfile.flush()
 

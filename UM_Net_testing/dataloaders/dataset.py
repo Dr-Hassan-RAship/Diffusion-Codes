@@ -43,10 +43,11 @@ class Polyp_Dataset(Dataset):
             self.imglist.append(os.path.join(data_path + '/images', data))
             self.gtlist.append(os.path.join(data_path + '/masks', data))
 
-        # transfer_data   = os.listdir(root + '/color_transfer')
-        # for name in transfer_data:
-        #     self.color.append(os.path.join(root + '/color_transfer', name))
         self.color      = self.imglist.copy()
+        # transfer_data   = os.listdir(root + 'color_transfer')
+        # for name in transfer_data:
+        #     self.color.append(os.path.join(root + 'color_transfer', name))
+
 
         if mode == 'train':
             transform = transforms.Compose([
@@ -72,49 +73,46 @@ class Polyp_Dataset(Dataset):
 
     def __getitem__(self, index):
         if self.mode == 'train':
-            img_path    = self.imglist[index]
-            gt_path     = self.gtlist[index]
-            file_name   = img_path.split('\\')[-1]
-
-            img         = Image.open(img_path).convert('RGB')
-            gt          = Image.open(gt_path).convert('L')
-
-            data        = {'image': img, 'label': gt}
-            data        = self.transform(data)
-
-            return data
             # img_path    = self.imglist[index]
             # gt_path     = self.gtlist[index]
             # file_name   = img_path.split('\\')[-1]
             #
-            # img1        = cv2.imread(img_path)
-            # img1        = cv2.cvtColor(img1, cv2.COLOR_BGR2LAB)
-            # img1_mean, img1_std = get_mean_and_std(img1)
-            #
-            # color_path  = self.color[(random.randint(0, len(self.color))) % len(self.color)]
-            # img2        = cv2.imread(color_path)
-            # img2        = cv2.cvtColor(img2, cv2.COLOR_BGR2LAB)
-            # img2_mean, img2_std = get_mean_and_std(img2)
-            #
-            # img3        = (img1 - img1_mean) / img1_std * img2_std + img2_mean
-            # np.putmask(img3, img3 > 255, 255)
-            # np.putmask(img3, img3 < 0, 0)
-            # image       = cv2.cvtColor(cv2.convertScaleAbs(img3), cv2.COLOR_LAB2RGB)
-            # image       = Image.fromarray(image)
-            #
+            # img         = Image.open(img_path).convert('RGB')
             # gt          = Image.open(gt_path).convert('L')
             #
-            # print('GT path', gt)
-            # print('groundtruth mask', gt.size, np.unique(np.array(gt)))
-            #
-            # data        = {'image': image, 'label': gt}
+            # data        = {'image': img, 'label': gt}
             # data        = self.transform(data)
-            # #data['file_name'] = file_name
-            #
-            # # print('after transform', data['label'].shape)
-            # # print(torch.unique(data['label']))
-            #
+
             # return data
+            img_path    = self.imglist[index]
+            gt_path     = self.gtlist[index]
+            file_name   = img_path.split('\\')[-1]
+
+            img1        = cv2.imread(img_path)
+            img1        = cv2.cvtColor(img1, cv2.COLOR_BGR2LAB)
+            img1_mean, img1_std = get_mean_and_std(img1)
+
+            color_path  = self.color[(random.randint(0, len(self.color))) % len(self.color)]
+            img2        = cv2.imread(color_path)
+            img2        = cv2.cvtColor(img2, cv2.COLOR_BGR2LAB)
+            img2_mean, img2_std = get_mean_and_std(img2)
+
+            img3        = (img1 - img1_mean) / img1_std * img2_std + img2_mean
+            np.putmask(img3, img3 > 255, 255)
+            np.putmask(img3, img3 < 0, 0)
+            image       = cv2.cvtColor(cv2.convertScaleAbs(img3), cv2.COLOR_LAB2RGB)
+            image       = Image.fromarray(image)
+
+            gt          = Image.open(gt_path).convert('L')
+
+            data        = {'image': image, 'label': gt}
+            data        = self.transform(data)
+            #data['file_name'] = file_name
+
+            # print('after transform', data['label'].shape)
+            # print(torch.unique(data['label']))
+
+            return data
 
         elif self.mode == 'val' or self.mode == 'test':
             img_path    = self.imglist[index]

@@ -35,7 +35,7 @@ from dataloaders.dataset            import *
 from helpers.train_utils            import *
 from helpers.losses                 import DiceLoss
 from helpers.parse_yaml             import parse_yaml_config
-from helpers.inference_utils        import performance_in_training
+from helpers.fom                    import iou_on_batch, dice_coef, DiceLoss
 
 #------------------------------------------------------------------------------#
 class TrainSession:
@@ -141,7 +141,7 @@ class TrainSession:
         print ('Total # of iterations = ', self.total_iterations)
 
         for epoch_num in iterator:
-            train_loss, train_dice_scores = [], []
+            train_loss, train_dice_scores, train_mIoU_scores = [], [], []
 
             # ******************* Training ******************* #
             torch.cuda.empty_cache(); model.train()
@@ -150,17 +150,52 @@ class TrainSession:
                 volume_batch, label_batch = sampled_batch['image'], sampled_batch['label']
                 volume_batch, label_batch = volume_batch.cuda(), label_batch.cuda()
 
-                outputs      = model(volume_batch)       # volume batch passed through model
-                outputs_soft = torch.sigmoid(outputs)    # compute softmax prob. maps
+                out1, out2, out3, out4, out5    = model(volume_batch)       # volume batch passed through model
+                out_soft1                       = torch.sigmoid(out1)      # compute softmax prob. maps
+                out_soft2                       = torch.sigmoid(out2)
+                out_soft3                       = torch.sigmoid(out3)
+                out_soft4                       = torch.sigmoid(out4)
+                out_soft5                       = torch.sigmoid(out5)
+                out_soft_avg                    = (1/5)* (out_soft1 + out_soft2 + out_soft3 + out_soft4 + out_soft5)
+
+                var1, omega1    = calculate_discrepancy(out_soft1, label_batch)
+                var2, omega2    = calculate_discrepancy(out_soft2, label_batch)
+                var3, omega3    = calculate_discrepancy(out_soft3, label_batch)
+                var4, omega4    = calculate_discrepancy(out_soft4, label_batch)
+                var5, omega5    = calculate_discrepancy(out_soft5, label_batch)
+
+                omega_sum       = omega1 + omega2 + omega3 + omega4 + omega5
+
+                loss_var        = (1/5) * (var1 + var2 + var3 + var4 + var5)
+
+                #pred         = (outputs_soft > 0.5).detach()
                 #outputs_soft = torch.sigmoid(outputs)   # compute softmax prob. maps
 
-                train_dice_scores.append(performance_in_training(outputs_soft,
-                                                                 label_batch,
-                                                                 self.num_classes, 'Training'))
+                train_dice_scores.append(dice_coef(out_soft_avg[:,0,:,:], label_batch[:,0,:,:]))
+                # train_mIoU_scores.append(iou_on_batch(pred, label_batch[:,0,:,:]))
 
-                loss_ce      = bce_loss(outputs, label_batch.float())
-                loss_dice    = dice_loss(outputs, label_batch.float())
-                loss         = 0.5 * (loss_dice + loss_ce)
+                loss_ce         = bce_loss(out1, label_batch.float())
+                loss_dice       = dice_loss(out1, label_batch.float())
+                loss_1          = 0.5 * (loss_dice + loss_ce)
+
+                loss_ce_2       = bce_loss(out2, label_batch.float())
+                loss_dice_2     = dice_loss(out2, label_batch.float())
+                loss_2          = 0.5 * (loss_dice_2 + loss_ce_2)
+
+                loss_ce_3       = bce_loss(out3, label_batch.float())
+                loss_dice_3     = dice_loss(out3, label_batch.float())
+                loss_3          = 0.5 * (loss_dice_3 + loss_ce_3)
+
+                loss_ce_4       = bce_loss(out4, label_batch.float())
+                loss_dice_4     = dice_loss(out4, label_batch.float())
+                loss_4          = 0.5 * (loss_dice_4 + loss_ce_4)
+
+                loss_ce_5       = bce_loss(out5, label_batch.float())
+                loss_dice_5     = dice_loss(out5, label_batch.float())
+                loss_5          = 0.5 * (loss_dice_5 + loss_ce_5)
+
+                loss            = (omega1 * loss_1 + omega2 * loss_2 + omega3 * loss_3 + \
+                omega4 * loss_4 + omega5 * loss_5) / omega_sum # + loss_var
 
                 optimizer.zero_grad(); loss.backward(); optimizer.step()
                 train_loss.append(loss.cpu().detach().numpy())
@@ -172,11 +207,13 @@ class TrainSession:
                 writer.add_scalar('Train_Loss/total_loss'   , loss      , iter_num)
                 writer.add_scalar('Train_Loss/loss_ce'      , loss_ce   , iter_num)
                 writer.add_scalar('Train_Loss/loss_dice'    , loss_dice , iter_num)
+                writer.add_scalar('Train_Loss/loss_var'     ,  loss_var , iter_num)
 
                 # log loss and dice scores on command window
                 logging.info(
-                    'Batch %d : loss : %f, loss_ce: %f, loss_dice: %f, train_DSC: %f' %
-                    (i_batch, loss.item(), loss_ce.item(), loss_dice.item(), train_dice_scores[-1][0]))
+                    'Batch %d : loss : %f, loss_ce: %f, loss_dice: %f, dice_score: %f' %
+                    (i_batch, loss.item(), loss_ce.item(), loss_dice.item(),
+                     train_dice_scores[-1]))
 
             # ---------------------------------------------------------------- #
             # Varying learning rate by epoch
@@ -186,22 +223,58 @@ class TrainSession:
 
             # ******************* Validation BEGINS ******************* #
             torch.cuda.empty_cache(); model.eval()
-            val_loss, val_loss_ce, val_loss_dice, val_dice_scores = [], [], [], []
+            val_loss, val_loss_ce, val_loss_dice, val_dice_scores, val_mIoU_scores = [], [], [], [], []
 
             with torch.no_grad():
                 for i_batch, sampled_batch in enumerate(valloader):
                     volume_batch, label_batch = sampled_batch['image'], sampled_batch['label']
                     volume_batch, label_batch = volume_batch.cuda(), label_batch.cuda()
 
-                    outputs     = model(volume_batch)
-                    outputs_soft= torch.sigmoid(outputs)
+                    out1, out2, out3, out4, out5    = model(volume_batch)       # volume batch passed through model
+                    out_soft1                       = torch.sigmoid(out1)      # compute softmax prob. maps
+                    out_soft2                       = torch.sigmoid(out2)
+                    out_soft3                       = torch.sigmoid(out3)
+                    out_soft4                       = torch.sigmoid(out4)
+                    out_soft5                       = torch.sigmoid(out5)
+                    out_soft_avg                    = (1/5)* (out_soft1 + out_soft2 + out_soft3 + out_soft4 + out_soft5)
 
-                    metric_i    = performance_in_training(outputs_soft, label_batch.unsqueeze(1), self.num_classes, 'Training')
-                    val_dice_scores.append(metric_i)
+                    #pred         = (outputs_soft > 0.5).detach()
+                    #outputs_soft = torch.sigmoid(outputs)   # compute softmax prob. maps
 
-                    loss_ce     = bce_loss(outputs_soft    , label_batch[:].float())
-                    loss_dice   = dice_loss(outputs_soft   , label_batch[:].long())
-                    loss        = loss_ce #0.5 * (loss_dice + loss_ce)
+                    val_dice_scores.append(dice_coef(out_soft_avg[:,0,:,:], label_batch[:,0,:,:]))
+                    # train_mIoU_scores.append(iou_on_batch(pred, label_batch[:,0,:,:]))
+
+                    loss_ce         = bce_loss(out1, label_batch.float())
+                    loss_dice       = dice_loss(out1, label_batch.float())
+                    loss_1          = 0.5 * (loss_dice + loss_ce)
+
+                    loss_ce_2       = bce_loss(out2, label_batch.float())
+                    loss_dice_2     = dice_loss(out2, label_batch.float())
+                    loss_2          = 0.5 * (loss_dice_2 + loss_ce_2)
+
+                    loss_ce_3       = bce_loss(out3, label_batch.float())
+                    loss_dice_3     = dice_loss(out3, label_batch.float())
+                    loss_3          = 0.5 * (loss_dice_3 + loss_ce_3)
+
+                    loss_ce_4       = bce_loss(out4, label_batch.float())
+                    loss_dice_4     = dice_loss(out4, label_batch.float())
+                    loss_4          = 0.5 * (loss_dice_4 + loss_ce_4)
+
+                    loss_ce_5       = bce_loss(out5, label_batch.float())
+                    loss_dice_5     = dice_loss(out5, label_batch.float())
+                    loss_5          = 0.5 * (loss_dice_5 + loss_ce_5)
+
+                    loss            = 0.5 * (loss_1 + loss_2 + loss_3 + loss_4 + loss_5)
+
+                    # outputs      = model(volume_batch)
+                    # outputs_soft = torch.sigmoid(outputs)
+                    #
+                    # val_dice_scores.append(dice_coef(outputs_soft[:, 0, :, :], label_batch[:, 0, :, :]))
+                    # # val_mIoU_scores.append(iou_on_batch(pred, label_batch[:, 1, :, :]))
+                    #
+                    # loss_ce     = bce_loss(outputs, label_batch.float())
+                    # loss_dice   = dice_loss(outputs, label_batch.float())
+                    # loss        = 0.5 * (loss_dice + loss_ce)
 
                     val_loss.append(loss.cpu().detach().numpy())
                     val_loss_ce.append(loss_ce.cpu().detach().numpy())
@@ -223,35 +296,36 @@ class TrainSession:
             writer.add_scalar('Val_Loss/dice_loss'      , mean_val_loss_dice, epoch_num)
             writer.add_scalars('Loss', {'training': mean_train_loss, 'validation': mean_val_loss}, epoch_num)
 
-            # train mean dice scores and validation mean dice scores over slices
-            train_metrics       = np.mean(np.array(train_dice_scores)   , axis = 0)
-            val_metrics         = np.mean(np.array(val_dice_scores)     , axis = 0)
+            # validation mean dice and mIoU scores over batches
+            performance     = np.mean(np.array(val_dice_scores), axis = 0)
+            # val_mIoU        = np.mean(np.array(val_mIoU_scores), axis = 0)
+
+            # train mean dice scores over batches
+            train_dice      = np.mean(np.array(train_dice_scores), axis = 0)
+            # train_mIoU      = np.mean(np.array(train_mIoU_scores), axis = 0)
 
             # write dice scores for each class to tensorboard
-            for class_i in range(num_classes):
-                writer.add_scalar('Validation/val_{}_dice'.format(class_i+1), val_metrics[class_i], iter_num)
+            writer.add_scalar('Validation/val_mean_dice'        , performance       , epoch_num)
+            # writer.add_scalar('Validation/val_mean_mIoU'        , val_mIoU          , epoch_num)
+            writer.add_scalar('Validation/Best_val_mean_dice'   , best_performance  , epoch_num)
 
-            performance         = np.mean(val_metrics)      # mean dice score over classes
-            writer.add_scalar('Validation/val_mean_dice', performance, iter_num)
-
-            if performance > best_performance:          # if dice score improves
-                best_epoch      = epoch_num
-                best_performance= performance
-                save_best       = os.path.join(snapshot_path, 'models', 'best_model.pth')
+            if performance > best_performance:  # if dice score improves
+                best_epoch          = epoch_num
+                best_performance    = performance
+                save_best           = os.path.join(snapshot_path, 'models', 'best_model.pth')
                 torch.save(model.state_dict(), save_best)
+                writer.add_scalar('Validation/Best_val_mean_dice', best_performance , epoch_num)
 
-            save_mode_path      = os.path.join(snapshot_path, 'models', 'epoch_num_{}.pth'.format(epoch_num))
+            save_mode_path  = os.path.join(snapshot_path, 'models', 'epoch_num_{}.pth'.format(epoch_num))
             torch.save(model.state_dict(), save_mode_path)
             logging.info("save model to {}".format(save_mode_path))
-
-            # Print scores on the command window
-            logging.info('\nmean_dice : %f \n'  % (val_metrics[0]))
+            logging.info('Mean dice_score: %f' % (performance))
 
             # log scores onto csv file
             csv_logger.writerow([epoch_num,                         # Epoch
-                                 train_metrics[0],                  # mean_train_dice
-                                 mean_train_loss,                   # mean_train_loss
-                                 val_metrics[0],                    # mean_val_dice
+                                 train_dice,                        # Train_Dice
+                                 mean_train_loss,                   # Mean_Train_Loss
+                                 performance,                       # Val_Dice
                                  mean_val_loss])                    # mean_val_loss
 
             logging.info('\nBest Epoch : %d with Best Performance : %f \n' % (best_epoch, best_performance))
@@ -262,7 +336,16 @@ class TrainSession:
             # ******************* Validation ENDS ******************* #
             if epoch_num >= epochs: iterator.close(); break
 
-        writer.close()
+            # ******************* EARLY stopping ******************* #
+            # if self.early_stop:
+            #    early_stopping_count = epoch_num - best_epoch
+                #logging.info('\n Early stopping count: {}/{}'.format(early_stopping_count, self.patience_interval))
+            #    if early_stopping_count > self.patience_interval:
+            #        logging.info('\n Early stopping!')
+            #        break
+
+            # -----------------------------------------------------------------#
+            writer.close()
 
         print('Best performance: ', best_epoch, best_performance)
         return "Training Finished!"
@@ -302,7 +385,7 @@ if __name__ == "__main__":
     # Check if path exists else make the directory
     if not os.path.exists(snapshot_path): os.makedirs(snapshot_path)
 
-    model_path      = os.makedirs(os.path.join(snapshot_path, 'models'))
+    model_path      = os.makedirs(os.path.join(snapshot_path, 'models'), exist_ok = True)
 
     code_path       = os.path.join(snapshot_path, 'code')
     if not os.path.exists(code_path): os.makedirs(code_path)

@@ -287,3 +287,10 @@ def pad_slices(tensor: torch.Tensor, max_slices: int=16) -> torch.Tensor:
     return padded_tensor
 
 #------------------------------------------------------------------------------#
+def calculate_discrepancy(prob_map, gt):
+    squared_error = torch.pow(prob_map - gt, 2)
+    sum_error     = torch.sum(squared_error)
+    var           = torch.log(1 + sum_error)
+    omega         = torch.exp(-var)
+    return var, omega
+#------------------------------------------------------------------------------#

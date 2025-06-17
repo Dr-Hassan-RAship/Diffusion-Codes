@@ -63,7 +63,6 @@ def get_cuda(tensor):
         tensor = tensor.cuda()
     return tensor
 
-
 def print_options(configs):
     message = ''
     message += '----------------- Options ---------------\n'

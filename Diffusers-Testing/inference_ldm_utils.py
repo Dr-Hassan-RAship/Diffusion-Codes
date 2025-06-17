@@ -12,17 +12,19 @@
 # ------------------------------------------------------------------------------#
 import os, csv, torch
 
-import numpy                                        as np
-import nibabel                                      as nib
-import matplotlib.pyplot                            as plt
+import numpy as np
+import nibabel as nib
+import matplotlib.pyplot as plt
 import matplotlib
 
 matplotlib.use("Agg")
-from medpy                                          import metric
-from monai.metrics                                  import DiceMetric, MeanIoU
-#from medpy.metric.binary                            import assd, hd95
-from config                                         import *
-from utils                                          import *
+from medpy import metric
+from monai.metrics import DiceMetric, MeanIoU
+
+# from medpy.metric.binary                            import assd, hd95
+from config import *
+from utils import *
+
 
 # ------------------------------------------------------------------------------#
 def calculate_metrics(prediction, label):
@@ -32,34 +34,37 @@ def calculate_metrics(prediction, label):
 
     # pred = (prediction > 0).astype(np.uint8)
     pred = prediction
-    gt   = (label > 0).astype(np.uint8)
+    gt = (label > 0).astype(np.uint8)
 
     dice_metric = DiceMetric(include_background=False, reduction="mean")
     miou_metric = MeanIoU(include_background=False)
 
-    #dice        = dice_metric(torch.tensor(pred)[None, None], torch.tensor(gt)[None, None]).item()
-    #miou        = miou_metric(torch.tensor(pred)[None, None], torch.tensor(gt)[None, None]).item()
+    # dice        = dice_metric(torch.tensor(pred)[None, None], torch.tensor(gt)[None, None]).item()
+    # miou        = miou_metric(torch.tensor(pred)[None, None], torch.tensor(gt)[None, None]).item()
     if pred.sum() > 0 and gt.sum() > 0:
-       dice     = metric.binary.dc(pred, gt)
-       #hd95    = metric.binary.hd95(pred, gt, voxelspacing=pixsize)
-       #assd    = metric.binary.assd(pred, gt, voxelspacing=pixsize)
-            
-       assd_val    = metric.binary.assd(pred, gt)
-       hd95_val    = metric.binary.hd95(pred, gt)
-       #dice        = dice_metric(torch.tensor(pred)[None, None], torch.tensor(gt)[None, None]).item()
-       miou        = miou_metric(torch.tensor(pred)[None, None], torch.tensor(gt)[None, None]).item()
+        dice = metric.binary.dc(pred, gt)
+        # hd95    = metric.binary.hd95(pred, gt, voxelspacing=pixsize)
+        # assd    = metric.binary.assd(pred, gt, voxelspacing=pixsize)
+
+        assd_val = metric.binary.assd(pred, gt)
+        hd95_val = metric.binary.hd95(pred, gt)
+        # dice        = dice_metric(torch.tensor(pred)[None, None], torch.tensor(gt)[None, None]).item()
+        miou = miou_metric(
+            torch.tensor(pred)[None, None], torch.tensor(gt)[None, None]
+        ).item()
     elif pred.sum() == 0 or gt.sum() == 0:
-       dice        = 0.0
-       miou        = 0.0
-       assd_val    = np.nan
-       hd95_val    = np.nan
+        dice = 0.0
+        miou = 0.0
+        assd_val = np.nan
+        hd95_val = np.nan
     elif pred.sum() == 0 and gt.sum() == 0:
-       dice        = 1.0
-       miou        = 1.0
-       assd_val    = 0.0
-       hd95_val    = 0.0
+        dice = 1.0
+        miou = 1.0
+        assd_val = 0.0
+        hd95_val = 0.0
 
     return dice, hd95_val, assd_val, miou
+
 
 # ------------------------------------------------------------------------------#
 def save_groundtruth_image(image, save_folder, filename, mode="image"):
@@ -68,9 +73,9 @@ def save_groundtruth_image(image, save_folder, filename, mode="image"):
     filepath = os.path.join(save_folder, filename)
     if mode == "image":
         # tranpose image to (256, 256, 3) and normalize between 0 - 1 for each channel independantly for imsave
-        image  = np.transpose(image, (1, 2, 0))
+        image = np.transpose(image, (1, 2, 0))
         # normalize
-        image  = ((image + 1.0) / 2.0).clip(0, 1)
+        image = ((image + 1.0) / 2.0).clip(0, 1)
 
         plt.imsave(filepath, image)
     else:
@@ -79,6 +84,7 @@ def save_groundtruth_image(image, save_folder, filename, mode="image"):
 
         plt.imsave(filepath, image, cmap="gray")
     print(f"{filename} saved at {save_folder}")
+
 
 # ------------------------------------------------------------------------------#
 def save_metrics_to_csv(metrics, csv_path, headers=None):
@@ -89,7 +95,9 @@ def save_metrics_to_csv(metrics, csv_path, headers=None):
         csv_writer.writerows(metrics)
 
     print(f"Metrics saved to {csv_path}")
-#------------------------------------------------------------------------------#
+
+
+# ------------------------------------------------------------------------------#
 def visualize_intermediate_steps(intermediates, output_dir):
     """Visualize a horizontal grid of intermediate predictions."""
     if not intermediates or not isinstance(intermediates, (list, tuple)):
@@ -107,7 +115,9 @@ def visualize_intermediate_steps(intermediates, output_dir):
         print("Intermediate steps visualization saved.")
     except Exception as e:
         print(f"Error visualizing intermediates: {e}")
-#------------------------------------------------------------------------------#
+
+
+# ------------------------------------------------------------------------------#
 def visualize_predictions(predictions_list, output_dir, model_epoch=-1):
     """Visualize ground truth images, masks, and predicted masks."""
     vis_dir = os.path.join(output_dir, f"epoch_{model_epoch}", "visualizations")
@@ -130,7 +140,9 @@ def visualize_predictions(predictions_list, output_dir, model_epoch=-1):
         plt.savefig(os.path.join(vis_dir, f"sample_{i}.png"))
         plt.close()
     print(f"Visualizations saved in {vis_dir}")
-#---------------------------------------------------------------------------------#
+
+
+# ---------------------------------------------------------------------------------#
 def compute_average_metrics(metrics_list):
     """Compute average metrics (Dice, HD95, ASSD, mIoU) per model epoch."""
     if not metrics_list:
@@ -155,7 +167,9 @@ def compute_average_metrics(metrics_list):
         avg_metrics.append([model_epoch, avg_dice, avg_hd95, avg_assd, avg_miou])
 
     return avg_metrics
-#--------------------------------------------------------------------------------#
+
+
+# --------------------------------------------------------------------------------#
 # Potential Improvements:
 
 # 1. Use multiprocessing or threading for parallel processing of metrics calculation.

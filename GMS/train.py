@@ -15,6 +15,7 @@ from monai.losses.dice import DiceLoss
 from data.image_dataset import Image_Dataset
 from utils.tools import seed_reproducer, save_checkpoint, get_cuda, print_options
 from utils.get_logger import open_log
+from utils.load_ckpt import get_state_dict
 from utils.lr_scheduler import LinearWarmupCosineAnnealingLR
 from networks.latent_mapping_model import ResAttnUNet_DS
 from networks.models.autoencoder import AutoencoderKL
@@ -50,11 +51,12 @@ def vae_decode(vae_model, pred_mean, scale_factor):
     return pred_seg
 
 
+# [CHANGED] --> added the path to the Kvasir-SEG config file
 def arg_parse() -> argparse.ArgumentParser.parse_args:
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--config",
-        default="./configs/train.yaml",
+        default="./configs/kvasir-seg_train.yaml",
         type=str,
         help="load the config file",
     )
@@ -125,10 +127,14 @@ def run_trainer() -> None:
     vae_config = OmegaConf.load(f"{vae_path}")
     vae_model = AutoencoderKL(**vae_config.first_stage_config.get("params", dict()))
 
-    pl_sd = torch.load(
-        "SD-VAE-weights/768-v-ema-first-stage-VAE.ckpt", map_location="cpu"
-    )
-    sd = pl_sd["state_dict"]
+    # [CHANGED] --> see utils/load_ckpt.py for the changes
+    sd = get_state_dict()
+
+    # pl_sd = torch.load(
+    #     "SD-VAE-weights/768-v-ema-first-stage-VAE.ckpt", map_location="cpu"
+    # )
+    # sd = pl_sd["state_dict"]
+
     vae_model.load_state_dict(sd, strict=True)
 
     vae_model.freeze()
@@ -168,6 +174,8 @@ def run_trainer() -> None:
 
         ### Training phase
         for batch_data in tqdm(train_dataloader, desc="Train: "):
+            # [CHANGED] --> I believe the image and mask were originally in the range (0, 255)
+            # but are now bing brought in the range (-1, 1)
             img_rgb = batch_data["img"]
             img_rgb = 2.0 * img_rgb - 1.0
             seg_raw = batch_data["seg"]
@@ -184,6 +192,7 @@ def run_trainer() -> None:
             )
             img_latent_std = torch.exp(0.5 * img_latent_logvar)
 
+            # [CHANGED] --> With equal probability decides reprametrization trick or simple mean
             if np.random.uniform() > 0.5:
                 img_latent_mean_aug = (
                     img_latent_mean + img_latent_std * torch.randn_like(img_latent_std)
@@ -191,7 +200,7 @@ def run_trainer() -> None:
             else:
                 img_latent_mean_aug = img_latent_mean
 
-            # latent matching
+            # latent matching [CHANGED] --> recieves the grountruth latent mask representation and predicted and computes mse loss
             out_latent_mean_dict = mapping_model(img_latent_mean_aug)
             loss_Rec = configs["w_rec"] * get_multi_loss(
                 mse_loss,
@@ -201,12 +210,15 @@ def run_trainer() -> None:
                 key_list=ds_list,
             )
 
-            # image matching
+            # image matching [CHANGED] --> computes the predicted mask on different levels as the predicted latent representation
+            # was on different levels (see line 228 - 233 of latent_mapping_model.py)
             pred_seg_dict = {}
             for level_name in ds_list:
                 pred_seg_dict[level_name] = vae_decode(
                     vae_model, out_latent_mean_dict[level_name], scale_factor
                 )
+
+            # [CHANGED] --> similar to Loss_Rec
             loss_Dice = configs["w_dice"] * get_multi_loss(
                 dice_loss,
                 pred_seg_dict,
@@ -245,7 +257,7 @@ def run_trainer() -> None:
             )
         )
 
-        ### Validation phase
+        ### Validation phase [CHANGED] --> almost same as Train except the dice score is being calculated here as well
         for batch_data in tqdm(valid_dataloader, desc="Valid: "):
             img_rgb = batch_data["img"]
             img_rgb = 2.0 * img_rgb - 1.0

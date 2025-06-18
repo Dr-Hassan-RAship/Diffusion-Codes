@@ -18,6 +18,7 @@ from sklearn.metrics import confusion_matrix
 from data.image_dataset import Image_Dataset
 from utils.tools import seed_reproducer, load_checkpoint, get_cuda, print_options
 from utils.get_logger import open_log
+from utils.load_ckpt import get_state_dict
 from networks.latent_mapping_model import ResAttnUNet_DS
 from networks.models.autoencoder import AutoencoderKL
 from networks.models.distributions import DiagonalGaussianDistribution
@@ -93,8 +94,11 @@ def run_trainer() -> None:
     vae_config = OmegaConf.load(f"{vae_path}")
     vae_model = AutoencoderKL(**vae_config.first_stage_config.get("params", dict()))
 
-    pl_sd = torch.load("SD-VAE-weights/768-v-ema-first-stage-VAE.ckpt", map_location="cpu")
-    sd = pl_sd["state_dict"]
+    # [CHANGED] --> see utils.load_ckpt.py for the new way to get vae state dict
+    
+    # pl_sd = torch.load("SD-VAE-weights/768-v-ema-first-stage-VAE.ckpt", map_location="cpu")
+    # sd = pl_sd["state_dict"]
+    sd   = get_state_dict()
     vae_model.load_state_dict(sd, strict=True)
 
     vae_model.freeze()

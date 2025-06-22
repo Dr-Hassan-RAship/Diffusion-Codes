@@ -1,3 +1,25 @@
+#------------------------------------------------------------------------------#
+# [CHANGED] Adding some of my own preferences to the Python .gitignore file
+
+# Ignore png, jpeg, jpg, files
+*.png
+*.jpeg
+*.jpg
+
+*.ckpt
+
+# Ignore .zip, .h5, .pth, .csv, .txt, .pyc or .yml/yaml files files
+*.zip
+*.h5
+*.pth
+*.csv
+*.txt
+*.pyc
+*.tfevents.*
+*.yml*
+
+#-------------------------------------------------------------------------------#
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]

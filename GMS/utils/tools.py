@@ -27,8 +27,8 @@ def load_checkpoint(model: torch.nn.Module, path: str) -> torch.nn.Module:
     if os.path.isfile(path):
         logging.info("=> loading checkpoint '{}'".format(path))
         
-        # remap everthing onto CPU 
-        state = torch.load(path, map_location=lambda storage, location: storage)
+        # remap everthing onto CPU  [CHANGED] --> Added weights_only=True to prevent warnings
+        state = torch.load(path, weights_only = True, map_location=lambda storage, location: storage)
 
         # load weights
         model.load_state_dict(state['model'])

@@ -113,72 +113,72 @@ class ResAttBlock(nn.Module):
         return h
 
 
-class ResAttnUNet(nn.Module):
-    def __init__(self, in_channel=8, out_channels=8, num_res_blocks=2, ch=32, ch_mult=(1,2,4,4)) -> None:
-        super(ResAttnUNet, self).__init__()
-        self.ch = ch
-        if isinstance(num_res_blocks, int):
-            self.num_res_blocks = len(ch_mult) * [num_res_blocks]
+# class ResAttnUNet(nn.Module):
+#     def __init__(self, in_channel=8, out_channels=8, num_res_blocks=2, ch=32, ch_mult=(1,2,4,4)) -> None:
+#         super(ResAttnUNet, self).__init__()
+#         self.ch = ch
+#         if isinstance(num_res_blocks, int):
+#             self.num_res_blocks = len(ch_mult) * [num_res_blocks]
 
-        self.input_blocks = nn.Conv2d(in_channel, ch, kernel_size=3, stride=1, padding=1, bias=True)
+#         self.input_blocks = nn.Conv2d(in_channel, ch, kernel_size=3, stride=1, padding=1, bias=True)
 
-        self.conv1_0 = ResAttBlock(in_channels=ch,              out_channels=ch * ch_mult[0])
-        self.conv2_0 = ResAttBlock(in_channels=ch * ch_mult[0], out_channels=ch * ch_mult[1])
-        self.conv3_0 = ResAttBlock(in_channels=ch * ch_mult[1], out_channels=ch * ch_mult[2])
-        self.conv4_0 = ResAttBlock(in_channels=ch * ch_mult[2], out_channels=ch * ch_mult[3])
+#         self.conv1_0 = ResAttBlock(in_channels=ch,              out_channels=ch * ch_mult[0])
+#         self.conv2_0 = ResAttBlock(in_channels=ch * ch_mult[0], out_channels=ch * ch_mult[1])
+#         self.conv3_0 = ResAttBlock(in_channels=ch * ch_mult[1], out_channels=ch * ch_mult[2])
+#         self.conv4_0 = ResAttBlock(in_channels=ch * ch_mult[2], out_channels=ch * ch_mult[3])
 
-        self.conv3_1 = ResAttBlock(in_channels=ch * (ch_mult[2] + ch_mult[3]), out_channels=ch * ch_mult[2])
-        self.conv2_2 = ResAttBlock(in_channels=ch * (ch_mult[1] + ch_mult[2]), out_channels=ch * ch_mult[1])
-        self.conv1_3 = ResAttBlock(in_channels=ch * (ch_mult[0] + ch_mult[1]), out_channels=ch * ch_mult[0])
-        self.conv0_4 = ResAttBlock(in_channels=ch * (1          + ch_mult[0]), out_channels=ch * 1)
+#         self.conv3_1 = ResAttBlock(in_channels=ch * (ch_mult[2] + ch_mult[3]), out_channels=ch * ch_mult[2])
+#         self.conv2_2 = ResAttBlock(in_channels=ch * (ch_mult[1] + ch_mult[2]), out_channels=ch * ch_mult[1])
+#         self.conv1_3 = ResAttBlock(in_channels=ch * (ch_mult[0] + ch_mult[1]), out_channels=ch * ch_mult[0])
+#         self.conv0_4 = ResAttBlock(in_channels=ch * (1          + ch_mult[0]), out_channels=ch * 1)
 
-        self.output_blocks = nn.Sequential(
-            Normalize(ch*1),
-            nn.SiLU(),
-            nn.Conv2d(ch*1, out_channels, kernel_size=3, stride=1, padding=1, bias=False),
-        )
+#         self.output_blocks = nn.Sequential(
+#             Normalize(ch*1),
+#             nn.SiLU(),
+#             nn.Conv2d(ch*1, out_channels, kernel_size=3, stride=1, padding=1, bias=False),
+#         )
 
-        self._initialize_weights()
-        self._print_networks(verbose=False)
+#         self._initialize_weights()
+#         self._print_networks(verbose=False)
 
-    def forward(self, x) -> torch.Tensor:
-        x0 = self.input_blocks(x)
-        x1 = self.conv1_0(x0)
-        x2 = self.conv2_0(x1)
-        x3 = self.conv3_0(x2)
-        x4 = self.conv4_0(x3)
+#     def forward(self, x) -> torch.Tensor:
+#         x0 = self.input_blocks(x)
+#         x1 = self.conv1_0(x0)
+#         x2 = self.conv2_0(x1)
+#         x3 = self.conv3_0(x2)
+#         x4 = self.conv4_0(x3)
 
-        x3_1 = self.conv3_1(torch.cat([x3, x4], dim=1))
-        x2_2 = self.conv2_2(torch.cat([x2, x3_1], dim=1))
-        x1_3 = self.conv1_3(torch.cat([x1, x2_2], dim=1))
-        x0_4 = self.conv0_4(torch.cat([x0, x1_3], dim=1))
+#         x3_1 = self.conv3_1(torch.cat([x3, x4], dim=1))
+#         x2_2 = self.conv2_2(torch.cat([x2, x3_1], dim=1))
+#         x1_3 = self.conv1_3(torch.cat([x1, x2_2], dim=1))
+#         x0_4 = self.conv0_4(torch.cat([x0, x1_3], dim=1))
 
-        out = dict()
-        out['out'] = self.output_blocks(x0_4)
-        return out
+#         out = dict()
+#         out['out'] = self.output_blocks(x0_4)
+#         return out
 
-    def _initialize_weights(self) -> None:
-        for m in self.modules():
-            if isinstance(m, (nn.Conv2d, nn.ConvTranspose2d)):
-                nn.init.kaiming_normal_(m.weight, mode="fan_out", nonlinearity="leaky_relu")
-                if m.bias is not None:
-                    nn.init.constant_(m.bias, 0)
-            elif isinstance(m, nn.BatchNorm2d):
-                nn.init.constant_(m.weight, 1)
-                nn.init.constant_(m.bias, 0)
-            elif isinstance(m, nn.Linear):
-                nn.init.normal_(m.weight, 0, 0.01)
-                nn.init.constant_(m.bias, 0)
+    # def _initialize_weights(self) -> None:
+    #     for m in self.modules():
+    #         if isinstance(m, (nn.Conv2d, nn.ConvTranspose2d)):
+    #             nn.init.kaiming_normal_(m.weight, mode="fan_out", nonlinearity="leaky_relu")
+    #             if m.bias is not None:
+    #                 nn.init.constant_(m.bias, 0)
+    #         elif isinstance(m, nn.BatchNorm2d):
+    #             nn.init.constant_(m.weight, 1)
+    #             nn.init.constant_(m.bias, 0)
+    #         elif isinstance(m, nn.Linear):
+    #             nn.init.normal_(m.weight, 0, 0.01)
+    #             nn.init.constant_(m.bias, 0)
 
-    def _print_networks(self, verbose=False) -> None:
-        logging.info('---------- Networks initialized -------------')
-        num_params = 0
-        for param in self.parameters():
-            num_params += param.numel()
-        if verbose:
-            logging.info(self.modules())
-        logging.info('Total number of parameters : %.3f M' % (num_params / 1e6))
-        logging.info('-----------------------------------------------')
+    # def _print_networks(self, verbose=False) -> None:
+    #     logging.info('---------- Networks initialized -------------')
+    #     num_params = 0
+    #     for param in self.parameters():
+    #         num_params += param.numel()
+    #     if verbose:
+    #         logging.info(self.modules())
+    #     logging.info('Total number of parameters : %.3f M' % (num_params / 1e6))
+    #     logging.info('-----------------------------------------------')
 
 
 class ResAttnUNet_DS(nn.Module):

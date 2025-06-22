@@ -24,6 +24,8 @@ from networks.models.distributions import DiagonalGaussianDistribution
 from tensorboardX import SummaryWriter
 
 
+# Note the encoder output is AutoeencoderTinyOuput(latents = ouptut) and Decoder is DecoderOutput(sample = output)
+
 def get_multi_loss(criterion, out_dict, label, is_ds=True, key_list=None):
     keys = key_list if key_list is not None else list(out_dict.keys())
     if is_ds:
@@ -44,7 +46,7 @@ def get_vae_encoding_mu_and_sigma(encoder_posterior, scale_factor):
 
 def vae_decode(vae_model, pred_mean, scale_factor):
     z = 1.0 / scale_factor * pred_mean
-    pred_seg = vae_model.decode(z) # [CHANGED] --> has channels = 3 according to config
+    pred_seg = vae_model.decode(z).sample # [CHANGED] --> has channels = 3 according to config
     pred_seg = torch.mean(pred_seg, dim=1, keepdim=True) # [CHANGED] --> Taking mean across channels dimension resulting in 1 channel
     pred_seg = torch.clamp((pred_seg + 1.0) / 2.0, min=0.0, max=1.0)  # (B, 1, H, W) # [CHANGED] --> Bringing the range to (0, 1) as per Kvasir-SEG dataset
     return pred_seg
@@ -55,7 +57,7 @@ def arg_parse() -> argparse.ArgumentParser.parse_args:
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--config",
-        default="./configs/busi_train.yaml",
+        default="./configs/kvasir-instrument_train.yaml",
         type=str,
         help="load the config file",
     )
@@ -120,26 +122,12 @@ def run_trainer() -> None:
             ch_mult=configs["ch_mult"],
         )
     )
+    
+    #[CHANGED] --> Trying out AutoencoderTiny from diffusers library (already on eval mode and frozen)
+    vae_model = get_tiny_autoencoder()
 
-    # get VAE (first-stage model)
-    vae_path = "./configs/v2-inference-v-first-stage-VAE.yaml"
-    vae_config = OmegaConf.load(f"{vae_path}")
-    vae_model = AutoencoderKL(**vae_config.first_stage_config.get("params", dict()))
-
-    # [CHANGED] --> see utils/load_ckpt.py for the changes
-    # sd = get_state_dict()
-
-    # [CHANGED] --> Added weights_only=True to load_state_dict to prevent warning
-    pl_sd = torch.load(
-        "SD-VAE-weights/768-v-ema-first-stage-VAE.ckpt", map_location="cpu", weights_only = True
-    )
-    sd = pl_sd["state_dict"]
-
-    vae_model.load_state_dict(sd, strict=True)
-
-    vae_model.freeze()
     vae_model = get_cuda(vae_model)
-    scale_factor = 1.0 # vae_config.first_stage_config.scale_factor # [CHANGED] --> scale_factor is not defined in the AutoencoderTiny model, so we set it to 1.0
+    scale_factor = 1.0
     
     # Define optimizers
     optimizer = torch.optim.AdamW(mapping_model.parameters(), lr=configs["lr"])
@@ -178,33 +166,16 @@ def run_trainer() -> None:
             # but are now bing brought in the range (-1, 1)
             img_rgb = batch_data["img"]
             img_rgb = img_rgb / 255.0 # [CHANGED] V.V.V Imp!  --> SCALE CORRECTION
-            print(f"img_rgb shape: {img_rgb.shape}, max_value: {torch.max(img_rgb)}, min_value: {torch.min(img_rgb)}")  # Debugging line to check image shape and max and min value
             img_rgb = 2.0 * img_rgb - 1.0
-            print(f"img_rgb after scaling shape: {img_rgb.shape}, max_value: {torch.max(img_rgb)}, min_value: {torch.min(img_rgb)}")
             seg_raw = batch_data["seg"]
-            print(f"seg_raw shape: {seg_raw.shape}, max_value: {torch.max(seg_raw)}, min_value: {torch.min(seg_raw)}")
             seg_raw = seg_raw.permute(0, 3, 1, 2) / 255.0
-            print(f"seg_raw after normalizing shape: {seg_raw.shape}, max_value: {torch.max(seg_raw)}, min_value: {torch.min(seg_raw)}")
             seg_rgb = 2.0 * seg_raw - 1.0
-            print(f"seg_raw after scaling shape: {seg_rgb.shape}, max_value: {torch.max(seg_rgb)}, min_value: {torch.min(seg_rgb)}")
             # [CHANGED] --> Taking mean across channels dimension resulting in 1 channel which matches the channel dimension
             # of pred_seg gotten from the decoder. Same thing in Validation
             seg_img = torch.mean(seg_raw, dim=1, keepdim=True)
             name = batch_data["name"]
 
-            img_latent_mean, img_latent_logvar = get_vae_encoding_mu_and_sigma(vae_model.encode(get_cuda(img_rgb)), scale_factor)
-            seg_latent_mean, seg_latent_logvar = get_vae_encoding_mu_and_sigma(vae_model.encode(get_cuda(seg_rgb)), scale_factor)
-            img_latent_std = torch.exp(0.5 * img_latent_logvar)
-            
-            # check shape of img_latent_mean, img_latent_logvar, seg_latent_mean, seg_latent_logvar
-            print(f"img_latent_mean shape: {img_latent_mean.shape}, img_latent_logvar shape: {img_latent_logvar.shape}")
-            print(f"seg_latent_mean shape: {seg_latent_mean.shape}, seg_latent_logvar shape: {seg_latent_logvar.shape}")
-
-            # [CHANGED] --> With equal probability decides reprametrization trick or simple mean
-            if np.random.uniform() > 0.5:
-                img_latent_mean_aug = (img_latent_mean + img_latent_std * torch.randn_like(img_latent_std))
-            else:
-                img_latent_mean_aug = img_latent_mean
+            img_latent_mean_aug, seg_latent_mean = vae_model.encode(get_cuda(img_rgb)).latents, vae_model.encode(get_cuda(seg_rgb)).latents
 
             # latent matching [CHANGED] --> recieves the grountruth latent mask representation and predicted and computes mse loss
             out_latent_mean_dict = mapping_model(img_latent_mean_aug)
@@ -268,10 +239,9 @@ def run_trainer() -> None:
 
             mapping_model.eval()
 
-            with torch.no_grad():
-                img_latent_mean, img_latent_logvar = get_vae_encoding_mu_and_sigma(vae_model.encode(get_cuda(img_rgb)), scale_factor)
-                seg_latent_mean, seg_latent_logvar = get_vae_encoding_mu_and_sigma(vae_model.encode(get_cuda(seg_rgb)), scale_factor)
-                
+            with torch.no_grad():                
+                img_latent_mean, seg_latent_mean = vae_model.encode(get_cuda(img_rgb)).latents, vae_model.encode(get_cuda(seg_rgb)).latents
+
                 out_latent_mean_dict = mapping_model(img_latent_mean)
                 pred_seg = vae_decode(vae_model, out_latent_mean_dict["out"], scale_factor)
 

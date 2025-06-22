@@ -617,6 +617,8 @@ class Encoder(nn.Module):
 
 
 class Decoder(nn.Module):
+    # [CHANGED] --> note the argument 'ch' is = 3 and represents in_channels and z_channels represents the latent dim
+    # and is equal to 4. ch will be used to set the number of the upsampling features in the ch_mult I believe
     def __init__(self, *, ch, out_ch, ch_mult=(1,2,4,8), num_res_blocks,
                  attn_resolutions, dropout=0.0, resamp_with_conv=True, in_channels,
                  resolution, z_channels, give_pre_end=False, tanh_out=False, use_linear_attn=False,

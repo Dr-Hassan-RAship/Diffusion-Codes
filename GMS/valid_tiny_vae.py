@@ -18,7 +18,7 @@ from sklearn.metrics import confusion_matrix
 from data.image_dataset import Image_Dataset
 from utils.tools import seed_reproducer, load_checkpoint, get_cuda, print_options
 from utils.get_logger import open_log
-from utils.load_ckpt import get_state_dict
+from utils.load_ckpt import get_tiny_autoencoder
 from networks.latent_mapping_model import ResAttnUNet_DS
 from networks.models.autoencoder import AutoencoderKL
 from networks.models.distributions import DiagonalGaussianDistribution
@@ -38,16 +38,15 @@ def get_vae_encoding_mu_and_sigma(encoder_posterior, scale_factor):
     return scale_factor * mean, logvar
 
 def vae_decode(vae_model, pred_mean, scale_factor):
-    z = 1. / scale_factor * pred_mean
-    # z = pred_mean
-    pred_seg = vae_model.decode(z)
-    pred_seg = torch.mean(pred_seg, dim=1, keepdim=True)
-    pred_seg = torch.clamp((pred_seg + 1.0) / 2.0, min=0.0, max=1.0) # (B, 1, H, W)
+    z = 1.0 / scale_factor * pred_mean
+    pred_seg = vae_model.decode(z).sample # [CHANGED] --> has channels = 3 according to config
+    pred_seg = torch.mean(pred_seg, dim=1, keepdim=True) # [CHANGED] --> Taking mean across channels dimension resulting in 1 channel
+    pred_seg = torch.clamp((pred_seg + 1.0) / 2.0, min=0.0, max=1.0)  # (B, 1, H, W) # [CHANGED] --> Bringing the range to (0, 1) as per Kvasir-SEG dataset
     return pred_seg
 
 def arg_parse() -> argparse.ArgumentParser.parse_args :
     parser = argparse.ArgumentParser()
-    parser.add_argument('--config', default='./configs/kvasir-instrument_valid.yaml', # [CHANGED] --> added kvasir-seg yaml
+    parser.add_argument('--config', default='./configs/busi_valid.yaml', # [CHANGED] --> added kvasir-seg yaml
                         type=str, help='load the config file')
     args = parser.parse_args()
     return args
@@ -89,22 +88,9 @@ def run_trainer() -> None:
     mapping_model = load_checkpoint(mapping_model, configs['model_weight'])
     mapping_model.eval()
 
-    # get VAE (first-stage model)
-    vae_path = './configs/v2-inference-v-first-stage-VAE.yaml'
-    vae_config = OmegaConf.load(f"{vae_path}")
-    vae_model = AutoencoderKL(**vae_config.first_stage_config.get("params", dict()))
-
-    # [CHANGED] --> see utils.load_ckpt.py for the new way to get vae state dict
-    # sd   = get_state_dict()
-    
-    # [CHANGED] --> added weights_only=True to prevent warnings
-    pl_sd = torch.load("SD-VAE-weights/768-v-ema-first-stage-VAE.ckpt", map_location="cpu", weights_only=True) 
-    sd = pl_sd["state_dict"]
-    vae_model.load_state_dict(sd, strict=True)
-
-    vae_model.freeze()
+    vae_model = get_tiny_autoencoder()
     vae_model = get_cuda(vae_model)
-    scale_factor = vae_config.first_stage_config.scale_factor
+    scale_factor = 1.0
 
     # Define loss functions
     mse_loss = torch.nn.MSELoss(reduction='mean')
@@ -128,8 +114,7 @@ def run_trainer() -> None:
         name_list.append(name)
 
         with torch.no_grad():
-            img_latent_mean, _ = get_vae_encoding_mu_and_sigma(vae_model.encode(get_cuda(img_rgb)), scale_factor)
-            seg_latent_mean, _ = get_vae_encoding_mu_and_sigma(vae_model.encode(get_cuda(seg_rgb)), scale_factor)
+            img_latent_mean, seg_latent_mean = vae_model.encode(get_cuda(img_rgb)).latents, vae_model.encode(get_cuda(seg_rgb)).latents
             out_latent_mean_dict = mapping_model(img_latent_mean)
 
             loss_Rec = configs['w_rec'] * mse_loss(out_latent_mean_dict['out'], seg_latent_mean)

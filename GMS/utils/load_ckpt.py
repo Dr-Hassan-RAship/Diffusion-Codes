@@ -6,10 +6,13 @@
 
 from huggingface_hub import hf_hub_download # [CHANGED] --> importing huggingface_hub for direct download of the VAE ckpt file
 import torch
+from diffusers  import AutoencoderTiny
 
 def get_state_dict(ckpt_url = 'https://huggingface.co/stabilityai/stable-diffusion-2/blob/main/768-v-ema.ckpt', 
                    repo_id  = 'stabilityai/stable-diffusion-2', 
                    filename = '768-v-ema.ckpt'):
+    
+    # Check out this 
     
     # Download the checkpoint file
     ckpt_path_local = hf_hub_download(repo_id=repo_id, filename=filename)
@@ -25,3 +28,13 @@ def get_state_dict(ckpt_url = 'https://huggingface.co/stabilityai/stable-diffusi
         # print(state_dict.keys()) # Uncomment to see the keys
     except Exception as e:
         print(f"Error loading state dictionary: {e}")
+
+def get_tiny_autoencoder(device = 'cuda'):
+    vae = AutoencoderTiny.from_pretrained("madebyollin/taesd", torch_dtype=torch.float32).to(device).eval()
+    
+    # freeze all params
+    for param in vae.parameters():
+        param.requires_grad = False
+    
+    return vae
+    

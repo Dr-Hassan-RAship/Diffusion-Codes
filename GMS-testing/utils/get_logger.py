@@ -17,7 +17,7 @@ import os, logging
 
 
 # --------------------------- Open log file ------------------------------------#
-def open_log(args, config):
+def open_log(phase, config):
     """
     Creates a log file at the specified path in the config.
     Deletes existing log file with the same name if it exists.
@@ -31,7 +31,7 @@ def open_log(args, config):
     """
 
     log_savepath  = config['log_path']
-    log_name      = args.config.split('/')[-1].split('.')[0] + '-yaml'
+    log_name      = f'{phase}-yaml'
     log_filepath  = os.path.join(log_savepath, f'{log_name}.txt')
 
     if not os.path.exists(log_savepath):

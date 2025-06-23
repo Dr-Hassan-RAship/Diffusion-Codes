@@ -1,222 +1,154 @@
-# Basic Package
-import torch
-import argparse
-import numpy as np
-import yaml
-import logging
-import time
-import os
-from tqdm import tqdm
-from torch.utils.data import DataLoader
-from omegaconf import OmegaConf
-from monai.losses.dice import DiceLoss
+# ------------------------------------------------------------------------------#
+#
+# File name                 : train.py
+# Purpose                   : Main training loop for latent diffusion segmentation.
+# Usage                     : python train.py --config configs/experiment.yaml
+#
+# Authors                   : Talha Ahmed, Nehal Ahmed Shaikh, Hassan Mohy-ud-Din
+# Email                     : 24100033@lums.edu.pk, 202410001@lums.edu.pk,
+#                             hassan.mohyuddin@lums.edu.pk
+#
+# Last Modified             : June 23, 2025
+# ------------------------------------------------------------------------------#
 
-# Own Package
-from data.image_dataset import Image_Dataset
-from utils.tools import seed_reproducer, save_checkpoint, get_cuda, print_options
-from utils.get_logger import open_log
-from utils.load_ckpt import *
-from utils.lr_scheduler import LinearWarmupCosineAnnealingLR
-from networks.latent_mapping_model import ResAttnUNet_DS
-from networks.models.autoencoder import AutoencoderKL
-from networks.models.distributions import DiagonalGaussianDistribution
+# --------------------------- Module imports ----------------------------------#
+import os, time, yaml, torch, logging, argparse
 
-from tensorboardX import SummaryWriter
+import numpy                   as np
 
+from tqdm                      import tqdm
+from torch.utils.data          import DataLoader
+from omegaconf                 import OmegaConf
+from monai.losses.dice         import DiceLoss
 
-def get_multi_loss(criterion, out_dict, label, is_ds=True, key_list=None):
-    keys = key_list if key_list is not None else list(out_dict.keys())
-    if is_ds:
-        multi_loss = sum([criterion(out_dict[key], label) for key in keys])
-    else:
-        multi_loss = criterion(out_dict["out"], label)
-    return multi_loss
+from data.image_dataset        import Image_Dataset
+from utils                     import *
 
-def get_vae_encoding_mu_and_sigma(encoder_posterior, scale_factor):
-    if isinstance(encoder_posterior, DiagonalGaussianDistribution):
-        mean, logvar = encoder_posterior.mu_and_sigma()
-    else:
-        raise NotImplementedError(
-            f"encoder_posterior of type '{type(encoder_posterior)}' not yet implemented"
-        )
-    return scale_factor * mean, logvar
+from networks                  import *
+from diffusers                 import AutoencoderTiny
 
+from tensorboardX              import SummaryWriter
 
-def vae_decode(vae_model, pred_mean, scale_factor):
-    z = 1.0 / scale_factor * pred_mean
-    pred_seg = vae_model.decode(z) # [CHANGED] --> has channels = 3 according to config
-    pred_seg = torch.mean(pred_seg, dim=1, keepdim=True) # [CHANGED] --> Taking mean across channels dimension resulting in 1 channel
-    pred_seg = torch.clamp((pred_seg + 1.0) / 2.0, min=0.0, max=1.0)  # (B, 1, H, W) # [CHANGED] --> Bringing the range to (0, 1) as per Kvasir-SEG dataset
-    return pred_seg
-
-
-# [CHANGED] --> added the path to th Kvasir-SEG config file
-def arg_parse() -> argparse.ArgumentParser.parse_args:
-    parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "--config",
-        default="./configs/busi_train.yaml",
-        type=str,
-        help="load the config file",
-    )
-    args = parser.parse_args()
-    return args
-
-
+# --------------------- Main training function ---------------------------------#
 def run_trainer() -> None:
-    args = arg_parse()
-    configs = yaml.load(open(args.config), Loader=yaml.FullLoader)
-    configs["snapshot_path"] = os.path.join(
-        configs["snapshot_path"],
-        time.strftime("%Y%m%d%H%M", time.localtime(time.time())),
-    )
-    configs["log_path"] = os.path.join(configs["snapshot_path"], "logs")
+    """
+    Complete training loop for the latent diffusion segmentation pipeline.
+    Loads config, initializes logger, datasets, models, optimizers, scheduler,
+    runs training/validation, and handles checkpointing.
+    """
+    # ------------- Parse args & flatten config ---------------------------------------#
+    configs = load_config('configs/config.yaml')
 
-    # Output folder and save fig folder
-    os.makedirs(configs["snapshot_path"], exist_ok=True)
-    os.makedirs(configs["log_path"], exist_ok=True)
+    # Dynamically patch snapshot and log paths with timestamp
+    configs["snapshot_path"] = os.path.join(configs["snapshot_path"], configs['brief_info'])
+    configs["log_path"]      = os.path.join(configs["snapshot_path"], "logs")
+    os.makedirs(configs["snapshot_path"], exist_ok = True)
+    os.makedirs(configs["log_path"], exist_ok = True)
 
-    # Set GPU ID
+    # ------------- Hardware, seed & precision -------------------------------------------#
     gpus = ",".join([str(i) for i in configs["GPUs"]])
     os.environ["CUDA_VISIBLE_DEVICES"] = gpus
-
-    # Fix seed (for repeatability)
     seed_reproducer(configs["seed"])
-
-    # Open log file
-    open_log(args, configs)
+    np_dtype, torch_dtype = get_precision_dtypes(configs['precision'])
+    
+    # ------------- Logging setup ---------------------------------------------#
+    open_log('train', configs)
     logging.info(configs)
     print_options(configs)
 
-    # Define summary writer
-    writer = SummaryWriter(configs["log_path"])
-    ds_list = ["level2", "level1", "out"]
+    # ------------- TensorBoard setup -----------------------------------------#
+    writer  = SummaryWriter(configs["log_path"])
+    ds_list = ["level2", "level1", "out"]  # Multi-scale levels
 
-    # Get data loader
-    train_dataset = Image_Dataset(configs["pickle_file_path"], stage="train")
-    valid_dataset = Image_Dataset(configs["pickle_file_path"], stage="test")
-    train_dataloader = DataLoader(
+    # ------------- Datasets/Dataloaders -------------------------------------#
+    train_dataset = Image_Dataset(configs["pickle_file_path"], stage = "train")
+    valid_dataset = Image_Dataset(configs["pickle_file_path"], stage = "test")
+    
+    train_loader  = DataLoader(
         train_dataset,
-        batch_size=configs["batch_size"],
-        pin_memory=True,
-        drop_last=True,
-        shuffle=True,
+        batch_size    = configs["batch_size"],
+        pin_memory    = True,
+        drop_last     = True,
+        shuffle       = True,
     )
-    valid_dataloader = DataLoader(
+    valid_loader  = DataLoader(
         valid_dataset,
-        batch_size=configs["batch_size"],
-        pin_memory=True,
-        drop_last=False,
-        shuffle=False,
+        batch_size    = configs["batch_size"],
+        pin_memory    = True,
+        drop_last     = False,
+        shuffle       = False,
     )
 
-    # Define networks
+    # ------------- Model definitions ----------------------------------------#
     mapping_model = get_cuda(
         ResAttnUNet_DS(
-            in_channel=configs["in_channel"],
-            out_channels=configs["out_channels"],
-            num_res_blocks=configs["num_res_blocks"],
-            ch=configs["ch"],
-            ch_mult=configs["ch_mult"],
+            in_channel     = configs["in_channel"],
+            out_channels   = configs["out_channels"],
+            num_res_blocks = configs["num_res_blocks"],
+            ch             = configs["ch"],
+            ch_mult        = configs["ch_mult"],
         )
     )
-
-    # get VAE (first-stage model)
-    vae_path = "./configs/v2-inference-v-first-stage-VAE.yaml"
-    vae_config = OmegaConf.load(f"{vae_path}")
-    vae_model = AutoencoderKL(**vae_config.first_stage_config.get("params", dict()))
-
-    # [CHANGED] --> see utils/load_ckpt.py for the changes
-    # sd = get_state_dict()
-
-    # [CHANGED] --> Added weights_only=True to load_state_dict to prevent warning
-    pl_sd = torch.load(
-        "SD-VAE-weights/768-v-ema-first-stage-VAE.ckpt", map_location="cpu", weights_only = True
-    )
-    sd = pl_sd["state_dict"]
-
-    vae_model.load_state_dict(sd, strict=True)
-
-    vae_model.freeze()
-    vae_model = get_cuda(vae_model)
-    scale_factor = 1.0 # vae_config.first_stage_config.scale_factor # [CHANGED] --> scale_factor is not defined in the AutoencoderTiny model, so we set it to 1.0
     
-    # Define optimizers
-    optimizer = torch.optim.AdamW(mapping_model.parameters(), lr=configs["lr"])
+    # Modular VAE loading (dtype, device, freeze are all config-controlled)
+    vae_model = load_pretrained_model(
+        model_cls               = AutoencoderTiny,
+        pretrained_name_or_path = "madebyollin/taesd",
+        dtype                   = torch_dtype,
+        device                  = "cuda",
+        freeze                  = True,
+    )
+    scale_factor = configs.get("vae_scale_factor", 1.0)
+
+    # ------------- Optimizer & scheduler ------------------------------------#
+    optimizer = torch.optim.AdamW(mapping_model.parameters(), lr = configs["lr"])
     scheduler = LinearWarmupCosineAnnealingLR(
-        optimizer, warmup_epochs=5, max_epochs=configs["epochs"]
+        optimizer, warmup_epochs = 5, max_epochs = configs["epochs"]
     )
 
-    # Define loss functions
-    mse_loss = torch.nn.MSELoss(reduction="mean")
-    dice_loss = DiceLoss()
+    # ------------- Loss functions -------------------------------------------#
+    mse_loss   = torch.nn.MSELoss(reduction = "mean")
+    dice_loss  = DiceLoss()
 
-    # For Tensorboard Visualization
-    iter_num = 0
-    best_valid_loss = np.inf
-    best_valid_loss_rec = np.inf
-    best_valid_dice = 0
+    # ------------- Training/Validation state --------------------------------#
+    iter_num              = 0
+    best_valid_loss       = np.inf
+    best_valid_loss_rec   = np.inf
+    best_valid_dice       = 0
     best_valid_dice_epoch = 0
-    best_valid_loss_dice = np.inf
+    best_valid_loss_dice  = np.inf
 
-    # Network training
+    # =========================================================================
+    #                               TRAINING LOOP
+    # =========================================================================
     for epoch in range(1, configs["epochs"] + 1):
         epoch_start_time = time.time()
         mapping_model.train()
+        T_loss, T_loss_Rec, T_loss_Dice = [], [], []
+        T_loss_valid, T_loss_Rec_valid, T_loss_Dice_valid, T_Dice_valid = [], [], [], []
 
-        T_loss = []
-        T_loss_Rec = []
-        T_loss_Dice = []
-        T_loss_valid = []
-        T_loss_Rec_valid = []
-        T_loss_Dice_valid = []
-        T_Dice_valid = []
+        # =================== Training phase =================== #
+        for batch_data in tqdm(train_loader, desc = f"Train (epoch {epoch})"):
+            img_rgb   = 2.0 * batch_data["img"] - 1.0
+            seg_raw   = batch_data["seg"].permute(0, 3, 1, 2) / 255.0
+            seg_rgb   = 2.0 * seg_raw - 1.0
+            seg_img   = torch.mean(seg_raw, dim = 1, keepdim = True)
+            name      = batch_data["name"]
 
-        ### Training phase
-        for batch_data in tqdm(train_dataloader, desc="Train: "):
-            # [CHANGED] --> I believe the image and mask were originally in the range (0, 255)
-            # but are now bing brought in the range (-1, 1)
-            img_rgb = batch_data["img"]
-            print(f"img_rgb shape: {img_rgb.shape}, max_value: {torch.max(img_rgb)}, min_value: {torch.min(img_rgb)}")  # Debugging line to check image shape and max and min value
-            img_rgb = 2.0 * img_rgb - 1.0
-            print(f"img_rgb after scaling shape: {img_rgb.shape}, max_value: {torch.max(img_rgb)}, min_value: {torch.min(img_rgb)}")
-            seg_raw = batch_data["seg"]
-            print(f"seg_raw shape: {seg_raw.shape}, max_value: {torch.max(seg_raw)}, min_value: {torch.min(seg_raw)}")
-            seg_raw = seg_raw.permute(0, 3, 1, 2) / 255.0
-            print(f"seg_raw after normalizing shape: {seg_raw.shape}, max_value: {torch.max(seg_raw)}, min_value: {torch.min(seg_raw)}")
-            seg_rgb = 2.0 * seg_raw - 1.0
-            print(f"seg_raw after scaling shape: {seg_rgb.shape}, max_value: {torch.max(seg_rgb)}, min_value: {torch.min(seg_rgb)}")
-            # [CHANGED] --> Taking mean across channels dimension resulting in 1 channel which matches the channel dimension
-            # of pred_seg gotten from the decoder. Same thing in Validation
-            seg_img = torch.mean(seg_raw, dim=1, keepdim=True)
-            name = batch_data["name"]
+            img_latent_mean_aug = vae_model.encode(get_cuda(img_rgb)).latents
+            seg_latent_mean     = vae_model.encode(get_cuda(seg_rgb)).latents
 
-            img_latent_mean, img_latent_logvar = get_vae_encoding_mu_and_sigma(vae_model.encode(get_cuda(img_rgb)), scale_factor)
-            seg_latent_mean, seg_latent_logvar = get_vae_encoding_mu_and_sigma(vae_model.encode(get_cuda(seg_rgb)), scale_factor)
-            img_latent_std = torch.exp(0.5 * img_latent_logvar)
-            
-            # check shape of img_latent_mean, img_latent_logvar, seg_latent_mean, seg_latent_logvar
-            print(f"img_latent_mean shape: {img_latent_mean.shape}, img_latent_logvar shape: {img_latent_logvar.shape}")
-            print(f"seg_latent_mean shape: {seg_latent_mean.shape}, seg_latent_logvar shape: {seg_latent_logvar.shape}")
-
-            # [CHANGED] --> With equal probability decides reprametrization trick or simple mean
-            if np.random.uniform() > 0.5:
-                img_latent_mean_aug = (img_latent_mean + img_latent_std * torch.randn_like(img_latent_std))
-            else:
-                img_latent_mean_aug = img_latent_mean
-
-            # latent matching [CHANGED] --> recieves the grountruth latent mask representation and predicted and computes mse loss
-            out_latent_mean_dict = mapping_model(img_latent_mean_aug)
-            loss_Rec = configs["w_rec"] * get_multi_loss(mse_loss, out_latent_mean_dict, seg_latent_mean, is_ds=True, key_list=ds_list,)
-            
-            # image matching [CHANGED] --> computes the predicted mask on different levels as the predicted latent representation
-            # was on different levels (see line 228 - 233 of latent_mapping_model.py)
-            pred_seg_dict = {}
-            for level_name in ds_list:
-                pred_seg_dict[level_name] = vae_decode(vae_model, out_latent_mean_dict[level_name], scale_factor)
-
-            # [CHANGED] --> similar to Loss_Rec
-            loss_Dice = configs["w_dice"] * get_multi_loss(dice_loss, pred_seg_dict, get_cuda(seg_img), is_ds=True, key_list=ds_list,)
+            out_latent_mean_dict    = mapping_model(img_latent_mean_aug)
+            loss_Rec                = configs["w_rec"] * get_multi_loss(
+                mse_loss, out_latent_mean_dict, seg_latent_mean,
+                is_ds = True, key_list = ds_list
+            )
+            pred_seg_dict   = {level: vae_decode(vae_model, out_latent_mean_dict[level], scale_factor)
+                             for level in ds_list}
+            loss_Dice       = configs["w_dice"] * get_multi_loss(
+                dice_loss, pred_seg_dict, get_cuda(seg_img),
+                is_ds = True, key_list = ds_list
+            )
 
             loss = loss_Rec + loss_Dice
 
@@ -237,66 +169,54 @@ def run_trainer() -> None:
         scheduler.step()
         writer.add_scalar("lr", scheduler.get_last_lr()[0], epoch)
 
-        T_loss = np.mean(T_loss)
-        T_loss_Rec = np.mean(T_loss_Rec)
+        # ---- Logging training ----
+        T_loss      = np.mean(T_loss)
+        T_loss_Rec  = np.mean(T_loss_Rec)
         T_loss_Dice = np.mean(T_loss_Dice)
-
-        logging.info("Train:")
-        logging.info(
-            "loss: {:.4f}, loss_Rec: {:.4f}, loss_Dice: {:.4f}".format(
-                T_loss, T_loss_Rec, T_loss_Dice
-            )
-        )
-        
-        # [CHANGED] --> Added Tensorboard logging for training loss per epoch
+        logging.info(f"Train: loss: {T_loss:.4f}, loss_Rec: {T_loss_Rec:.4f}, loss_Dice: {T_loss_Dice:.4f}")
         writer.add_scalar("train/loss", T_loss, epoch)
         writer.add_scalar("train/loss_Rec", T_loss_Rec, epoch)
         writer.add_scalar("train/loss_Dice", T_loss_Dice, epoch)
 
-        ### Validation phase [CHANGED] --> almost same as Train except the dice score is being calculated here as well
-        ### Also note that the validation set is the same as the test set in the inference/valid.py file.
-        for batch_data in tqdm(valid_dataloader, desc="Valid: "):
-            img_rgb = batch_data["img"]
-            img_rgb = 2.0 * img_rgb - 1.0
-            seg_raw = batch_data["seg"]
-            seg_raw = seg_raw.permute(0, 3, 1, 2) / 255.0
-            seg_rgb = 2.0 * seg_raw - 1.0
-            seg_img = torch.mean(seg_raw, dim=1, keepdim=True)
-            name = batch_data["name"]
-
-            mapping_model.eval()
+        # =================== Validation phase =================== #
+        mapping_model.eval()
+        for batch_data in tqdm(valid_loader, desc="Valid: "):
+            img_rgb   = 2.0 * batch_data["img"] - 1.0
+            seg_raw   = batch_data["seg"].permute(0, 3, 1, 2) / 255.0
+            seg_rgb   = 2.0 * seg_raw - 1.0
+            seg_img   = torch.mean(seg_raw, dim=1, keepdim=True)
+            name      = batch_data["name"]
 
             with torch.no_grad():
-                img_latent_mean, img_latent_logvar = get_vae_encoding_mu_and_sigma(vae_model.encode(get_cuda(img_rgb)), scale_factor)
-                seg_latent_mean, seg_latent_logvar = get_vae_encoding_mu_and_sigma(vae_model.encode(get_cuda(seg_rgb)), scale_factor)
-                
+                img_latent_mean = vae_model.encode(get_cuda(img_rgb)).latents
+                seg_latent_mean = vae_model.encode(get_cuda(seg_rgb)).latents
+
                 out_latent_mean_dict = mapping_model(img_latent_mean)
                 pred_seg = vae_decode(vae_model, out_latent_mean_dict["out"], scale_factor)
 
-                loss_Rec = configs["w_rec"] * mse_loss(out_latent_mean_dict["out"], seg_latent_mean)
+                loss_Rec  = configs["w_rec"] * mse_loss(out_latent_mean_dict["out"], seg_latent_mean)
                 loss_Dice = configs["w_dice"] * dice_loss(pred_seg, get_cuda(seg_img))
+                loss      = loss_Rec + loss_Dice
 
-                loss = loss_Rec + loss_Dice
-
-                # calc dice
-                pred_seg = pred_seg.cpu()
-                reduce_axis = list(range(1, len(seg_img.shape)))
-
-                intersection = torch.sum(seg_img * pred_seg, dim=reduce_axis)
-                y_o = torch.sum(seg_img, dim=reduce_axis)
-                y_pred_o = torch.sum(pred_seg, dim=reduce_axis)
-                denominator = y_o + y_pred_o
-                dice_raw = (2.0 * intersection) / denominator
-                dice_value = dice_raw.mean()
+                # ---- Dice calculation ----
+                pred_seg     = pred_seg.cpu()
+                reduce_axis  = list(range(1, len(seg_img.shape)))
+                intersection = torch.sum(seg_img * pred_seg, dim = reduce_axis)
+                y_o          = torch.sum(seg_img, dim = reduce_axis)
+                y_pred_o     = torch.sum(pred_seg, dim = reduce_axis)
+                denominator  = y_o + y_pred_o
+                dice_raw     = (2.0 * intersection) / denominator
+                dice_value   = dice_raw.mean()
 
                 T_Dice_valid.append(dice_value.item())
                 T_loss_valid.append(loss.item())
                 T_loss_Rec_valid.append(loss_Rec.item())
                 T_loss_Dice_valid.append(loss_Dice.item())
 
-        T_Dice_valid = np.mean(T_Dice_valid)
-        T_loss_valid = np.mean(T_loss_valid)
-        T_loss_Rec_valid = np.mean(T_loss_Rec_valid)
+        # ---- Logging validation ----
+        T_Dice_valid      = np.mean(T_Dice_valid)
+        T_loss_valid      = np.mean(T_loss_valid)
+        T_loss_Rec_valid  = np.mean(T_loss_Rec_valid)
         T_loss_Dice_valid = np.mean(T_loss_Dice_valid)
 
         writer.add_scalar("valid/dice", T_Dice_valid, epoch)
@@ -304,56 +224,45 @@ def run_trainer() -> None:
         writer.add_scalar("valid/loss_Rec", T_loss_Rec_valid, epoch)
         writer.add_scalar("valid/loss_Dice", T_loss_Dice_valid, epoch)
 
-        logging.info("Valid:")
         logging.info(
-            "loss: {:.4f}, loss_Rec: {:.4f}, loss_Dice: {:.4f}, Dice: {:.4f}".format(
-                T_loss_valid, T_loss_Rec_valid, T_loss_Dice_valid, T_Dice_valid
-            )
+            f"Valid: loss: {T_loss_valid:.4f}, loss_Rec: {T_loss_Rec_valid:.4f}, "
+            f"loss_Dice: {T_loss_Dice_valid:.4f}, Dice: {T_Dice_valid:.4f}"
         )
 
+        # ---- Model checkpointing ----
         if T_Dice_valid > best_valid_dice:
-            save_name = "best_valid_dice.pth"
-            save_checkpoint(mapping_model, save_name, configs["snapshot_path"])
+            save_checkpoint(mapping_model, "best_valid_dice.pth", configs["snapshot_path"])
             best_valid_dice = T_Dice_valid
             best_valid_dice_epoch = epoch
             logging.info("Save best valid Dice !")
-
         if T_loss_valid < best_valid_loss:
-            save_name = "best_valid_loss.pth"
-            save_checkpoint(mapping_model, save_name, configs["snapshot_path"])
+            save_checkpoint(mapping_model, "best_valid_loss.pth", configs["snapshot_path"])
             best_valid_loss = T_loss_valid
             logging.info("Save best valid Loss All !")
-
         if T_loss_Rec_valid < best_valid_loss_rec:
-            save_name = "best_valid_loss_rec.pth"
-            save_checkpoint(mapping_model, save_name, configs["snapshot_path"])
+            save_checkpoint(mapping_model, "best_valid_loss_rec.pth", configs["snapshot_path"])
             best_valid_loss_rec = T_loss_Rec_valid
             logging.info("Save best valid Loss Rec !")
-
         if T_loss_Dice_valid < best_valid_loss_dice:
-            save_name = "best_valid_loss_dice.pth"
-            save_checkpoint(mapping_model, save_name, configs["snapshot_path"])
+            save_checkpoint(mapping_model, "best_valid_loss_dice.pth", configs["snapshot_path"])
             best_valid_loss_dice = T_loss_Dice_valid
             logging.info("Save best valid Loss Dice !")
-
         if epoch % configs["save_freq"] == 0:
-            save_name = "{}_epoch_{:0>4}.pth".format("latent_mapping_model", epoch)
-            save_checkpoint(mapping_model, save_name, configs["snapshot_path"])
+            save_checkpoint(
+                mapping_model,
+                f"latent_mapping_model_epoch_{epoch:04d}.pth",
+                configs["snapshot_path"]
+            )
 
         logging.info("Current learning rate: {:.5f}".format(scheduler.get_last_lr()[0]))
         logging.info(
-            "epoch %d / %d \t Time Taken: %d sec"
-            % (epoch, configs["epochs"], time.time() - epoch_start_time)
+            f"epoch {epoch} / {configs['epochs']} \t Time Taken: {int(time.time() - epoch_start_time)} sec"
         )
         logging.info(
-            "best valid dice: {:.4f} at epoch: {}".format(
-                best_valid_dice, best_valid_dice_epoch
-            )
+            f"best valid dice: {best_valid_dice:.4f} at epoch: {best_valid_dice_epoch}"
         )
         logging.info("\n")
-
     writer.close()
-
 
 if __name__ == "__main__":
     run_trainer()

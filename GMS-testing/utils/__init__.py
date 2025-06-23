@@ -14,10 +14,12 @@
 
 
 # --------------------------- Module re-exports --------------------------------#
-from .get_logger    import *
-from .load_ckpt     import *
-from .lr_scheduler  import *
-from .tools         import *
+from .get_logger                    import *
+from .load_pretrained_models        import *
+from .lr_scheduler                  import *
+from .load_pretrained_models        import *
+from .tools                         import *
+from .train_utils                   import *
 
 # --------------------------------- End -----------------------------------------#
 

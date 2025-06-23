@@ -13,11 +13,12 @@
 # ------------------------------------------------------------------------------#
 
 # --------------------------- Experiment setup ---------------------------------#
-dataset        : busi        # "bus", "kvasir-instrument", etc.
-phase          : train       # "train" or "valid"
-precision      : float16     # Dynamic setting of tensor/numpy arrays etc for "float32", "float16", "bfloat16",.
-timestamp      : auto        # "auto" → current datetime
-seed           : 2333
+dataset           : busi        # "bus", "kvasir-instrument", etc.
+phase             : train       # "train" or "valid"
+precision         : float16     # Dynamic setting of tensor/numpy arrays etc for "float32", "float16", "bfloat16",.
+timestamp         : auto        # "auto" → current datetime
+seed              : 2333
+vae_scale_factor  : 1.0
 
 # --------------------------- Base paths ---------------------------------------#
 base_data_dir  : ./Dataset

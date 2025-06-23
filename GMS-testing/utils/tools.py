@@ -16,10 +16,11 @@
 # --------------------------- Module imports -----------------------------------#
 import os, yaml, torch, random, logging
 
-import numpy             as np
+import numpy as np
 
-from pathlib             import Path
-from datetime            import datetime
+from pathlib import Path
+from datetime import datetime
+
 
 # --------------------------- Create directories -------------------------------#
 def mkdir(path: str):
@@ -42,7 +43,7 @@ def seed_reproducer(seed: int = 2333):
         seed : Random seed to set (default = 2333).
     """
     random.seed(seed)
-    os.environ["PYTHONHASHSEED"]           = str(seed)
+    os.environ["PYTHONHASHSEED"] = str(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
 
@@ -50,8 +51,8 @@ def seed_reproducer(seed: int = 2333):
         torch.cuda.manual_seed(seed)
         torch.cuda.manual_seed_all(seed)
         torch.backends.cudnn.deterministic = True
-        torch.backends.cudnn.benchmark     = False
-        torch.backends.cudnn.enabled       = True
+        torch.backends.cudnn.benchmark = False
+        torch.backends.cudnn.enabled = True
 
 
 # --------------------------- Load model checkpoint ----------------------------#
@@ -70,10 +71,12 @@ def load_checkpoint(model: torch.nn.Module, path: str) -> torch.nn.Module:
         logging.info("=> loading checkpoint '{}'".format(path))
 
         # Map checkpoint to CPU (avoid GPU mismatch)
-        state = torch.load(path, weights_only=True, map_location=lambda storage, location: storage)
+        state = torch.load(
+            path, weights_only=True, map_location=lambda storage, location: storage
+        )
 
         # Load model weights
-        model.load_state_dict(state['model'])
+        model.load_state_dict(state["model"])
         logging.info("Loaded")
     else:
         model = None
@@ -92,13 +95,13 @@ def save_checkpoint(model: torch.nn.Module, save_name: str, path: str) -> None:
         save_name : Name for saved .pth file.
         path      : Directory to save in (checkpoints subfolder will be created).
     """
-    model_savepath = os.path.join(path, 'checkpoints')
+    model_savepath = os.path.join(path, "checkpoints")
     if not os.path.exists(model_savepath):
         os.makedirs(model_savepath)
 
     file_name = os.path.join(model_savepath, save_name)
 
-    torch.save({'model': model.state_dict()}, file_name)
+    torch.save({"model": model.state_dict()}, file_name)
     logging.info("save model to {}".format(file_name))
 
 
@@ -119,8 +122,8 @@ def adjust_learning_rate(optimizer, initial_lr, epoch, reduce_epoch, decay=0.5):
     """
     lr = initial_lr * (decay ** (epoch // reduce_epoch))
     for param_group in optimizer.param_groups:
-        param_group['lr'] = lr
-    logging.info('Change Learning Rate to {}'.format(lr))
+        param_group["lr"] = lr
+    logging.info("Change Learning Rate to {}".format(lr))
     return lr
 
 
@@ -148,19 +151,22 @@ def print_options(configs):
     Args:
         configs : Dictionary of config values.
     """
-    message  = ''
-    message += '----------------- Options ---------------\n'
+    message = ""
+    message += "----------------- Options ---------------\n"
     for k, v in configs.items():
-        message += '{:>25}: {:<30}\n'.format(str(k), str(v))
-    message += '----------------- End -------------------'
+        message += "{:>25}: {:<30}\n".format(str(k), str(v))
+    message += "----------------- End -------------------"
 
     logging.info(message)
 
     # Save options to file
-    file_name = os.path.join(configs['log_path'], '{}_configs.txt'.format(configs['phase']))
-    with open(file_name, 'wt') as opt_file:
+    file_name = os.path.join(
+        configs["log_path"], "{}_configs.txt".format(configs["phase"])
+    )
+    with open(file_name, "wt") as opt_file:
         opt_file.write(message)
-        opt_file.write('\n')
+        opt_file.write("\n")
+
 
 # --------------------------- Precision helper ---------------------------------#
 def get_precision_dtypes(prec: str = "float32"):
@@ -176,7 +182,7 @@ def get_precision_dtypes(prec: str = "float32"):
     table = {
         "float32": (np.float32, torch.float32),
         "float16": (np.float16, torch.float16),
-        "bfloat16": (np.float32, torch.bfloat16),   # Albumentations needs fp32 array
+        "bfloat16": (np.float32, torch.bfloat16),  # Albumentations needs fp32 array
     }
     if prec not in table:
         raise ValueError(f"Unsupported precision '{prec}'.")
@@ -184,7 +190,7 @@ def get_precision_dtypes(prec: str = "float32"):
 
 
 # --------------------------- Flatten nested dict ------------------------------#
-def flatten_dict(d, parent_key='', sep='_'):
+def flatten_dict(d, parent_key="", sep="_"):
     """
     Flattens a nested dictionary using underscore separator.
 
@@ -251,6 +257,11 @@ def load_config(config_path="config.yaml"):
 
     Path(cfg["paths"]["snapshot"], "checkpoints").mkdir(parents=True, exist_ok=True)
 
+    # Optionally add top-level shortcut
+    for k, v in cfg["paths"].items():
+        cfg[k + "_path"] = v
+
     return cfg
+
 
 # --------------------------------- End -----------------------------------------#

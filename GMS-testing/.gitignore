@@ -7,14 +7,12 @@
 *.jpeg
 *.jpg
 
-
-*.ckpt
-
-
-# Ignore .zip, .h5, .pth, .csv, .txt, .pyc or .yml/yaml files files
+# Ignore .zip, .h5, .pth, .safetensor, .ckpt, .csv, .txt, .pyc or .yml/yaml files files
 *.zip
 *.h5
 *.pth
+*.safetensor
+*.ckpt
 *.csv
 *.txt
 *.pyc

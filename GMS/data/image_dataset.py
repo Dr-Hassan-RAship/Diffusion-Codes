@@ -19,8 +19,8 @@ def generate_pickel_file(root_dir, split = 0.9):
     mask_dir = os.path.join(root_dir, 'masks')
     
     # Get list of image and mask files
-    img_files  = [f for f in os.listdir(img_dir) if f.endswith('.png')]
-    mask_files = [f for f in os.listdir(mask_dir) if f.endswith('.png')]
+    img_files  = [f for f in os.listdir(img_dir) if f.endswith('.jpg')]
+    mask_files = [f for f in os.listdir(mask_dir) if f.endswith('.jpg')]
     
     # Get a random batch of indices of img_dir (for train) and its corresponding mask_file indidces and then the 
     # remaining goes to test. 
@@ -30,7 +30,7 @@ def generate_pickel_file(root_dir, split = 0.9):
     # chosen for the train/test
     
     # E.g 
-    # {'train': {'name_list': [file_name1_train.png, file_name2_train.png]}, 'test': {'name_list': [file_name1_test.png, file_name2_test.png]}}
+    # {'train': {'name_list': [file_name1_train.jpg, file_name2_train.jpg]}, 'test': {'name_list': [file_name1_test.jpg, file_name2_test.jpg]}}
     
     # Extract base filenames (without extension) to match pairs
     img_bases  = [os.path.splitext(f)[0] for f in img_files]
@@ -103,10 +103,10 @@ class Image_Dataset(Dataset):
     def __getitem__(self, index):
         name = self.name_list[index]
         # load img & seg
-        # [CHANGED] --> from .png to jpg as Kvasir-SEG has .png files. Also note both image and mask are being loaded as RGB
-        seg_image = Image.open(os.path.join(self.mask_path, name + '.png')).convert("RGB")
+        # [CHANGED] --> from .jpg to jpg as Kvasir-SEG has .jpg files. Also note both image and mask are being loaded as RGB
+        seg_image = Image.open(os.path.join(self.mask_path, name + '.jpg')).convert("RGB")
         seg_data  = np.array(seg_image).astype(np.float32)
-        img_image = Image.open(os.path.join(self.img_path,  name + '.png')).convert("RGB")
+        img_image = Image.open(os.path.join(self.img_path,  name + '.jpg')).convert("RGB")
         img_data  = np.array(img_image).astype(np.float32)
 
         augmented = self.transform(image=img_data, mask=seg_data)

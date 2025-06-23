@@ -1,9 +1,9 @@
 # Data Settings
 phase: valid
 pickle_file_path: ./Dataset/kvasir-instrument/kvasir_train_test_names.pkl
-model_weight: ./ckpt/tiny_vae_kvasir-instrument/best_valid_dice.pth
-snapshot_path: ./ckpt/tiny_vae_kvasir-instrument/202506200123/valid_kvasir-instrument_best_valid_dice
-save_seg_img_path: ./ckpt/tiny_vae_kvasir-instrument/202506200123/predicted_masks_best_valid_dice
+model_weight: /media/ee/DATA/Talha_Nehal/Diffusion-Codes/GMS/ckpt/tiny_vae_kvasir-instrument/202506221719/checkpoints/latent_mapping_model_epoch_0500.pth
+snapshot_path: ./ckpt/tiny_vae_kvasir-instrument/202506221719/valid_kvasir-instrument_latent_mapping_model_epoch_0500
+save_seg_img_path: ./ckpt/tiny_vae_kvasir-instrument/202506221719/predicted_masks_latent_mapping_model_epoch_0500
 
 # Valid Settings
 GPUs: [0]

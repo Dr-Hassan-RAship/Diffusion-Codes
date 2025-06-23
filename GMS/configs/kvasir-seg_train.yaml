@@ -3,14 +3,14 @@
 # Data Settings
 phase: train
 pickle_file_path: ./Dataset/Kvasir-SEG/kvasir-seg_train_test_names.pkl
-snapshot_path: ./ckpt/kvasir-seg
+snapshot_path: ./ckpt/tiny_vae_kvasir-seg
 
 # Training Settings
-epochs: 200 # [CHANGED] from 1000
+epochs: 2000 # [CHANGED] from 1000
 GPUs: [0]
 num_workers: 8
-batch_size: 2 # [CHANGED] from 8
-save_freq: 25
+batch_size: 24 # [CHANGED] from 8
+save_freq: 100
 seed: 2333
 
 # Model Settings

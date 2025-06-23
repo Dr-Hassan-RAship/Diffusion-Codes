@@ -46,7 +46,7 @@ def vae_decode(vae_model, pred_mean, scale_factor):
 
 def arg_parse() -> argparse.ArgumentParser.parse_args :
     parser = argparse.ArgumentParser()
-    parser.add_argument('--config', default='./configs/busi_valid.yaml', # [CHANGED] --> added kvasir-seg yaml
+    parser.add_argument('--config', default='./configs/kvasir-seg_valid.yaml', # [CHANGED] --> added kvasir-seg yaml
                         type=str, help='load the config file')
     args = parser.parse_args()
     return args
@@ -127,7 +127,7 @@ def run_trainer() -> None:
             x_sample = 255. * x_sample
             img = Image.fromarray(x_sample.astype(np.uint8))
             # [CHANGED] --> Question: Is the segmentation being saved in grayscale or RGB? Also changed png to jpg
-            img.save(os.path.join(configs['save_seg_img_path'], name + '.png'))
+            img.save(os.path.join(configs['save_seg_img_path'], name + '.jpg'))
             
             T_loss_valid.append(loss_Rec.item())
 

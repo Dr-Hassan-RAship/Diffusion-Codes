@@ -26,6 +26,7 @@ from tensorboardX import SummaryWriter
 
 # Note the encoder output is AutoeencoderTinyOuput(latents = ouptut) and Decoder is DecoderOutput(sample = output)
 
+
 def get_multi_loss(criterion, out_dict, label, is_ds=True, key_list=None):
     keys = key_list if key_list is not None else list(out_dict.keys())
     if is_ds:
@@ -33,6 +34,7 @@ def get_multi_loss(criterion, out_dict, label, is_ds=True, key_list=None):
     else:
         multi_loss = criterion(out_dict["out"], label)
     return multi_loss
+
 
 def get_vae_encoding_mu_and_sigma(encoder_posterior, scale_factor):
     if isinstance(encoder_posterior, DiagonalGaussianDistribution):
@@ -46,9 +48,15 @@ def get_vae_encoding_mu_and_sigma(encoder_posterior, scale_factor):
 
 def vae_decode(vae_model, pred_mean, scale_factor):
     z = 1.0 / scale_factor * pred_mean
-    pred_seg = vae_model.decode(z).sample # [CHANGED] --> has channels = 3 according to config
-    pred_seg = torch.mean(pred_seg, dim=1, keepdim=True) # [CHANGED] --> Taking mean across channels dimension resulting in 1 channel
-    pred_seg = torch.clamp((pred_seg + 1.0) / 2.0, min=0.0, max=1.0)  # (B, 1, H, W) # [CHANGED] --> Bringing the range to (0, 1) as per Kvasir-SEG dataset
+    pred_seg = vae_model.decode(
+        z
+    ).sample  # [CHANGED] --> has channels = 3 according to config
+    pred_seg = torch.mean(
+        pred_seg, dim=1, keepdim=True
+    )  # [CHANGED] --> Taking mean across channels dimension resulting in 1 channel
+    pred_seg = torch.clamp(
+        (pred_seg + 1.0) / 2.0, min=0.0, max=1.0
+    )  # (B, 1, H, W) # [CHANGED] --> Bringing the range to (0, 1) as per Kvasir-SEG dataset
     return pred_seg
 
 
@@ -57,7 +65,7 @@ def arg_parse() -> argparse.ArgumentParser.parse_args:
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--config",
-        default="./configs/kvasir-instrument_train.yaml",
+        default="./configs/kvasir-seg_train.yaml",
         type=str,
         help="load the config file",
     )
@@ -122,13 +130,13 @@ def run_trainer() -> None:
             ch_mult=configs["ch_mult"],
         )
     )
-    
-    #[CHANGED] --> Trying out AutoencoderTiny from diffusers library (already on eval mode and frozen)
+
+    # [CHANGED] --> Trying out AutoencoderTiny from diffusers library (already on eval mode and frozen)
     vae_model = get_tiny_autoencoder()
 
     vae_model = get_cuda(vae_model)
     scale_factor = 1.0
-    
+
     # Define optimizers
     optimizer = torch.optim.AdamW(mapping_model.parameters(), lr=configs["lr"])
     scheduler = LinearWarmupCosineAnnealingLR(
@@ -165,7 +173,7 @@ def run_trainer() -> None:
             # [CHANGED] --> I believe the image and mask were originally in the range (0, 255)
             # but are now bing brought in the range (-1, 1)
             img_rgb = batch_data["img"]
-            img_rgb = img_rgb / 255.0 # [CHANGED] V.V.V Imp!  --> SCALE CORRECTION
+            img_rgb = img_rgb / 255.0  # [CHANGED] V.V.V Imp!  --> SCALE CORRECTION
             img_rgb = 2.0 * img_rgb - 1.0
             seg_raw = batch_data["seg"]
             seg_raw = seg_raw.permute(0, 3, 1, 2) / 255.0
@@ -175,20 +183,37 @@ def run_trainer() -> None:
             seg_img = torch.mean(seg_raw, dim=1, keepdim=True)
             name = batch_data["name"]
 
-            img_latent_mean_aug, seg_latent_mean = vae_model.encode(get_cuda(img_rgb)).latents, vae_model.encode(get_cuda(seg_rgb)).latents
+            img_latent_mean_aug, seg_latent_mean = (
+                vae_model.encode(get_cuda(img_rgb)).latents,
+                vae_model.encode(get_cuda(seg_rgb)).latents,
+            )
 
             # latent matching [CHANGED] --> recieves the grountruth latent mask representation and predicted and computes mse loss
             out_latent_mean_dict = mapping_model(img_latent_mean_aug)
-            loss_Rec = configs["w_rec"] * get_multi_loss(mse_loss, out_latent_mean_dict, seg_latent_mean, is_ds=True, key_list=ds_list,)
-            
+            loss_Rec = configs["w_rec"] * get_multi_loss(
+                mse_loss,
+                out_latent_mean_dict,
+                seg_latent_mean,
+                is_ds=True,
+                key_list=ds_list,
+            )
+
             # image matching [CHANGED] --> computes the predicted mask on different levels as the predicted latent representation
             # was on different levels (see line 228 - 233 of latent_mapping_model.py)
             pred_seg_dict = {}
             for level_name in ds_list:
-                pred_seg_dict[level_name] = vae_decode(vae_model, out_latent_mean_dict[level_name], scale_factor)
+                pred_seg_dict[level_name] = vae_decode(
+                    vae_model, out_latent_mean_dict[level_name], scale_factor
+                )
 
             # [CHANGED] --> similar to Loss_Rec
-            loss_Dice = configs["w_dice"] * get_multi_loss(dice_loss, pred_seg_dict, get_cuda(seg_img), is_ds=True, key_list=ds_list,)
+            loss_Dice = configs["w_dice"] * get_multi_loss(
+                dice_loss,
+                pred_seg_dict,
+                get_cuda(seg_img),
+                is_ds=True,
+                key_list=ds_list,
+            )
 
             loss = loss_Rec + loss_Dice
 
@@ -219,7 +244,7 @@ def run_trainer() -> None:
                 T_loss, T_loss_Rec, T_loss_Dice
             )
         )
-        
+
         # [CHANGED] --> Added Tensorboard logging for training loss per epoch
         writer.add_scalar("train/loss", T_loss, epoch)
         writer.add_scalar("train/loss_Rec", T_loss_Rec, epoch)
@@ -229,7 +254,7 @@ def run_trainer() -> None:
         ### Also note that the validation set is the same as the test set in the inference/valid.py file.
         for batch_data in tqdm(valid_dataloader, desc="Valid: "):
             img_rgb = batch_data["img"]
-            img_rgb = img_rgb / 255.0 # [CHANGED] V.V.V Imp!  --> SCALE CORRECTION
+            img_rgb = img_rgb / 255.0  # [CHANGED] V.V.V Imp!  --> SCALE CORRECTION
             img_rgb = 2.0 * img_rgb - 1.0
             seg_raw = batch_data["seg"]
             seg_raw = seg_raw.permute(0, 3, 1, 2) / 255.0
@@ -239,13 +264,20 @@ def run_trainer() -> None:
 
             mapping_model.eval()
 
-            with torch.no_grad():                
-                img_latent_mean, seg_latent_mean = vae_model.encode(get_cuda(img_rgb)).latents, vae_model.encode(get_cuda(seg_rgb)).latents
+            with torch.no_grad():
+                img_latent_mean, seg_latent_mean = (
+                    vae_model.encode(get_cuda(img_rgb)).latents,
+                    vae_model.encode(get_cuda(seg_rgb)).latents,
+                )
 
                 out_latent_mean_dict = mapping_model(img_latent_mean)
-                pred_seg = vae_decode(vae_model, out_latent_mean_dict["out"], scale_factor)
+                pred_seg = vae_decode(
+                    vae_model, out_latent_mean_dict["out"], scale_factor
+                )
 
-                loss_Rec = configs["w_rec"] * mse_loss(out_latent_mean_dict["out"], seg_latent_mean)
+                loss_Rec = configs["w_rec"] * mse_loss(
+                    out_latent_mean_dict["out"], seg_latent_mean
+                )
                 loss_Dice = configs["w_dice"] * dice_loss(pred_seg, get_cuda(seg_img))
 
                 loss = loss_Rec + loss_Dice

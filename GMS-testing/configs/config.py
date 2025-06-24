@@ -2,7 +2,7 @@
 #
 # File name      : config.py
 # Purpose        : Centralized config as Python variables, supports dynamic paths
-# Usage          : Import directly; all variables in block letters.
+# Usage          : Import directly
 #
 # Authors        : Talha Ahmed, Nehal Ahmed Shaikh, Hassan Mohy-ud-Din
 # Email          : 24100033@lums.edu.pk, 202410001@lums.edu.pk,
@@ -18,14 +18,14 @@ IMG_SIZE          = 224                             # Dimension for resized imag
 SEED              = 2333
 VAE_SCALE_FACTOR  = 1.0
 VAE_MODE          = {'eval': True, 'train': False}  # 'train' or 'eval' mode for VAE
-IMG_FORMAT        = "jpg"                           # 'jpg', 'png', 'tif', etc.
+IMG_FORMAT        = ".png"                           # 'jpg', 'png', 'tif', etc.
 
 # --------------------------- Base paths ---------------------------------------#
 BASE_DATA_DIR     = "./Dataset"
 BASE_CKPT_DIR     = "./ckpt"
 
 # --------------------------- Derived paths ------------------------------------#
-BRIEF_DESCRIPTION = 'latent_dim_32'
+BRIEF_DESCRIPTION = 'test_code'
 CHOSEN_STRATEGY   = 'best_valid_dice'  # 'latent_diffusion', 'diffusion', etc.
 SNAPSHOT_PATH     = f"{BASE_CKPT_DIR}/{DATASET}/{BRIEF_DESCRIPTION}"
 PICKLE_FILE_PATH  = f"{BASE_DATA_DIR}/{DATASET}/{DATASET}_train_test_names.pkl"
@@ -34,7 +34,7 @@ PRED_MASKS_PATH   = f"{SNAPSHOT_PATH}/predicted_masks_{CHOSEN_STRATEGY}"
 
 # --------------------------- Training settings --------------------------------#
 EPOCHS            = 200
-BATCH_SIZE        = 2
+BATCH_SIZE        = 1
 SAVE_FREQ         = 25
 LR                = 0.002
 NUM_WORKERS       = 8

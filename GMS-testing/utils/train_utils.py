@@ -13,9 +13,11 @@
 # ------------------------------------------------------------------------------#
 
 # --------------------------- Module imports ----------------------------------#
-import torch
-from   networks          import *
-from PIL                 import Image
+import torch, os
+
+from networks          import *
+from configs.config    import *
+from PIL               import Image
 
 # --------------------------- Multi-loss utility ------------------------------#
 def get_multi_loss(
@@ -79,10 +81,21 @@ def vae_decode(vae_model, pred_mean, scale_factor):
     return pred_seg
 
 #-------------------------- Load Img for Infernece -----------------------------#
-def load_img(path, img_size = 224, dtype_resize = 'np.float32'):
+def load_img(path, img_size = 224, dtype_resize = 'np.float16'):
     """Loads and normalizes a grayscale mask image to [0,1], resizes to (img_size, img_size)."""
+    
     image = Image.open(path).convert("L").resize((img_size, img_size), resample=Image.NEAREST)
     image = np.array(image).astype(dtype_resize) / 255.0
     return image
+
+# -------------------------- Save Binary and Logits ---------------------------#
+def save_binary_and_logits(x_logits, x_binary, name, save_seg_img_path):
+    """ Saves binary and logits images to specified path."""
+    
+    x_binary.save(os.path.join(save_seg_img_path, name + '_binary' + IMG_FORMAT))
+    # Save x_logits as .png
+    x_logits = (x_logits * 255).astype(np.uint8)
+    x_logits = Image.fromarray(x_logits)
+    x_logits.save(os.path.join(save_seg_img_path, name + '_logits' + IMG_FORMAT))
 
 # -------------------------------- End ----------------------------------------#

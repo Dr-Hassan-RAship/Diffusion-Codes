@@ -14,19 +14,19 @@
 # --------------------------- Module imports ----------------------------------#
 import os, time, yaml, torch, logging, argparse
 
-import numpy                   as np
+import numpy as np
 
-from tqdm                      import tqdm
-from torch.utils.data          import DataLoader
-from monai.losses.dice         import DiceLoss
+from tqdm import tqdm
+from torch.utils.data import DataLoader
+from monai.losses.dice import DiceLoss
 
-from data                      import *
-from utils                     import *
-from configs.config            import *
-from networks                  import *
+from data import *
+from utils import *
+from configs.config import *
+from networks import *
 
-from diffusers                 import AutoencoderTiny
-from tensorboardX              import SummaryWriter
+from diffusers import AutoencoderTiny
+from tensorboardX import SummaryWriter
 
 
 # --------------------- Main training function ---------------------------------#
@@ -38,76 +38,74 @@ def run_trainer() -> None:
     """
     # ------------- Parse args & flatten config ---------------------------------------#
     # Dynamically patch snapshot and log paths with timestamp
-    log_path                 = os.path.join(SNAPSHOT_PATH, "logs")
-    os.makedirs(SNAPSHOT_PATH, exist_ok = True)
-    os.makedirs(log_path, exist_ok = True)
+    log_path = os.path.join(SNAPSHOT_PATH, "logs")
+    os.makedirs(SNAPSHOT_PATH, exist_ok=True)
+    os.makedirs(log_path, exist_ok=True)
 
     # ------------- Hardware, seed & precision -------------------------------------------#
     gpus = ",".join([str(i) for i in GPUS])
     os.environ["CUDA_VISIBLE_DEVICES"] = gpus
     seed_reproducer(SEED)
     np_dtype, torch_dtype = get_precision_dtypes(PRECISION)
-    
+
     # ------------- Logging setup ---------------------------------------------#
-    open_log('train', log_path)
-    logging.info()
-    print_options()
+    open_log("train", log_path)
+    logging.info("Training configuration:")
+    # print_options()
 
     # ------------- TensorBoard setup -----------------------------------------#
-    writer  = SummaryWriter(log_path)
+    writer = SummaryWriter(log_path)
     ds_list = ["level2", "level1", "out"]  # Multi-scale levels
 
     # ------------- Datasets/Dataloaders -------------------------------------#
-    train_dataset = Image_Dataset(PICKLE_FILE_PATH, stage = "train")
-    valid_dataset = Image_Dataset(PICKLE_FILE_PATH, stage = "test")
-    
-    train_loader  = DataLoader(
+    train_dataset = ImageDataset(PICKLE_FILE_PATH, stage="train", precision=PRECISION)
+    valid_dataset = ImageDataset(PICKLE_FILE_PATH, stage="test", precision=PRECISION)
+
+    train_loader = DataLoader(
         train_dataset,
-        batch_size    = BATCH_SIZE,
-        pin_memory    = True,
-        drop_last     = True,
-        shuffle       = True,
+        batch_size=BATCH_SIZE,
+        pin_memory=True,
+        drop_last=True,
+        shuffle=True,
     )
-    valid_loader  = DataLoader(
+    valid_loader = DataLoader(
         valid_dataset,
-        batch_size    = BATCH_SIZE,
-        pin_memory    = True,
-        drop_last     = False,
-        shuffle       = False,
+        batch_size=BATCH_SIZE,
+        pin_memory=True,
+        drop_last=False,
+        shuffle=False,
     )
 
     # ------------- Model definitions ----------------------------------------#
-    mapping_model = get_cuda(
-        ResAttnUNet_DS(**MODEL_PARAMS)
-    ).to(dtype = torch_dtype)
-    
+    mapping_model = get_cuda(ResAttnUNet_DS(**MODEL_PARAMS)).to(dtype=torch_dtype)
+
     # Modular VAE loading (dtype, device, freeze are all config-controlled)
     vae_model = load_pretrained_model(
-        model_cls               = AutoencoderTiny,
-        pretrained_name_or_path = "madebyollin/taesd",
-        dtype                   = torch_dtype,
-        device                  = "cuda",
-        freeze                  = True,
+        model_cls=AutoencoderTiny,
+        pretrained_name_or_path="madebyollin/taesd",
+        dtype=torch_dtype,
+        device="cuda",
+        freeze=True,
     )
     scale_factor = VAE_SCALE_FACTOR
 
     # ------------- Optimizer & scheduler ------------------------------------#
-    optimizer = torch.optim.AdamW(mapping_model.parameters(), lr = LR)
+    optimizer = torch.optim.AdamW(mapping_model.parameters(), lr=LR)
     scheduler = LinearWarmupCosineAnnealingLR(
-        optimizer, warmup_epochs = 5, max_epochs = EPOCHS
+        optimizer, warmup_epochs=5, max_epochs=EPOCHS
     )
 
     # ------------- Loss functions -------------------------------------------#
-    mse_loss   = torch.nn.MSELoss(reduction = "mean")
-    dice_loss  = DiceLoss()
+    mse_loss = torch.nn.MSELoss(reduction="mean")
+    dice_loss = DiceLoss()
 
     # ------------- Training/Validation state --------------------------------#
-    iter_num              = 0
-    best_valid_loss       = np.inf
-    best_valid_loss_rec   = np.inf
-    best_valid_dice       = 0
+    iter_num = 0
+    best_valid_loss = np.inf
+    best_valid_loss_rec = np.inf
+    best_valid_dice = 0
     best_valid_dice_epoch = 0
-    best_valid_loss_dice  = np.inf
+    best_valid_loss_dice = np.inf
 
     # =========================================================================
     #                               TRAINING LOOP
@@ -115,31 +113,41 @@ def run_trainer() -> None:
     for epoch in range(1, EPOCHS + 1):
         epoch_start_time = time.time()
         mapping_model.train()
-        vae_model.eval() if VAE_MODE['eval'] else vae_model.train() 
+        vae_model.eval() if VAE_MODE["eval"] else vae_model.train()
         T_loss, T_loss_Rec, T_loss_Dice = [], [], []
         T_loss_valid, T_loss_Rec_valid, T_loss_Dice_valid, T_Dice_valid = [], [], [], []
 
         # =================== Training phase =================== #
-        for batch_data in tqdm(train_loader, desc = f"Train (epoch {epoch})"):
-            img_rgb   = 2.0 * batch_data["img"] - 1.0
-            seg_raw   = batch_data["seg"].permute(0, 3, 1, 2) / 255.0
-            seg_rgb   = 2.0 * seg_raw - 1.0
-            seg_img   = torch.mean(seg_raw, dim = 1, keepdim = True)
-            name      = batch_data["name"]
+        for batch_data in tqdm(train_loader, desc=f"Train (epoch {epoch})"):
+            img_rgb = 2.0 * batch_data["img"] - 1.0
+            seg_raw = batch_data["seg"].permute(0, 3, 1, 2) / 255.0
+            seg_rgb = 2.0 * seg_raw - 1.0
+            seg_img = torch.mean(seg_raw, dim=1, keepdim=True)
+            name = batch_data["name"]
+
+            continue
 
             img_latent_mean_aug = vae_model.encode(get_cuda(img_rgb)).latents
-            seg_latent_mean     = vae_model.encode(get_cuda(seg_rgb)).latents
+            seg_latent_mean = vae_model.encode(get_cuda(seg_rgb)).latents
 
-            out_latent_mean_dict    = mapping_model(img_latent_mean_aug)
-            loss_Rec                = W_REC * get_multi_loss(
-                mse_loss, out_latent_mean_dict, seg_latent_mean,
-                is_ds = True, key_list = ds_list
+            out_latent_mean_dict = mapping_model(img_latent_mean_aug)
+            loss_Rec = W_REC * get_multi_loss(
+                mse_loss,
+                out_latent_mean_dict,
+                seg_latent_mean,
+                is_ds=True,
+                key_list=ds_list,
             )
-            pred_seg_dict   = {level: vae_decode(vae_model, out_latent_mean_dict[level], scale_factor)
-                             for level in ds_list}
-            loss_Dice       = W_DICE * get_multi_loss(
-                dice_loss, pred_seg_dict, get_cuda(seg_img),
-                is_ds = True, key_list = ds_list
+            pred_seg_dict = {
+                level: vae_decode(vae_model, out_latent_mean_dict[level], scale_factor)
+                for level in ds_list
+            }
+            loss_Dice = W_DICE * get_multi_loss(
+                dice_loss,
+                pred_seg_dict,
+                get_cuda(seg_img),
+                is_ds=True,
+                key_list=ds_list,
             )
 
             loss = loss_Rec + loss_Dice
@@ -162,43 +170,50 @@ def run_trainer() -> None:
         writer.add_scalar("lr", scheduler.get_last_lr()[0], epoch)
 
         # ---- Logging training ----
-        T_loss      = np.mean(T_loss)
-        T_loss_Rec  = np.mean(T_loss_Rec)
+        T_loss = np.mean(T_loss)
+        T_loss_Rec = np.mean(T_loss_Rec)
         T_loss_Dice = np.mean(T_loss_Dice)
-        logging.info(f"Train: loss: {T_loss:.4f}, loss_Rec: {T_loss_Rec:.4f}, loss_Dice: {T_loss_Dice:.4f}")
+        logging.info(
+            f"Train: loss: {T_loss:.4f}, loss_Rec: {T_loss_Rec:.4f}, loss_Dice: {T_loss_Dice:.4f}"
+        )
         writer.add_scalar("train/loss", T_loss, epoch)
         writer.add_scalar("train/loss_Rec", T_loss_Rec, epoch)
         writer.add_scalar("train/loss_Dice", T_loss_Dice, epoch)
 
         # =================== Validation phase =================== #
-        mapping_model.eval(); vae_model.eval()
+        mapping_model.eval()
+        vae_model.eval()
         for batch_data in tqdm(valid_loader, desc="Valid: "):
-            img_rgb   = 2.0 * batch_data["img"] - 1.0
-            seg_raw   = batch_data["seg"].permute(0, 3, 1, 2) / 255.0
-            seg_rgb   = 2.0 * seg_raw - 1.0
-            seg_img   = torch.mean(seg_raw, dim=1, keepdim=True)
-            name      = batch_data["name"]
+            img_rgb = 2.0 * batch_data["img"] - 1.0
+            seg_raw = batch_data["seg"].permute(0, 3, 1, 2) / 255.0
+            seg_rgb = 2.0 * seg_raw - 1.0
+            seg_img = torch.mean(seg_raw, dim=1, keepdim=True)
+            name = batch_data["name"]
 
             with torch.no_grad():
                 img_latent_mean = vae_model.encode(get_cuda(img_rgb)).latents
                 seg_latent_mean = vae_model.encode(get_cuda(seg_rgb)).latents
 
                 out_latent_mean_dict = mapping_model(img_latent_mean)
-                pred_seg = vae_decode(vae_model, out_latent_mean_dict["out"], scale_factor)
+                pred_seg = vae_decode(
+                    vae_model, out_latent_mean_dict["out"], scale_factor
+                )
 
-                loss_Rec  = W_REC * mse_loss(out_latent_mean_dict["out"], seg_latent_mean)
+                loss_Rec = W_REC * mse_loss(
+                    out_latent_mean_dict["out"], seg_latent_mean
+                )
                 loss_Dice = W_DICE * dice_loss(pred_seg, get_cuda(seg_img))
-                loss      = loss_Rec + loss_Dice
+                loss = loss_Rec + loss_Dice
 
                 # ---- Dice calculation ----
-                pred_seg     = pred_seg.cpu()
-                reduce_axis  = list(range(1, len(seg_img.shape)))
-                intersection = torch.sum(seg_img * pred_seg, dim = reduce_axis)
-                y_o          = torch.sum(seg_img, dim = reduce_axis)
-                y_pred_o     = torch.sum(pred_seg, dim = reduce_axis)
-                denominator  = y_o + y_pred_o
-                dice_raw     = (2.0 * intersection) / denominator
-                dice_value   = dice_raw.mean()
+                pred_seg = pred_seg.cpu()
+                reduce_axis = list(range(1, len(seg_img.shape)))
+                intersection = torch.sum(seg_img * pred_seg, dim=reduce_axis)
+                y_o = torch.sum(seg_img, dim=reduce_axis)
+                y_pred_o = torch.sum(pred_seg, dim=reduce_axis)
+                denominator = y_o + y_pred_o
+                dice_raw = (2.0 * intersection) / denominator
+                dice_value = dice_raw.mean()
 
                 T_Dice_valid.append(dice_value.item())
                 T_loss_valid.append(loss.item())
@@ -206,9 +221,9 @@ def run_trainer() -> None:
                 T_loss_Dice_valid.append(loss_Dice.item())
 
         # ---- Logging validation ----
-        T_Dice_valid      = np.mean(T_Dice_valid)
-        T_loss_valid      = np.mean(T_loss_valid)
-        T_loss_Rec_valid  = np.mean(T_loss_Rec_valid)
+        T_Dice_valid = np.mean(T_Dice_valid)
+        T_loss_valid = np.mean(T_loss_valid)
+        T_loss_Rec_valid = np.mean(T_loss_Rec_valid)
         T_loss_Dice_valid = np.mean(T_loss_Dice_valid)
 
         writer.add_scalar("valid/dice", T_Dice_valid, epoch)
@@ -243,7 +258,7 @@ def run_trainer() -> None:
             save_checkpoint(
                 mapping_model,
                 f"latent_mapping_model_epoch_{epoch:04d}.pth",
-                SNAPSHOT_PATH
+                SNAPSHOT_PATH,
             )
 
         logging.info("Current learning rate: {:.5f}".format(scheduler.get_last_lr()[0]))
@@ -255,6 +270,7 @@ def run_trainer() -> None:
         )
         logging.info("\n")
     writer.close()
+
 
 # -----------------------------------------------------------------------#
 if __name__ == "__main__":

@@ -21,8 +21,10 @@ def dice_score(y_pred, y_true, eps = 1e-7):
     """
     y_pred = (y_pred >= 0.5).astype(np.uint8)
     y_true = (y_true >= 0.5).astype(np.uint8)
+    
     intersection = np.sum(y_pred * y_true)
-    denominator = np.sum(y_pred) + np.sum(y_true)
+    denominator  = np.sum(y_pred) + np.sum(y_true)
+    
     return 2. * intersection / (denominator + eps)
 
 # --------------------------- IoU Score ----------------------------------------#
@@ -32,8 +34,10 @@ def iou_score(y_pred, y_true, eps = 1e-7):
     """
     y_pred = (y_pred >= 0.5).astype(np.uint8)
     y_true = (y_true >= 0.5).astype(np.uint8)
+    
     intersection = np.sum(y_pred * y_true)
-    union = np.sum(y_pred) + np.sum(y_true) - intersection
+    union        = np.sum(y_pred) + np.sum(y_true) - intersection
+    
     return intersection / (union + eps)
 
 # --------------------------- SSIM ---------------------------------------------#
@@ -47,15 +51,18 @@ def ssim(pred, gt, eps = 1e-7):
     """
     pred = pred.astype(np.float64)
     gt   = gt.astype(np.float64)
+    
     mean_pred = pred.mean()
     mean_gt   = gt.mean()
     std_pred  = pred.std()
     std_gt    = gt.std()
     cov       = np.mean((pred - mean_pred) * (gt - mean_gt))
+    
     # 3 components: luminance, contrast, structure
     luminance = (2 * mean_pred * mean_gt) / (mean_pred**2 + mean_gt**2 + eps)
     contrast  = (2 * std_pred * std_gt)   / (std_pred**2 + std_gt**2 + eps)
     structure = cov / (std_pred * std_gt + eps)
+    
     return luminance * contrast * structure
 
 # --------------------------- Region-aware SSIM (quadrant split) ---------------#
@@ -69,12 +76,14 @@ def ssim_region(pred, gt, mask = None):
     """
     if mask is None:
         mask = (gt > 0.5).astype(np.uint8)
+        
     # Compute centroid of foreground in GT
     indices = np.argwhere(mask)
     if indices.size == 0:
         return 0.0
+    
     centroid = indices.mean(axis=0).astype(int)
-    h, w = gt.shape
+    h, w     = gt.shape
     h_c, w_c = centroid
 
     blocks = [
@@ -85,19 +94,21 @@ def ssim_region(pred, gt, mask = None):
     ]
 
     # Weight = fraction of GT foreground pixels in block
-    total_fg = mask.sum()
+    total_fg             = mask.sum()
     ssim_blocks, weights = [], []
+    
     for b in blocks:
         gt_block   = gt[b]
         pred_block = pred[b]
         mask_block = mask[b]
-        weight = mask_block.sum() / (total_fg + 1e-8)
+        weight     = mask_block.sum() / (total_fg + 1e-8)
         if mask_block.sum() == 0:
             ssim_val = 0.0
         else:
             ssim_val = ssim(pred_block.flatten(), gt_block.flatten())
         ssim_blocks.append(ssim_val)
         weights.append(weight)
+        
     return np.sum(np.array(ssim_blocks) * np.array(weights))
 
 # --------------------------- Object-aware SSIM --------------------------------#
@@ -112,9 +123,11 @@ def ssim_object(pred, gt, lam = 0.5, eps = 1e-7):
     """
     fg_mask = (gt > 0.5)
     bg_mask = ~fg_mask
+    
     # Foreground
     x_fg = pred[fg_mask]
     y_fg = gt[fg_mask]
+    
     mean_x_fg = x_fg.mean() if x_fg.size > 0 else 0.0
     mean_y_fg = y_fg.mean() if y_fg.size > 0 else 0.0
     std_x_fg  = x_fg.std()  if x_fg.size > 0 else 0.0
@@ -126,6 +139,7 @@ def ssim_object(pred, gt, lam = 0.5, eps = 1e-7):
     # Background
     x_bg = pred[bg_mask]
     y_bg = gt[bg_mask]
+    
     mean_x_bg = x_bg.mean() if x_bg.size > 0 else 0.0
     mean_y_bg = y_bg.mean() if y_bg.size > 0 else 0.0
     std_x_bg  = x_bg.std()  if x_bg.size > 0 else 0.0
@@ -135,6 +149,7 @@ def ssim_object(pred, gt, lam = 0.5, eps = 1e-7):
 
     # µ: ratio of GT foreground area
     mu = fg_mask.sum() / (gt.size + eps)
+    
     return mu * O_fg + (1 - mu) * O_bg
 
 # --------------------------- Combined SSIM (final metric) ---------------------#
@@ -142,36 +157,42 @@ def ssim_combined(pred, gt, alpha = 0.5, lam = 0.5):
     """
     Final measure: weighted sum of object-aware and region-aware SSIM.
     """
-    pred = np.asarray(pred, dtype=np.float64)
-    gt   = np.asarray(gt, dtype=np.float64)
+    pred = np.asarray(pred, dtype = np.float64)
+    gt   = np.asarray(gt, dtype   = np.float64)
     if pred.shape != gt.shape:
         raise ValueError(f"Shapes must match: {pred.shape}, {gt.shape}")
+    
     # Normalize
     pred = (pred - pred.min()) / (pred.max() - pred.min() + 1e-8)
     gt   = (gt   - gt.min())   / (gt.max()   - gt.min()   + 1e-8)
+    
     So = ssim_object(pred, gt, lam=lam)
     Sr = ssim_region(pred, gt)
+    
     return alpha * So + (1 - alpha) * Sr
 
 #---------------------------- All Metrics Combined -----------------------------#
-def all_metrics(pred, gt, alpha = 0.5, lam = 0.5):
+def all_metrics(pred_binary, pred_logits, gt, alpha = 0.5, lam = 0.5):
     """
     Computes all metrics: DSC, IoU, SSIM, region-aware SSIM, object-aware SSIM,
     and combined SSIM.
     Args:
-        pred, gt: 2D arrays, values in [0,1].
+        pred_binary: 2D binary array, predicted segmentation.
+        pred_logits: 2D logits array, predicted segmentation
+        gt:          2D binary array, ground truth segmentation.
         alpha:   weight for object-aware vs region-aware SSIM.
         lam:     weight for dispersion term in object-aware SSIM.
     Returns:
         dict of all metrics.
     """
+    # Note pass pred_binary for DSC and IOU and for the rest pred_logits
     return {
-        'DSC'              : dice_score(pred, gt),
-        'IoU'              :  iou_score(pred, gt),
-        'SSIM'             : ssim(pred.flatten(), gt.flatten()),
-        'SSIM_region'      : ssim_region(pred, gt),
-        'SSIM_object'      : ssim_object(pred, gt, lam = lam),
-        'SSIM_combined'    : ssim_combined(pred, gt, alpha = alpha, lam = lam)
+        'DSC'              : dice_score(pred_binary, gt).item(),
+        'IoU'              : iou_score(pred_binary, gt).item(),
+        'SSIM'             : ssim(pred_logits.flatten(), gt.flatten()).item(),
+        'SSIM_region'      : ssim_region(pred_logits, gt).item(),
+        'SSIM_object'      : ssim_object(pred_logits, gt, lam = lam).item(),
+        'SSIM_combined'    : ssim_combined(pred_logits, gt, alpha = alpha, lam = lam).item()
     }
 
 # ---------------------------  End --------------------------------------------#

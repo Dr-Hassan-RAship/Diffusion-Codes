@@ -47,11 +47,11 @@ def run_validator():
 
     # --------- Logging setup -----#
     open_log('train', log_path)
-    logging.info()
-    print_options()
+    logging.info('Valid Configuration')
+    # print_options()
 
     # ---- DataLoader ----
-    valid_dataset    = Image_Dataset(PICKLE_FILE_PATH, stage = 'test')
+    valid_dataset    = ImageDataset(PICKLE_FILE_PATH, stage = 'test', precision = PRECISION)
     valid_dataloader = DataLoader(valid_dataset, batch_size = 1, pin_memory = True, drop_last = False, shuffle = False)
 
     # ---- Load Models with required device and dtype ----
@@ -69,7 +69,6 @@ def run_validator():
         dtype                   = torch_dtype,
         device                  = "cuda",
         freeze                  = True,
-        eval_mode               = True
     )
     vae_model.eval()
     scale_factor = VAE_SCALE_FACTOR
@@ -84,7 +83,7 @@ def run_validator():
         img_rgb = 2. * img_rgb - 1.
         seg_raw = batch_data['seg'].permute(0, 3, 1, 2) / 255.0
         seg_rgb = 2. * seg_raw - 1.
-        name    = batch_data['name']
+        name    = batch_data['name'][0]
         name_list.append(name)
 
         with torch.no_grad():
@@ -96,10 +95,12 @@ def run_validator():
             pred_seg = vae_decode(vae_model, out_latent_mean_dict['out'], scale_factor)
             pred_seg = pred_seg.repeat(1, 3, 1, 1)
 
-            x_sample = rearrange(pred_seg.squeeze().cpu().numpy(), 'c h w -> h w c')
-            x_sample = np.where(x_sample > 0.5, 1, 0) * 255.
-            img      = Image.fromarray(x_sample.astype(np.uint8))
-            img.save(os.path.join(save_seg_img_path, name + IMG_FORMAT))
+            x_logits = rearrange(pred_seg.squeeze().cpu().numpy(), 'c h w -> h w c')
+            x_binary = np.where(x_logits > 0.5, 1, 0) * 255.
+            x_binary = Image.fromarray(x_binary.astype(np.uint8))
+            
+            # Save both logits and binary
+            save_binary_and_logits(x_logits, x_binary, name, save_seg_img_path)
 
             T_loss_valid.append(loss_Rec.item())
 
@@ -112,39 +113,39 @@ def run_validator():
     true_path = os.path.join(os.path.dirname(PICKLE_FILE_PATH), 'masks')
 
     name_list = sorted(os.listdir(pred_path))
-    name_list = [x.replace(IMG_FORMAT, '').replace('_segmentation', '') for x in name_list]
+    name_list = [x.replace(IMG_FORMAT, '') for x in name_list]
 
     dsc_list, iou_list = [], []
-
+    ssim_list, ssim_region_list, ssim_object_list, ssim_combined_list = [], [], [], []
+    
     for case_name in tqdm(name_list):
-        seg_pred = load_img(os.path.join(pred_path, case_name + IMG_FORMAT), img_size = IMG_SIZE, dtype_resize = np_dtype)
-        seg_true = load_img(os.path.join(true_path, case_name + IMG_FORMAT), img_size = IMG_SIZE, dtype_resize = np_dtype)
-
-        preds = seg_pred.reshape(-1)
-        gts   = seg_true.reshape(-1)
-
-        y_pre  = np.where(preds >= 0.5, 1, 0)
-        y_true = np.where(gts   >= 0.5, 1, 0)
-
-        # Defensive for confusion_matrix shape
-        cm = confusion_matrix(y_true, y_pre, labels=[0, 1])
-        if cm.shape == (2, 2):
-            TN, FP, FN, TP = cm.ravel()
-        else:  # All predictions/labels are same (rare case)
-            TN = FP = FN = TP = 0
-
-        f1_or_dsc = float(2 * TP) / float(2 * TP + FP + FN) if (2 * TP + FP + FN) else 0
-        miou     = float(TP) / float(TP + FP + FN) if (TP + FP + FN) else 0
-
-        dsc_list.append(f1_or_dsc)
-        iou_list.append(miou)
+        seg_binary   = load_img(os.path.join(pred_path, case_name + '_binary' + IMG_FORMAT), img_size = IMG_SIZE, dtype_resize = np_dtype)
+        seg_logits   = load_img(os.path.join(pred_path, case_name + '_logits' + IMG_FORMAT), img_size = IMG_SIZE, dtype_resize = np_dtype)
+        seg_true     = load_img(os.path.join(true_path, case_name + IMG_FORMAT), img_size = IMG_SIZE, dtype_resize = np_dtype)
+        
+        # Calculate all metrics
+        results = all_metrics(seg_binary, seg_logits, seg_true)
+        
+        # Append all scores into respective list by inexing the results dict
+        dsc_list.append(results['DSC'])
+        iou_list.append(results['IoU'])
+        ssim_list.append(results['SSIM'])
+        ssim_region_list.append(results['SSIM_region'])
+        ssim_object_list.append(results['SSIM_object'])
+        ssim_combined_list.append(results['SSIM_combined'])
 
     # Add mean/std
     name_list.extend(['Avg', 'Std'])
     dsc_list.extend([np.mean(dsc_list), np.std(dsc_list, ddof=1)])
     iou_list.extend([np.mean(iou_list), np.std(iou_list, ddof=1)])
+    ssim_list.extend([np.mean(ssim_list), np.std(ssim_list, ddof=1)])
+    ssim_region_list.extend([np.mean(ssim_region_list), np.std(ssim_region_list, ddof=1)])
+    ssim_object_list.extend([np.mean(ssim_object_list), np.std(ssim_object_list, ddof=1)])
+    ssim_combined_list.extend([np.mean(ssim_combined_list), np.std(ssim_combined_list, ddof=1)])
 
-    df = pd.DataFrame({'Name': name_list, 'DSC': dsc_list, 'IoU': iou_list})
+    df = pd.DataFrame({'Name': name_list, 'DSC': dsc_list, 'IoU': iou_list, 'SSIM': ssim_list,
+                       'SSIM_region': ssim_region_list, 'SSIM_object': ssim_object_list,
+                       'SSIM_combined': ssim_combined_list})
     df.to_csv(csv_path, index=False)
 
     logging.info("DSC: {:.4f}, IOU: {:.4f}".format(dsc_list[-2], iou_list[-2]))

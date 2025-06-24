@@ -169,7 +169,7 @@ def print_options(configs):
 
 
 # --------------------------- Precision helper ---------------------------------#
-def get_precision_dtypes(prec: str = "float32"):
+def get_precision_dtypes(prec: str = "float16"):
     """
     Maps precision string → (numpy dtype, torch dtype).
 
@@ -186,6 +186,8 @@ def get_precision_dtypes(prec: str = "float32"):
     }
     if prec not in table:
         raise ValueError(f"Unsupported precision '{prec}'.")
+    print(prec)
     return table[prec]
+
 
 # --------------------------------- End -----------------------------------------#

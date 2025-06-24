@@ -20,6 +20,7 @@ from .lr_scheduler                  import *
 from .load_pretrained_models        import *
 from .tools                         import *
 from .train_utils                   import *
+from .metrics                       import *
 
 # --------------------------------- End -----------------------------------------#
 

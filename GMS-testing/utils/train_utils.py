@@ -14,7 +14,8 @@
 
 # --------------------------- Module imports ----------------------------------#
 import torch
-from networks.models.distributions import DiagonalGaussianDistribution
+from   networks          import *
+from PIL                 import Image
 
 # --------------------------- Multi-loss utility ------------------------------#
 def get_multi_loss(
@@ -76,5 +77,12 @@ def vae_decode(vae_model, pred_mean, scale_factor):
     pred_seg = torch.mean(pred_seg, dim=1, keepdim=True)  # (B, 1, H, W)
     pred_seg = torch.clamp((pred_seg + 1.0) / 2.0, min=0.0, max=1.0)
     return pred_seg
+
+#-------------------------- Load Img for Infernece -----------------------------#
+def load_img(path, img_size = 224, dtype_resize = 'np.float32'):
+    """Loads and normalizes a grayscale mask image to [0,1], resizes to (img_size, img_size)."""
+    image = Image.open(path).convert("L").resize((img_size, img_size), resample=Image.NEAREST)
+    image = np.array(image).astype(dtype_resize) / 255.0
+    return image
 
 # -------------------------------- End ----------------------------------------#

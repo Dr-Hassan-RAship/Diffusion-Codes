@@ -1,7 +1,7 @@
 # ------------------------------------------------------------------------------#
 #
 # File name                 : train.py
-# Purpose                   : Main training loop for latent diffusion segmentation.
+# Purpose                   : Main training loop for GMS
 # Usage                     : python train.py --config configs/experiment.yaml
 #
 # Authors                   : Talha Ahmed, Nehal Ahmed Shaikh, Hassan Mohy-ud-Din
@@ -18,16 +18,16 @@ import numpy                   as np
 
 from tqdm                      import tqdm
 from torch.utils.data          import DataLoader
-from omegaconf                 import OmegaConf
 from monai.losses.dice         import DiceLoss
 
-from data.image_dataset        import Image_Dataset
+from data                      import *
 from utils                     import *
-
+from configs.config            import *
 from networks                  import *
-from diffusers                 import AutoencoderTiny
 
+from diffusers                 import AutoencoderTiny
 from tensorboardX              import SummaryWriter
+
 
 # --------------------- Main training function ---------------------------------#
 def run_trainer() -> None:
@@ -37,43 +37,40 @@ def run_trainer() -> None:
     runs training/validation, and handles checkpointing.
     """
     # ------------- Parse args & flatten config ---------------------------------------#
-    configs = load_config('configs/config.yaml')
-
     # Dynamically patch snapshot and log paths with timestamp
-    configs["snapshot_path"] = os.path.join(configs["snapshot_path"], configs['brief_info'])
-    configs["log_path"]      = os.path.join(configs["snapshot_path"], "logs")
-    os.makedirs(configs["snapshot_path"], exist_ok = True)
-    os.makedirs(configs["log_path"], exist_ok = True)
+    log_path                 = os.path.join(SNAPSHOT_PATH, "logs")
+    os.makedirs(SNAPSHOT_PATH, exist_ok = True)
+    os.makedirs(log_path, exist_ok = True)
 
     # ------------- Hardware, seed & precision -------------------------------------------#
-    gpus = ",".join([str(i) for i in configs["GPUs"]])
+    gpus = ",".join([str(i) for i in GPUS])
     os.environ["CUDA_VISIBLE_DEVICES"] = gpus
-    seed_reproducer(configs["seed"])
-    np_dtype, torch_dtype = get_precision_dtypes(configs['precision'])
+    seed_reproducer(SEED)
+    np_dtype, torch_dtype = get_precision_dtypes(PRECISION)
     
     # ------------- Logging setup ---------------------------------------------#
-    open_log('train', configs)
-    logging.info(configs)
-    print_options(configs)
+    open_log('train', log_path)
+    logging.info()
+    print_options()
 
     # ------------- TensorBoard setup -----------------------------------------#
-    writer  = SummaryWriter(configs["log_path"])
+    writer  = SummaryWriter(log_path)
     ds_list = ["level2", "level1", "out"]  # Multi-scale levels
 
     # ------------- Datasets/Dataloaders -------------------------------------#
-    train_dataset = Image_Dataset(configs["pickle_file_path"], stage = "train")
-    valid_dataset = Image_Dataset(configs["pickle_file_path"], stage = "test")
+    train_dataset = Image_Dataset(PICKLE_FILE_PATH, stage = "train")
+    valid_dataset = Image_Dataset(PICKLE_FILE_PATH, stage = "test")
     
     train_loader  = DataLoader(
         train_dataset,
-        batch_size    = configs["batch_size"],
+        batch_size    = BATCH_SIZE,
         pin_memory    = True,
         drop_last     = True,
         shuffle       = True,
     )
     valid_loader  = DataLoader(
         valid_dataset,
-        batch_size    = configs["batch_size"],
+        batch_size    = BATCH_SIZE,
         pin_memory    = True,
         drop_last     = False,
         shuffle       = False,
@@ -81,14 +78,8 @@ def run_trainer() -> None:
 
     # ------------- Model definitions ----------------------------------------#
     mapping_model = get_cuda(
-        ResAttnUNet_DS(
-            in_channel     = configs["in_channel"],
-            out_channels   = configs["out_channels"],
-            num_res_blocks = configs["num_res_blocks"],
-            ch             = configs["ch"],
-            ch_mult        = configs["ch_mult"],
-        )
-    )
+        ResAttnUNet_DS(**MODEL_PARAMS)
+    ).to(dtype = torch_dtype)
     
     # Modular VAE loading (dtype, device, freeze are all config-controlled)
     vae_model = load_pretrained_model(
@@ -98,12 +89,12 @@ def run_trainer() -> None:
         device                  = "cuda",
         freeze                  = True,
     )
-    scale_factor = configs.get("vae_scale_factor", 1.0)
+    scale_factor = VAE_SCALE_FACTOR
 
     # ------------- Optimizer & scheduler ------------------------------------#
-    optimizer = torch.optim.AdamW(mapping_model.parameters(), lr = configs["lr"])
+    optimizer = torch.optim.AdamW(mapping_model.parameters(), lr = LR)
     scheduler = LinearWarmupCosineAnnealingLR(
-        optimizer, warmup_epochs = 5, max_epochs = configs["epochs"]
+        optimizer, warmup_epochs = 5, max_epochs = EPOCHS
     )
 
     # ------------- Loss functions -------------------------------------------#
@@ -121,9 +112,10 @@ def run_trainer() -> None:
     # =========================================================================
     #                               TRAINING LOOP
     # =========================================================================
-    for epoch in range(1, configs["epochs"] + 1):
+    for epoch in range(1, EPOCHS + 1):
         epoch_start_time = time.time()
         mapping_model.train()
+        vae_model.eval() if VAE_MODE['eval'] else vae_model.train() 
         T_loss, T_loss_Rec, T_loss_Dice = [], [], []
         T_loss_valid, T_loss_Rec_valid, T_loss_Dice_valid, T_Dice_valid = [], [], [], []
 
@@ -139,13 +131,13 @@ def run_trainer() -> None:
             seg_latent_mean     = vae_model.encode(get_cuda(seg_rgb)).latents
 
             out_latent_mean_dict    = mapping_model(img_latent_mean_aug)
-            loss_Rec                = configs["w_rec"] * get_multi_loss(
+            loss_Rec                = W_REC * get_multi_loss(
                 mse_loss, out_latent_mean_dict, seg_latent_mean,
                 is_ds = True, key_list = ds_list
             )
             pred_seg_dict   = {level: vae_decode(vae_model, out_latent_mean_dict[level], scale_factor)
                              for level in ds_list}
-            loss_Dice       = configs["w_dice"] * get_multi_loss(
+            loss_Dice       = W_DICE * get_multi_loss(
                 dice_loss, pred_seg_dict, get_cuda(seg_img),
                 is_ds = True, key_list = ds_list
             )
@@ -179,7 +171,7 @@ def run_trainer() -> None:
         writer.add_scalar("train/loss_Dice", T_loss_Dice, epoch)
 
         # =================== Validation phase =================== #
-        mapping_model.eval()
+        mapping_model.eval(); vae_model.eval()
         for batch_data in tqdm(valid_loader, desc="Valid: "):
             img_rgb   = 2.0 * batch_data["img"] - 1.0
             seg_raw   = batch_data["seg"].permute(0, 3, 1, 2) / 255.0
@@ -194,8 +186,8 @@ def run_trainer() -> None:
                 out_latent_mean_dict = mapping_model(img_latent_mean)
                 pred_seg = vae_decode(vae_model, out_latent_mean_dict["out"], scale_factor)
 
-                loss_Rec  = configs["w_rec"] * mse_loss(out_latent_mean_dict["out"], seg_latent_mean)
-                loss_Dice = configs["w_dice"] * dice_loss(pred_seg, get_cuda(seg_img))
+                loss_Rec  = W_REC * mse_loss(out_latent_mean_dict["out"], seg_latent_mean)
+                loss_Dice = W_DICE * dice_loss(pred_seg, get_cuda(seg_img))
                 loss      = loss_Rec + loss_Dice
 
                 # ---- Dice calculation ----
@@ -231,32 +223,32 @@ def run_trainer() -> None:
 
         # ---- Model checkpointing ----
         if T_Dice_valid > best_valid_dice:
-            save_checkpoint(mapping_model, "best_valid_dice.pth", configs["snapshot_path"])
+            save_checkpoint(mapping_model, "best_valid_dice.pth", SNAPSHOT_PATH)
             best_valid_dice = T_Dice_valid
             best_valid_dice_epoch = epoch
             logging.info("Save best valid Dice !")
         if T_loss_valid < best_valid_loss:
-            save_checkpoint(mapping_model, "best_valid_loss.pth", configs["snapshot_path"])
+            save_checkpoint(mapping_model, "best_valid_loss.pth", SNAPSHOT_PATH)
             best_valid_loss = T_loss_valid
             logging.info("Save best valid Loss All !")
         if T_loss_Rec_valid < best_valid_loss_rec:
-            save_checkpoint(mapping_model, "best_valid_loss_rec.pth", configs["snapshot_path"])
+            save_checkpoint(mapping_model, "best_valid_loss_rec.pth", SNAPSHOT_PATH)
             best_valid_loss_rec = T_loss_Rec_valid
             logging.info("Save best valid Loss Rec !")
         if T_loss_Dice_valid < best_valid_loss_dice:
-            save_checkpoint(mapping_model, "best_valid_loss_dice.pth", configs["snapshot_path"])
+            save_checkpoint(mapping_model, "best_valid_loss_dice.pth", SNAPSHOT_PATH)
             best_valid_loss_dice = T_loss_Dice_valid
             logging.info("Save best valid Loss Dice !")
-        if epoch % configs["save_freq"] == 0:
+        if epoch % SAVE_FREQ == 0:
             save_checkpoint(
                 mapping_model,
                 f"latent_mapping_model_epoch_{epoch:04d}.pth",
-                configs["snapshot_path"]
+                SNAPSHOT_PATH
             )
 
         logging.info("Current learning rate: {:.5f}".format(scheduler.get_last_lr()[0]))
         logging.info(
-            f"epoch {epoch} / {configs['epochs']} \t Time Taken: {int(time.time() - epoch_start_time)} sec"
+            f"epoch {epoch} / {EPOCHS} \t Time Taken: {int(time.time() - epoch_start_time)} sec"
         )
         logging.info(
             f"best valid dice: {best_valid_dice:.4f} at epoch: {best_valid_dice_epoch}"
@@ -264,5 +256,8 @@ def run_trainer() -> None:
         logging.info("\n")
     writer.close()
 
+# -----------------------------------------------------------------------#
 if __name__ == "__main__":
     run_trainer()
+
+# -------------------------------- End ----------------------------------#

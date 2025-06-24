@@ -109,7 +109,6 @@ def run_trainer() -> None:
         seg_raw = batch_data['seg']
         seg_raw = seg_raw.permute(0, 3, 1, 2) / 255.0
         seg_rgb = 2. * seg_raw - 1.
-        seg_img = torch.mean(seg_raw, dim=1, keepdim=True)
         name = batch_data['name'][0]
         name_list.append(name)
 

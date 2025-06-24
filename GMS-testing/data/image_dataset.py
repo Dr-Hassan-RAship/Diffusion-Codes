@@ -25,15 +25,14 @@ from   torch.utils.data  import Dataset
 
 from   utils.tools       import get_precision_dtypes 
 from   .transforms       import build_transforms
+from   configs.config    import *
 
 
 # --------------------------- Pickle generator ---------------------------------#
 def make_split_pickle(
     root_dir      : str,
     split         : float       = 0.9,
-    file_exts     : Tuple[str]  = (".png", ".jpg", ".jpeg"),
-    pickle_name   : str         = "train_test_names.pkl",
-    seed          : int         = 42,
+    pickle_name   : str         = "_train_test_names.pkl",
 ) -> Path:
     """
     Scans `root_dir/images` & `root_dir/masks`, pairs files by basename,
@@ -46,14 +45,14 @@ def make_split_pickle(
     mask_dir = Path(root_dir) / "masks"
 
     # Collect filenames with desired extensions
-    img_files  = [f for f in os.listdir(img_dir)  if f.lower().endswith(file_exts)]
-    mask_files = [f for f in os.listdir(mask_dir) if f.lower().endswith(file_exts)]
+    img_files  = [f for f in os.listdir(img_dir)  if f.lower().endswith(IMG_FORMAT)]
+    mask_files = [f for f in os.listdir(mask_dir) if f.lower().endswith(IMG_FORMAT)]
 
     img_bases  = {Path(f).stem for f in img_files}
     mask_bases = {Path(f).stem for f in mask_files}
 
     common_bases      = sorted(img_bases & mask_bases)
-    random.seed(seed)
+    random.seed(SEED)
     random.shuffle(common_bases)
 
     train_len         = int(split * len(common_bases))
@@ -72,20 +71,6 @@ def make_split_pickle(
     logging.info(f"Pickle saved to {pickle_path} | "
                  f"Train: {len(train_list)} | Val: {len(val_list)}")
     return pickle_path
-
-
-# --------------------------- Helper: find file --------------------------------#
-def _find_with_ext(base: Path, exts: Tuple[str]) -> Path:
-    """
-    Returns the first file that exists among the candidate extensions.
-    Raises `FileNotFoundError` if none found.  
-    """
-    for ext in exts:
-        candidate = base.with_suffix(ext)
-        if candidate.exists():
-            return candidate
-    raise FileNotFoundError(f"No file found for {base} with extensions {exts}")
-
 
 # --------------------------- Main Dataset class -------------------------------#
 class ImageDataset(Dataset):
@@ -107,7 +92,6 @@ class ImageDataset(Dataset):
         precision    : str  = 'float32',
         stage        : str  = "train",
         img_size     : int  = 224,
-        file_exts    : Tuple[str] = (".png", ".jpg", ".jpeg"),
     ) -> None:
 
         super().__init__()
@@ -119,14 +103,13 @@ class ImageDataset(Dataset):
         if pickle_file is None:
             if root_dir is None:
                 raise ValueError("Either `pickle_file` or `root_dir` must be provided.")
-            pickle_file = make_split_pickle(root_dir, split = 0.9, file_exts = file_exts)
+            pickle_file = make_split_pickle(root_dir, split = 0.9)
 
         with open(pickle_file, "rb") as f:
             split_dict = pickle.load(f)
 
         self.names         : List[str]     = split_dict[stage]["name_list"]
         self.stage         : str           = stage
-        self.file_exts     : Tuple[str]    = tuple([e.lower() for e in file_exts])
         self.img_dir       : Path          = Path(pickle_file).parent / "images"
         self.mask_dir      : Path          = Path(pickle_file).parent / "masks"
         self.transforms                    = build_transforms(stage, img_size)
@@ -140,8 +123,8 @@ class ImageDataset(Dataset):
         img_base    = self.img_dir  / name
         mask_base   = self.mask_dir / name
 
-        img_path    = _find_with_ext(img_base,  self.file_exts)
-        mask_path   = _find_with_ext(mask_base, self.file_exts)
+        img_path    = img_base.with_suffix(IMG_FORMAT)
+        mask_path   = mask_base.with_suffix(IMG_FORMAT)
 
         # Load RGB
         img_np  = np.array(Image.open(img_path).convert("RGB"),  dtype = self.np_dtype)
@@ -154,8 +137,8 @@ class ImageDataset(Dataset):
 
         return {
             "name": name,
-            "img" : augmented["image"],
-            "seg" : augmented["mask"],
+            "img" : img,
+            "seg" : seg,
         }
 
     # ------------------------ __len__ ----------------------------------------#

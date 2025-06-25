@@ -18,31 +18,26 @@ import os, logging
 from configs.config             import *
 
 # --------------------------- Open log file ------------------------------------#
-def open_log(phase, log_path):
+def open_log(args, config):
     """
-    Creates a log file at the specified path in the config.
-    Deletes existing log file with the same name if it exists.
-
+    Set up logging to file and console for Python config scripts.
     Args:
-        args   : Command-line arguments, must include `args.config` (path to YAML).
-        log_path: Path to save the log file, typically derived from `args.config`.
-
-    Returns:
-        None
+        args   : argparse.Namespace with 'config' (path to config .py)
+        config : Config object (module or dict)
     """
+    log_savepath = getattr(config, 'LOG_PATH', None) or config.get('LOG_PATH', None)
+    if not os.path.exists(log_savepath):
+        os.makedirs(log_savepath)
 
-    log_name      = f'{phase}-config'
-    log_filepath  = os.path.join(log_path, f'{log_name}.txt')
+    log_name = os.path.splitext(os.path.basename(args.config))[0]  # no .py
+    log_filename = os.path.join(log_savepath, f'{log_name}.txt')
 
-    if not os.path.exists(log_path):
-        os.makedirs(log_path)
+    if os.path.isfile(log_filename):
+        os.remove(log_filename)
 
-    if os.path.isfile(log_filepath):
-        os.remove(log_filepath)
-
-    initLogging(log_filepath)
-
-
+    initLogging(log_filename)
+    logging.info(f"Logging initialized. Log file: {log_filename}")
+    
 # --------------------------- Logger initializer -------------------------------#
 def initLogging(logFilename):
     """

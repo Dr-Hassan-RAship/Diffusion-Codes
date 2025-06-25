@@ -144,29 +144,29 @@ def get_cuda(tensor):
 
 
 # --------------------------- Print configuration ------------------------------#
-def print_options(configs):
+def print_options(config):
     """
-    Pretty print and save the current configuration.
-
-    Args:
-        configs : Dictionary of config values.
+    Pretty print and save the current configuration (supports .py config as module or dict).
     """
+    # Accept both module or dict config
+    if not isinstance(config, dict):
+        config = {k: getattr(config, k) for k in dir(config) if k.isupper() and not k.startswith('__')}
     message = ""
     message += "----------------- Options ---------------\n"
-    for k, v in configs.items():
+    for k, v in config.items():
         message += "{:>25}: {:<30}\n".format(str(k), str(v))
     message += "----------------- End -------------------"
 
     logging.info(message)
 
     # Save options to file
-    file_name = os.path.join(
-        configs["log_path"], "{}_configs.txt".format(configs["phase"])
-    )
+    log_path  = config.get('LOG_PATH', './logs')
+    phase     = config.get('PHASE', 'train')
+    file_name = os.path.join(log_path, f"{phase}_configs.txt")
+    
     with open(file_name, "wt") as opt_file:
         opt_file.write(message)
         opt_file.write("\n")
-
 
 # --------------------------- Precision helper ---------------------------------#
 def get_precision_dtypes(prec: str = "float16"):
@@ -186,7 +186,6 @@ def get_precision_dtypes(prec: str = "float16"):
     }
     if prec not in table:
         raise ValueError(f"Unsupported precision '{prec}'.")
-    print(prec)
     return table[prec]
 
 

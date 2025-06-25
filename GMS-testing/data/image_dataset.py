@@ -129,18 +129,13 @@ class ImageDataset(Dataset):
 
         # Load RGB
         print(f"Loading {img_path} and {mask_path}")
-        img_np  = np.array(Image.open(img_path).convert("RGB"), dtype = self.np_dtype)
-        mask_np = np.array(Image.open(mask_path).convert("RGB"), dtype = self.np_dtype)
-        # print('hello')
-        # augmented = self.transforms(image=img_np, mask=mask_np)
-        # print('12')
-        # print(f'img_np shape: {img_np.shape}, mask_np shape: {mask_np.shape}')
-        # img = augmented["image"].to(self.torch_dtype)
-        # print(f'img_np shape: {img_np.shape}, mask_np shape: {mask_np.shape}')
-        # seg = augmented["mask"].to(self.torch_dtype)
-        # print('her')
-        img, seg = torch.from_numpy(img_np).to(self.torch_dtype), \
-                   torch.from_numpy(mask_np).to(self.torch_dtype)
+        img_np  = np.array(Image.open(img_path).convert("RGB"), dtype = np.float32)
+        mask_np = np.array(Image.open(mask_path).convert("RGB"), dtype = np.float32)
+
+        augmented = self.transforms(image = img_np, mask = mask_np)
+
+        img = augmented["image"].to(self.torch_dtype)
+        seg = augmented["mask"].to(self.torch_dtype)
         return {
             "name": name,
             "img": img,

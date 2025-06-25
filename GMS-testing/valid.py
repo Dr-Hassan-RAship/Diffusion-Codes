@@ -27,17 +27,17 @@ from data               import *
 from utils              import *
 from network            import *
 from diffusers          import AutoencoderTiny
-from configs.config     import *
+from configs            import config
 
 # --------------------------- Main validation loop -----------------------------#
 def run_validator():
     # ----- Get config and make relevant paths -----#
-    log_path          = os.path.join(SNAPSHOT_PATH, 'logs')
+    args              = argparse.Namespace(config = 'config.py')
     save_seg_img_path = PRED_MASKS_PATH
 
     os.makedirs(SNAPSHOT_PATH, exist_ok = True)
     os.makedirs(save_seg_img_path, exist_ok = True)
-    os.makedirs(log_path, exist_ok = True)
+    os.makedirs(LOG_PATH, exist_ok = True)
     
     # ----- Hardware, seed & Precision -----#
     gpus = ','.join([str(i) for i in GPUS])
@@ -46,9 +46,10 @@ def run_validator():
     np_dtype, torch_dtype = get_precision_dtypes(PRECISION)
 
     # --------- Logging setup -----#
-    open_log('train', log_path)
-    logging.info('Valid Configuration')
-    # print_options()
+    open_log(args, config)
+    logging.info(f"Using config for Valid: {args.config}")
+    CONFIG_VARS = {k: v for k, v in config.__dict__.items() if k.isupper()}
+    print_options(CONFIG_VARS)
 
     # ---- DataLoader ----
     valid_dataset    = ImageDataset(PICKLE_FILE_PATH, stage = 'test', precision = PRECISION)

@@ -11,14 +11,14 @@
 # Last Modified  : June 23, 2025
 
 # --------------------------- Experiment setup ---------------------------------#
-DATASET           = "kvasir-instrument"             # "bus", "kvasir-instrument", etc.
+DATASET           = "Kvasir-SEG"                    # "bus", "kvasir-instrument", etc.
 PHASE             = "train"                         # "train" or "valid"
 PRECISION         = "float16"                       # "float32", "float16", "bfloat16"
 IMG_SIZE          = 224                             # Dimension for resized images, e.g., 224 for 224x224
 SEED              = 2333
 VAE_SCALE_FACTOR  = 1.0
 VAE_MODE          = {'eval': True, 'train': False}  # 'train' or 'eval' mode for VAE
-IMG_FORMAT        = ".png"                           # 'jpg', 'png', 'tif', etc.
+IMG_FORMAT        = ".jpg"                          # 'jpg', 'png', 'tif', etc.
 
 # --------------------------- Base paths ---------------------------------------#
 BASE_DATA_DIR     = "./Dataset"
@@ -28,6 +28,7 @@ BASE_CKPT_DIR     = "./ckpt"
 BRIEF_DESCRIPTION = 'test_code'
 CHOSEN_STRATEGY   = 'best_valid_dice'  # 'latent_diffusion', 'diffusion', etc.
 SNAPSHOT_PATH     = f"{BASE_CKPT_DIR}/{DATASET}/{BRIEF_DESCRIPTION}"
+LOG_PATH          = f"{SNAPSHOT_PATH}/logs"
 PICKLE_FILE_PATH  = f"{BASE_DATA_DIR}/{DATASET}/{DATASET}_train_test_names.pkl"
 MODEL_WEIGHT_PATH = f"{SNAPSHOT_PATH}/checkpoints/{CHOSEN_STRATEGY}.pth"
 PRED_MASKS_PATH   = f"{SNAPSHOT_PATH}/predicted_masks_{CHOSEN_STRATEGY}"

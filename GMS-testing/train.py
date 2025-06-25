@@ -22,7 +22,7 @@ from monai.losses.dice import DiceLoss
 
 from data import *
 from utils import *
-from configs.config import *
+from configs  import config
 from networks import *
 
 from diffusers import AutoencoderTiny
@@ -37,10 +37,10 @@ def run_trainer() -> None:
     runs training/validation, and handles checkpointing.
     """
     # ------------- Parse args & flatten config ---------------------------------------#
+    args = argparse.Namespace(config = 'config.py')
     # Dynamically patch snapshot and log paths with timestamp
-    log_path = os.path.join(SNAPSHOT_PATH, "logs")
     os.makedirs(SNAPSHOT_PATH, exist_ok=True)
-    os.makedirs(log_path, exist_ok=True)
+    os.makedirs(LOG_PATH, exist_ok=True)
 
     # ------------- Hardware, seed & precision -------------------------------------------#
     gpus = ",".join([str(i) for i in GPUS])
@@ -49,12 +49,13 @@ def run_trainer() -> None:
     np_dtype, torch_dtype = get_precision_dtypes(PRECISION)
 
     # ------------- Logging setup ---------------------------------------------#
-    open_log("train", log_path)
-    logging.info("Training configuration:")
-    # print_options()
+    open_log(args, config)
+    logging.info(f"Using config for Train: {args.config}")
+    CONFIG_VARS = {k: v for k, v in config.__dict__.items() if k.isupper()}
+    print_options(CONFIG_VARS)
 
     # ------------- TensorBoard setup -----------------------------------------#
-    writer = SummaryWriter(log_path)
+    writer = SummaryWriter(LOG_PATH)
     ds_list = ["level2", "level1", "out"]  # Multi-scale levels
 
     # ------------- Datasets/Dataloaders -------------------------------------#
@@ -63,17 +64,17 @@ def run_trainer() -> None:
 
     train_loader = DataLoader(
         train_dataset,
-        batch_size=BATCH_SIZE,
-        pin_memory=True,
-        drop_last=True,
-        shuffle=True,
+        batch_size            =  BATCH_SIZE,
+        pin_memory            =  True,
+        drop_last             =  True,
+        shuffle               =  True,
     )
     valid_loader = DataLoader(
         valid_dataset,
-        batch_size=BATCH_SIZE,
-        pin_memory=True,
-        drop_last=False,
-        shuffle=False,
+        batch_size            = BATCH_SIZE,
+        pin_memory            = True,
+        drop_last             = False,
+        shuffle               = False,
     )
 
     # ------------- Model definitions ----------------------------------------#
@@ -124,8 +125,6 @@ def run_trainer() -> None:
             seg_rgb = 2.0 * seg_raw - 1.0
             seg_img = torch.mean(seg_raw, dim=1, keepdim=True)
             name = batch_data["name"]
-
-            continue
 
             img_latent_mean_aug = vae_model.encode(get_cuda(img_rgb)).latents
             seg_latent_mean = vae_model.encode(get_cuda(seg_rgb)).latents

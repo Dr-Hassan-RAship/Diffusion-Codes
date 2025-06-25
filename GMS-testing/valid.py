@@ -80,7 +80,8 @@ def run_validator():
     name_list, T_loss_valid = [], []
 
     for batch_data in tqdm(valid_dataloader, desc = 'Valid: '):
-        img_rgb = batch_data['img'] / 255.0
+        img_rgb = batch_data['img']
+        img_rgb = img_rgb / 255.0 # [ADDED] V.V.V Imp!  --> SCALE CORRECTION
         img_rgb = 2. * img_rgb - 1.
         seg_raw = batch_data['seg'].permute(0, 3, 1, 2) / 255.0
         seg_rgb = 2. * seg_raw - 1.

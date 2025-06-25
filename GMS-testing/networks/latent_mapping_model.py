@@ -44,18 +44,19 @@ class SpatialSelfAttention(nn.Module):
         )
 
     def forward(self, x):
-        h_ = self.norm(x)
-        q = self.q(h_)
-        k = self.k(h_)
-        v = self.v(h_)
+        h_ = x
+        h_ = self.norm(h_)
+        q  = self.q(h_)
+        k  = self.k(h_)
+        v  = self.v(h_)
 
         b, c, h, w = q.shape
-        q = rearrange(q, "b c h w -> b (h w) c")
-        k = rearrange(k, "b c h w -> b c (h w)")
-        w_ = torch.einsum("bij,bjk->bik", q, k) * (c**-0.5)
+        q  = rearrange(q, "b c h w -> b (h w) c")
+        k  = rearrange(k, "b c h w -> b c (h w)")
+        w_ = torch.einsum("bij,bjk->bik", q, k) * (c**(-0.5))
         w_ = torch.nn.functional.softmax(w_, dim=2)
 
-        v = rearrange(v, "b c h w -> b c (h w)")
+        v  = rearrange(v, "b c h w -> b c (h w)")
         w_ = rearrange(w_, "b i j -> b j i")
         h_ = torch.einsum("bij,bjk->bik", v, w_)
         h_ = rearrange(h_, "b c (h w) -> b c h w", h=h)
@@ -71,8 +72,8 @@ class ResBlock(nn.Module):
     def __init__(self, in_channels, out_channels, leaky=True):
         super().__init__()
         activation = nn.PReLU() if leaky else nn.ReLU(inplace=True)
-        self.act1 = activation
-        self.act2 = activation
+        self.act1  = activation
+        self.act2  = activation
 
         self.conv1 = nn.Sequential(
             Normalize(in_channels),
@@ -93,89 +94,58 @@ class ResBlock(nn.Module):
                 bias=True,
             ),
         )
-        self.skip_connection = (
-            nn.Identity()
-            if in_channels == out_channels
-            else nn.Conv2d(
-                in_channels,
-                out_channels,
-                kernel_size=1,
-                stride=1,
-                padding=0,
-                bias=False,
-            )
-        )
+        if in_channels == out_channels:
+            self.skip_connection = nn.Identity()
+        else:
+            self.skip_connection = nn.Conv2d(in_channels, out_channels, kernel_size=1, stride=1, padding=0, bias=False)
 
     def forward(self, x):
-        return self.skip_connection(x) + self.conv2(self.conv1(x))
+        h = self.conv1(x)
+        h = self.conv2(h)
+        return self.skip_connection(x) + h
 
 
 # --------------------------- Residual attention block ----------------------------- #
 class ResAttBlock(nn.Module):
     def __init__(self, in_channels, out_channels):
         super().__init__()
-        self.resblock = ResBlock(in_channels, out_channels)
+        self.resblock  =  ResBlock(in_channels=in_channels, out_channels=out_channels)
         self.attention = SpatialSelfAttention(out_channels)
 
     def forward(self, x):
-        return self.attention(self.resblock(x))
-
+        h = self.resblock(x)
+        h = self.attention(h)
+        return h
 
 # --------------------------- Attention U-Net with deep supervision ---------------- #
 class ResAttnUNet_DS(nn.Module):
-    def __init__(
-        self,
-        in_channel=8,
-        out_channels=8,
-        num_res_blocks=2,
-        ch=32,
-        ch_mult=(1, 2, 4, 4),
-    ) -> None:
-        super().__init__()
+    def __init__(self, in_channel=8, out_channels=8, num_res_blocks=2, ch=32, ch_mult=(1,2,4,4)) -> None:
+        super(ResAttnUNet_DS, self).__init__()
         self.ch = ch
-        self.num_res_blocks = (
-            len(ch_mult) * [num_res_blocks]
-            if isinstance(num_res_blocks, int)
-            else num_res_blocks
-        )
+        if isinstance(num_res_blocks, int):
+            self.num_res_blocks = len(ch_mult) * [num_res_blocks]
 
-        self.input_blocks = nn.Conv2d(
-            in_channel, ch, kernel_size=3, stride=1, padding=1, bias=True
-        )
+        self.input_blocks = nn.Conv2d(in_channel, ch, kernel_size=3, stride=1, padding=1, bias=True)
 
-        # Encoder path
-        self.conv1_0 = ResAttBlock(ch, ch * ch_mult[0])
-        self.conv2_0 = ResAttBlock(ch * ch_mult[0], ch * ch_mult[1])
-        self.conv3_0 = ResAttBlock(ch * ch_mult[1], ch * ch_mult[2])
-        self.conv4_0 = ResAttBlock(ch * ch_mult[2], ch * ch_mult[3])
+        self.conv1_0 = ResAttBlock(in_channels=ch,              out_channels=ch * ch_mult[0])
+        self.conv2_0 = ResAttBlock(in_channels=ch * ch_mult[0], out_channels=ch * ch_mult[1])
+        self.conv3_0 = ResAttBlock(in_channels=ch * ch_mult[1], out_channels=ch * ch_mult[2])
+        self.conv4_0 = ResAttBlock(in_channels=ch * ch_mult[2], out_channels=ch * ch_mult[3])
 
-        # Decoder path
-        self.conv3_1 = ResAttBlock(ch * (ch_mult[2] + ch_mult[3]), ch * ch_mult[2])
-        self.conv2_2 = ResAttBlock(ch * (ch_mult[1] + ch_mult[2]), ch * ch_mult[1])
-        self.conv1_3 = ResAttBlock(ch * (ch_mult[0] + ch_mult[1]), ch * ch_mult[0])
-        self.conv0_4 = ResAttBlock(ch * (1 + ch_mult[0]), ch * 1)
+        self.conv3_1 = ResAttBlock(in_channels=ch * (ch_mult[2] + ch_mult[3]), out_channels=ch * ch_mult[2])
+        self.conv2_2 = ResAttBlock(in_channels=ch * (ch_mult[1] + ch_mult[2]), out_channels=ch * ch_mult[1])
+        self.conv1_3 = ResAttBlock(in_channels=ch * (ch_mult[0] + ch_mult[1]), out_channels=ch * ch_mult[0])
+        self.conv0_4 = ResAttBlock(in_channels=ch * (1          + ch_mult[0]), out_channels=ch * 1)
 
-        # Deep supervision output layers
-        self.convds3 = nn.Sequential(
-            Normalize(ch * ch_mult[2]),
-            nn.SiLU(),
-            nn.Conv2d(ch * ch_mult[2], out_channels, 3, 1, 1, bias=False),
-        )
-        self.convds2 = nn.Sequential(
-            Normalize(ch * ch_mult[1]),
-            nn.SiLU(),
-            nn.Conv2d(ch * ch_mult[1], out_channels, 3, 1, 1, bias=False),
-        )
-        self.convds1 = nn.Sequential(
-            Normalize(ch * ch_mult[0]),
-            nn.SiLU(),
-            nn.Conv2d(ch * ch_mult[0], out_channels, 3, 1, 1, bias=False),
-        )
-        self.convds0 = nn.Sequential(
-            Normalize(ch * 1),
-            nn.SiLU(),
-            nn.Conv2d(ch * 1, out_channels, 3, 1, 1, bias=False),
-        )
+        self.convds3 = nn.Sequential(Normalize(ch * ch_mult[2]), nn.SiLU(),
+                                     nn.Conv2d(ch * ch_mult[2], out_channels, kernel_size=3, stride=1, padding=1, bias=False))
+        self.convds2 = nn.Sequential(Normalize(ch * ch_mult[1]), nn.SiLU(),
+                                     nn.Conv2d(ch * ch_mult[1], out_channels, kernel_size=3, stride=1, padding=1, bias=False))
+        self.convds1 = nn.Sequential(Normalize(ch * ch_mult[0]), nn.SiLU(),
+                                     nn.Conv2d(ch * ch_mult[0], out_channels, kernel_size=3, stride=1, padding=1, bias=False))
+        self.convds0 = nn.Sequential(Normalize(ch * 1), nn.SiLU(),
+                                     nn.Conv2d(ch * 1, out_channels, kernel_size=3, stride=1, padding=1, bias=False))
+        
 
         self._initialize_weights()
         self._print_networks(verbose=False)
@@ -185,18 +155,19 @@ class ResAttnUNet_DS(nn.Module):
         x1 = self.conv1_0(x0)
         x2 = self.conv2_0(x1)
         x3 = self.conv3_0(x2)
-        x4 = self.conv4_0(x3)
 
+        x4   = self.conv4_0(x3)
+        
         x3_1 = self.conv3_1(torch.cat([x3, x4], dim=1))
         x2_2 = self.conv2_2(torch.cat([x2, x3_1], dim=1))
         x1_3 = self.conv1_3(torch.cat([x1, x2_2], dim=1))
         x0_4 = self.conv0_4(torch.cat([x0, x1_3], dim=1))
-
+        
         return {
             "level3": self.convds3(x3_1),
             "level2": self.convds2(x2_2),
             "level1": self.convds1(x1_3),
-            "out": self.convds0(x0_4),
+            "out"   : self.convds0(x0_4),
         }
 
     # --------------------------- Weight initialization ----------------------------- #

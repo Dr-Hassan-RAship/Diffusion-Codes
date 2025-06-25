@@ -11,14 +11,14 @@
 # Last Modified  : June 23, 2025
 
 # --------------------------- Experiment setup ---------------------------------#
-DATASET           = "Kvasir-SEG"                    # "bus", "kvasir-instrument", etc.
+DATASET           = "busi"                          # "bus", "kvasir-instrument", etc.
 PHASE             = "train"                         # "train" or "valid"
-PRECISION         = "float16"                       # "float32", "float16", "bfloat16"
+PRECISION         = "float32"                       # "float32", "float16", "bfloat16"
 IMG_SIZE          = 224                             # Dimension for resized images, e.g., 224 for 224x224
 SEED              = 2333
 VAE_SCALE_FACTOR  = 1.0
 VAE_MODE          = {'eval': True, 'train': False}  # 'train' or 'eval' mode for VAE
-IMG_FORMAT        = ".jpg"                          # 'jpg', 'png', 'tif', etc.
+IMG_FORMAT        = ".png"                          # 'jpg', 'png', 'tif', etc.
 
 # --------------------------- Base paths ---------------------------------------#
 BASE_DATA_DIR     = "./Dataset"
@@ -35,7 +35,7 @@ PRED_MASKS_PATH   = f"{SNAPSHOT_PATH}/predicted_masks_{CHOSEN_STRATEGY}"
 
 # --------------------------- Training settings --------------------------------#
 EPOCHS            = 200
-BATCH_SIZE        = 1
+BATCH_SIZE        = 24
 SAVE_FREQ         = 25
 LR                = 0.002
 NUM_WORKERS       = 8

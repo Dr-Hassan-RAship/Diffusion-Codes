@@ -109,9 +109,9 @@ class ImageDataset(Dataset):
         with open(pickle_file, "rb") as f:
             split_dict = pickle.load(f)
 
-        self.names: List[str] = split_dict[stage]["name_list"]
-        self.stage: str       = stage
-        self.img_dir: Path    = Path(pickle_file).parent / "images"
+        self.names:    List[str] = split_dict[stage]["name_list"]
+        self.stage:    str       = stage
+        self.img_dir:  Path    = Path(pickle_file).parent / "images"
         self.mask_dir: Path   = Path(pickle_file).parent / "masks"
         self.transforms       = build_transforms(stage, img_size)
 
@@ -128,7 +128,6 @@ class ImageDataset(Dataset):
         mask_path = mask_base.with_suffix(IMG_FORMAT)
 
         # Load RGB
-        print(f"Loading {img_path} and {mask_path}")
         img_np  = np.array(Image.open(img_path).convert("RGB"), dtype = np.float32)
         mask_np = np.array(Image.open(mask_path).convert("RGB"), dtype = np.float32)
 

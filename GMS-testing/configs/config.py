@@ -25,7 +25,8 @@ BASE_DATA_DIR     = "./Dataset"
 BASE_CKPT_DIR     = "./ckpt"
 
 # --------------------------- Derived paths ------------------------------------#
-BRIEF_DESCRIPTION = 'test_code'
+# f'/media/ee/DATA/Talha_Nehal/Diffusion-Codes/GMS/ckpt/tiny_vae_busi/epochs_200/checkpoints/{CHOSEN_STRATEGY}.pth'
+BRIEF_DESCRIPTION = 'test_code_2'
 CHOSEN_STRATEGY   = 'best_valid_dice'  # 'latent_diffusion', 'diffusion', etc.
 SNAPSHOT_PATH     = f"{BASE_CKPT_DIR}/{DATASET}/{BRIEF_DESCRIPTION}"
 LOG_PATH          = f"{SNAPSHOT_PATH}/logs"

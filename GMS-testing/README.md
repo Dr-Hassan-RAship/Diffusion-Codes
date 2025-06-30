@@ -1,6 +1,6 @@
 # Generative Medical Segmentation (AAAI 2025)
 
-This is the official repository of Generative Medical Segmentation (GMS).
+This is the official repository of *Generative Medical Segmentation* (GMS).
 
 [Paper](https://arxiv.org/pdf/2403.18198.pdf) | [Weights](ckpt)
 

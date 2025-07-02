@@ -22,17 +22,17 @@ def dice_score(y_pred, y_true, eps = 1e-7):
     """
     Computes Dice Score (F1/DSC) for binary arrays.
     """
-    
+
     # print(f'y_pred.shape: {y_pred.shape}, y_true.shape: {y_true.shape}')
-    
+
     y_pred = (y_pred >= 0.5).astype(np.uint8)
     y_true = (y_true >= 0.5).astype(np.uint8)
-    
+
     intersection = np.sum(y_pred * y_true)
     denominator  = np.sum(y_pred) + np.sum(y_true)
-    
+
     return 2. * intersection / (denominator + eps)
-    
+
 # --------------------------- IoU Score ----------------------------------------#
 def iou_score(y_pred, y_true, eps = 1e-7):
     """
@@ -40,10 +40,10 @@ def iou_score(y_pred, y_true, eps = 1e-7):
     """
     y_pred = (y_pred >= 0.5).astype(np.uint8)
     y_true = (y_true >= 0.5).astype(np.uint8)
-    
+
     intersection = np.sum(y_pred * y_true)
     union        = np.sum(y_pred) + np.sum(y_true) - intersection
-    
+
     return intersection / (union + eps)
 
 # --------------------------- Hausdorff Distance (HD95) ------------------------#
@@ -68,14 +68,14 @@ def hd95_score(y_pred, y_true):
 
     # all_dists = np.concatenate([dist_pred_to_true, dist_true_to_pred])
     # return np.percentile(all_dists, 95)
-    
+
     # Check if y_pred and y_true are binary masks
     if y_pred.ndim != 2 or y_true.ndim != 2:
         raise ValueError("y_pred and y_true must be 2D binary masks.")
     if y_pred.sum() == 0 or y_true.sum() == 0:
         print("One of the masks is empty, returning 0.0 for HD95.")
         return 0.0
-    
+
     hd95 = metric.binary.hd95(y_pred, y_true)
     return hd95
 
@@ -90,18 +90,18 @@ def ssim(pred, gt, eps = 1e-7):
     """
     pred = pred.astype(np.float64)
     gt   = gt.astype(np.float64)
-    
+
     mean_pred = pred.mean()
     mean_gt   = gt.mean()
     std_pred  = pred.std()
     std_gt    = gt.std()
     cov       = np.mean((pred - mean_pred) * (gt - mean_gt))
-    
+
     # 3 components: luminance, contrast, structure
     luminance = (2 * mean_pred * mean_gt) / (mean_pred**2 + mean_gt**2 + eps)
     contrast  = (2 * std_pred * std_gt)   / (std_pred**2 + std_gt**2 + eps)
     structure = cov / (std_pred * std_gt + eps)
-    
+
     return luminance * contrast * structure
 
 # --------------------------- Region-aware SSIM (quadrant split) ---------------#
@@ -115,12 +115,12 @@ def ssim_region(pred, gt, mask = None):
     """
     if mask is None:
         mask = (gt > 0.5).astype(np.uint8)
-        
+
     # Compute centroid of foreground in GT
     indices = np.argwhere(mask)
     if indices.size == 0:
         return 0.0
-    
+
     centroid = indices.mean(axis=0).astype(int)
     h, w     = gt.shape
     h_c, w_c = centroid
@@ -135,7 +135,7 @@ def ssim_region(pred, gt, mask = None):
     # Weight = fraction of GT foreground pixels in block
     total_fg             = mask.sum()
     ssim_blocks, weights = [], []
-    
+
     for b in blocks:
         gt_block   = gt[b]
         pred_block = pred[b]
@@ -147,7 +147,7 @@ def ssim_region(pred, gt, mask = None):
             ssim_val = ssim(pred_block.flatten(), gt_block.flatten())
         ssim_blocks.append(ssim_val)
         weights.append(weight)
-        
+
     return np.sum(np.array(ssim_blocks) * np.array(weights))
 
 # --------------------------- Object-aware SSIM --------------------------------#
@@ -162,11 +162,11 @@ def ssim_object(pred, gt, lam = 0.5, eps = 1e-7):
     """
     fg_mask = (gt > 0.5)
     bg_mask = ~fg_mask
-    
+
     # Foreground
     x_fg = pred[fg_mask]
     y_fg = gt[fg_mask]
-    
+
     mean_x_fg = x_fg.mean() if x_fg.size > 0 else 0.0
     mean_y_fg = y_fg.mean() if y_fg.size > 0 else 0.0
     std_x_fg  = x_fg.std()  if x_fg.size > 0 else 0.0
@@ -178,7 +178,7 @@ def ssim_object(pred, gt, lam = 0.5, eps = 1e-7):
     # Background
     x_bg = pred[bg_mask]
     y_bg = gt[bg_mask]
-    
+
     mean_x_bg = x_bg.mean() if x_bg.size > 0 else 0.0
     mean_y_bg = y_bg.mean() if y_bg.size > 0 else 0.0
     std_x_bg  = x_bg.std()  if x_bg.size > 0 else 0.0
@@ -188,7 +188,7 @@ def ssim_object(pred, gt, lam = 0.5, eps = 1e-7):
 
     # µ: ratio of GT foreground area
     mu = fg_mask.sum() / (gt.size + eps)
-    
+
     return mu * O_fg + (1 - mu) * O_bg
 
 # --------------------------- Combined SSIM (final metric) ---------------------#
@@ -200,14 +200,14 @@ def ssim_combined(pred, gt, alpha = 0.5, lam = 0.5):
     gt   = np.asarray(gt, dtype   = np.float64)
     if pred.shape != gt.shape:
         raise ValueError(f"Shapes must match: {pred.shape}, {gt.shape}")
-    
+
     # Normalize
     pred = (pred - pred.min()) / (pred.max() - pred.min() + 1e-8)
     gt   = (gt   - gt.min())   / (gt.max()   - gt.min()   + 1e-8)
-    
+
     So = ssim_object(pred, gt, lam=lam)
     Sr = ssim_region(pred, gt)
-    
+
     return alpha * So + (1 - alpha) * Sr
 
 #---------------------------- All Metrics Combined -----------------------------#

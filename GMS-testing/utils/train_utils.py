@@ -13,7 +13,7 @@
 # ------------------------------------------------------------------------------#
 
 # --------------------------- Module imports ----------------------------------#
-import torch, os
+import torch, os, math
 
 from networks          import *
 from configs.config    import *
@@ -97,5 +97,4 @@ def save_binary_and_logits(x_logits, x_binary, name, save_seg_img_path, save_seg
     x_logits = (x_logits * 255).astype(np.uint8)
     x_logits = Image.fromarray(x_logits)
     x_logits.save(os.path.join(save_seg_logits_path, name + '_logits' + IMG_FORMAT))
-
 # -------------------------------- End ----------------------------------------#

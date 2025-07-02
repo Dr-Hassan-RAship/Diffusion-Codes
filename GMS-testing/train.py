@@ -108,6 +108,9 @@ def run_trainer() -> None:
     best_valid_dice_epoch   = 0
     best_valid_loss_dice    = np.inf
 
+    ramup_length = 15 # for the weight for loss dice
+    w2           = W_DICE  # inital value for weight of loss dice
+
     # =========================================================================
     #                               TRAINING LOOP
     # =========================================================================
@@ -119,7 +122,7 @@ def run_trainer() -> None:
         T_loss_valid, T_loss_Rec_valid, T_loss_Dice_valid, T_Dice_valid = [], [], [], []
 
         # =================== Training phase =================== #
-        for batch_data in tqdm(train_loader, desc=f"Train (epoch {epoch})"):            
+        for batch_data in tqdm(train_loader, desc=f"Train (epoch {epoch})"):
             img_rgb = 2.0 * batch_data["img"] - 1.0
             img_rgb = img_rgb / 255.0 # [ADDED] V.V.V Imp!  --> SCALE CORRECTION
             seg_raw = batch_data["seg"].permute(0, 3, 1, 2) / 255.0
@@ -129,9 +132,12 @@ def run_trainer() -> None:
 
             img_latent_mean_aug = vae_model.encode(get_cuda(img_rgb)).latents
             seg_latent_mean     = vae_model.encode(get_cuda(seg_rgb)).latents
-                        
+
             out_latent_mean_dict = mapping_model(img_latent_mean_aug)
-            
+
+            # w2 = gaussian_rampup(epoch, ramup_length)
+            # print(f'w2 value: {w2}')
+
             loss_Rec             = W_REC * get_multi_loss( # instead of W_REC
                 mse_loss,
                 out_latent_mean_dict,
@@ -139,12 +145,12 @@ def run_trainer() -> None:
                 is_ds     = True,
                 key_list  = ds_list,
             )
-            
+
             pred_seg_dict = {
                 level: vae_decode(vae_model, out_latent_mean_dict[level], scale_factor)
                 for level in ds_list
             }
-            
+
             loss_Dice = W_DICE * get_multi_loss(  # instead of W_DICE
                 dice_loss,
                 pred_seg_dict,
@@ -152,7 +158,7 @@ def run_trainer() -> None:
                 is_ds        = True,
                 key_list     = ds_list,
             )
-            
+
             loss = loss_Rec + loss_Dice
 
             optimizer.zero_grad()
@@ -206,8 +212,8 @@ def run_trainer() -> None:
                 loss_Rec = W_REC * mse_loss(
                     out_latent_mean_dict["out"], seg_latent_mean
                 )
-                loss_Dice = W_DICE * dice_loss(pred_seg, get_cuda(seg_img))
-                
+                loss_Dice = w2 * dice_loss(pred_seg, get_cuda(seg_img))
+
                 loss = loss_Rec + loss_Dice
 
                 # ---- Dice calculation ----
@@ -247,22 +253,22 @@ def run_trainer() -> None:
             best_valid_dice         = T_Dice_valid
             best_valid_dice_epoch   = epoch
             logging.info("Save best valid Dice !")
-            
+
         if T_loss_valid < best_valid_loss:
             save_checkpoint(mapping_model, "best_valid_loss.pth", SNAPSHOT_PATH)
             best_valid_loss = T_loss_valid
             logging.info("Save best valid Loss All !")
-            
+
         if T_loss_Rec_valid < best_valid_loss_rec:
             save_checkpoint(mapping_model, "best_valid_loss_rec.pth", SNAPSHOT_PATH)
             best_valid_loss_rec = T_loss_Rec_valid
             logging.info("Save best valid Loss Rec !")
-            
+
         if T_loss_Dice_valid < best_valid_loss_dice:
             save_checkpoint(mapping_model, "best_valid_loss_dice.pth", SNAPSHOT_PATH)
             best_valid_loss_dice = T_loss_Dice_valid
             logging.info("Save best valid Loss Dice !")
-            
+
         if epoch % SAVE_FREQ == 0:
             save_checkpoint(
                 mapping_model,

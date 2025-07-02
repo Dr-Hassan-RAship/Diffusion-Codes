@@ -13,7 +13,7 @@ from tqdm import tqdm
 from PIL import Image
 from torch.utils.data import DataLoader
 from sklearn.metrics import confusion_matrix
-
+from medpy import metric
 # Own Package
 from data.image_dataset import Image_Dataset
 from utils.tools import seed_reproducer, load_checkpoint, get_cuda, print_options
@@ -46,7 +46,7 @@ def vae_decode(vae_model, pred_mean, scale_factor):
 
 def arg_parse() -> argparse.ArgumentParser.parse_args :
     parser = argparse.ArgumentParser()
-    parser.add_argument('--config', default='./configs/kvasir-seg_valid.yaml', # [CHANGED] --> added kvasir-seg yaml
+    parser.add_argument('--config', default='./configs/kvasir-instrument_valid.yaml', # [CHANGED] --> added kvasir-seg yaml
                         type=str, help='load the config file')
     args = parser.parse_args()
     return args
@@ -55,7 +55,7 @@ def run_trainer() -> None:
     args = arg_parse()
     configs = yaml.load(open(args.config), Loader=yaml.FullLoader)
     configs['log_path'] = os.path.join(configs['snapshot_path'], 'logs')
-    
+
     # Output folder and save fig folder
     os.makedirs(configs['snapshot_path'], exist_ok=True)
     os.makedirs(configs['save_seg_img_path'], exist_ok=True)
@@ -64,7 +64,7 @@ def run_trainer() -> None:
     # Set GPU ID
     gpus = ','.join([str(i) for i in configs['GPUs']])
     os.environ["CUDA_VISIBLE_DEVICES"] = gpus
-    
+
     # Fix seed (for repeatability)
     seed_reproducer(configs['seed'])
 
@@ -79,10 +79,10 @@ def run_trainer() -> None:
 
     # Define networks
     mapping_model = get_cuda(ResAttnUNet_DS(
-        in_channel=configs['in_channel'], 
-        out_channels=configs['out_channels'], 
-        num_res_blocks=configs['num_res_blocks'], 
-        ch=configs['ch'], 
+        in_channel=configs['in_channel'],
+        out_channels=configs['out_channels'],
+        num_res_blocks=configs['num_res_blocks'],
+        ch=configs['ch'],
         ch_mult=configs['ch_mult']
     ))
     mapping_model = load_checkpoint(mapping_model, configs['model_weight'])
@@ -126,8 +126,8 @@ def run_trainer() -> None:
             x_sample = 255. * x_sample
             img = Image.fromarray(x_sample.astype(np.uint8))
             # [CHANGED] --> Question: Is the segmentation being saved in grayscale or RGB? Also changed png to jpg
-            img.save(os.path.join(configs['save_seg_img_path'], name + '.jpg'))
-            
+            img.save(os.path.join(configs['save_seg_img_path'], name + '.png'))
+
             T_loss_valid.append(loss_Rec.item())
 
     T_loss_valid = np.mean(T_loss_valid)
@@ -146,11 +146,17 @@ def run_trainer() -> None:
 
     dsc_list = []
     iou_list = []
+    hd95_list = []
 
     for case_name in tqdm(name_list):
         # [CHANGED] --> changed from .png to .png
         seg_pred = load_img(os.path.join(pred_path, case_name + '.png'))
         seg_true = load_img(os.path.join(true_path, case_name + '.png'))
+
+        if seg_pred.sum() == 0 or seg_true.sum() == 0:
+            hd95 = 0.0
+        else:
+            hd95 = metric.binary.hd95(seg_pred, seg_true)
 
         preds = np.array(seg_pred).reshape(-1)
         gts = np.array(seg_true).reshape(-1)
@@ -159,27 +165,30 @@ def run_trainer() -> None:
         y_true = np.where(gts>=0.5, 1, 0)
 
         confusion = confusion_matrix(y_true, y_pre)
-        TN, FP, FN, TP = confusion[0,0], confusion[0,1], confusion[1,0], confusion[1,1] 
+        TN, FP, FN, TP = confusion[0,0], confusion[0,1], confusion[1,0], confusion[1,1]
 
         f1_or_dsc = float(2 * TP) / float(2 * TP + FP + FN) if float(2 * TP + FP + FN) != 0 else 0
         miou = float(TP) / float(TP + FP + FN) if float(TP + FP + FN) != 0 else 0
 
         dsc_list.append(f1_or_dsc)
         iou_list.append(miou)
+        hd95_list.append(hd95)
 
     # MEAN & Std Value
     name_list.extend(['Avg', 'Std'])
     dsc_list.extend([np.mean(dsc_list), np.std(dsc_list, ddof=1)])
     iou_list.extend([np.mean(iou_list), np.std(iou_list, ddof=1)])
+    hd95_list.extend([np.mean(hd95_list), np.std(iou_list, ddof=1)])
 
     df = pd.DataFrame({
         'Name': name_list,
         'DSC':  dsc_list,
-        'IoU': iou_list
+        'IoU': iou_list,
+        'HD95': hd95_list
     })
     df.to_csv(csv_path, index=False)
 
-    logging.info("DSC: {:.4f}, IOU: {:.4f}".format(dsc_list[-2], iou_list[-2]))
+    logging.info("DSC: {:.4f}, IOU: {:.4f}, HD95: {:.4f}".format(dsc_list[-2], iou_list[-2], hd95_list[-2]))
     logging.info('Time Taken: %d sec' % (time.time() - epoch_start_time))
     logging.info('\n')
 

@@ -65,7 +65,7 @@ def arg_parse() -> argparse.ArgumentParser.parse_args:
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--config",
-        default="./configs/kvasir-seg_train.yaml",
+        default="./configs/qatar_19_train.yaml",
         type=str,
         help="load the config file",
     )
@@ -76,9 +76,10 @@ def arg_parse() -> argparse.ArgumentParser.parse_args:
 def run_trainer() -> None:
     args = arg_parse()
     configs = yaml.load(open(args.config), Loader=yaml.FullLoader)
+    # time.strftime("%Y%m%d%H%M", time.localtime(time.time()))
     configs["snapshot_path"] = os.path.join(
         configs["snapshot_path"],
-        time.strftime("%Y%m%d%H%M", time.localtime(time.time())),
+        'epoch_2000',
     )
     configs["log_path"] = os.path.join(configs["snapshot_path"], "logs")
 
@@ -103,8 +104,8 @@ def run_trainer() -> None:
     ds_list = ["level2", "level1", "out"]
 
     # Get data loader
-    train_dataset = Image_Dataset(configs["pickle_file_path"], stage="train")
-    valid_dataset = Image_Dataset(configs["pickle_file_path"], stage="test")
+    train_dataset = Image_Dataset(configs["pickle_file_path"], stage="train", excel = True)
+    valid_dataset = Image_Dataset(configs["pickle_file_path"], stage="val", excel = True)
     train_dataloader = DataLoader(
         train_dataset,
         batch_size=configs["batch_size"],
@@ -316,26 +317,26 @@ def run_trainer() -> None:
         )
 
         if T_Dice_valid > best_valid_dice:
-            save_name = "best_valid_dice.pth"
+            save_name = f"best_valid_dice_{epoch}.pth"
             save_checkpoint(mapping_model, save_name, configs["snapshot_path"])
             best_valid_dice = T_Dice_valid
             best_valid_dice_epoch = epoch
             logging.info("Save best valid Dice !")
 
         if T_loss_valid < best_valid_loss:
-            save_name = "best_valid_loss.pth"
+            save_name = f"best_valid_loss_{epoch}.pth"
             save_checkpoint(mapping_model, save_name, configs["snapshot_path"])
             best_valid_loss = T_loss_valid
             logging.info("Save best valid Loss All !")
 
         if T_loss_Rec_valid < best_valid_loss_rec:
-            save_name = "best_valid_loss_rec.pth"
+            save_name = f"best_valid_loss_rec_{epoch}.pth"
             save_checkpoint(mapping_model, save_name, configs["snapshot_path"])
             best_valid_loss_rec = T_loss_Rec_valid
             logging.info("Save best valid Loss Rec !")
 
         if T_loss_Dice_valid < best_valid_loss_dice:
-            save_name = "best_valid_loss_dice.pth"
+            save_name = f"best_valid_loss_dice_{epoch}.pth"
             save_checkpoint(mapping_model, save_name, configs["snapshot_path"])
             best_valid_loss_dice = T_loss_Dice_valid
             logging.info("Save best valid Loss Dice !")

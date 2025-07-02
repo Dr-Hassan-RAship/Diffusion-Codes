@@ -20,7 +20,6 @@ import torch.nn as nn
 
 from einops import rearrange
 
-
 # --------------------------- Normalization block ---------------------------------- #
 def Normalize(in_channels):
     """GroupNorm wrapper for consistency across blocks."""

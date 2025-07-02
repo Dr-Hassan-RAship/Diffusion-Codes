@@ -1,17 +1,17 @@
-# # ------------------------------------------------------------------------------#
-# #
-# # File name                 : valod.py
-# # Purpose                   : Main Inference Loop for GMS
-# # Usage                     : python valid.py
-# #
-# # Authors                   : Talha Ahmed, Nehal Ahmed Shaikh, Hassan Mohy-ud-Din
-# # Email                     : 24100033@lums.edu.pk, 202410001@lums.edu.pk,
-# #                             hassan.mohyuddin@lums.edu.pk
-# #
-# # Last Modified             : June 23, 2025
-# # ------------------------------------------------------------------------------#
+# ------------------------------------------------------------------------------#
+#
+# File name                 : valod.py
+# Purpose                   : Main Inference Loop for GMS
+# Usage                     : python valid.py
+#
+# Authors                   : Talha Ahmed, Nehal Ahmed Shaikh, Hassan Mohy-ud-Din
+# Email                     : 24100033@lums.edu.pk, 202410001@lums.edu.pk,
+#                             hassan.mohyuddin@lums.edu.pk
+#
+# Last Modified             : June 23, 2025
+# ------------------------------------------------------------------------------#
 
-# # --------------------------- Module Imports -----------------------------------#
+# --------------------------- Module Imports -----------------------------------#
 # import torch, os, time, logging, argparse
 
 # import numpy            as np
@@ -63,6 +63,9 @@
 
 #     mapping_model = load_checkpoint(mapping_model, MODEL_WEIGHT_PATH)
 #     mapping_model.eval()
+    
+#     # Get a glimpse of the state dict of the mapping model
+#     # print("Mapping Model State Dict Keys:", mapping_model.state_dict().keys())
 
 #     # Modular VAE loading (dtype, device, freeze are all config-controlled)
 #     vae_model = load_pretrained_model(
@@ -122,7 +125,7 @@
 #     name_list = [x.replace(IMG_FORMAT, '') for x in name_list]
 #     name_list = [x.replace('_binary', '') for x in name_list]
 
-#     dsc_list, iou_list = [], []
+#     dsc_list, iou_list, hd95_list = [], [], []
 #     ssim_list, ssim_region_list, ssim_object_list, ssim_combined_list = [], [], [], []
     
 #     for case_name in tqdm(name_list):
@@ -136,6 +139,8 @@
 #         # Append all scores into respective list by inexing the results dict
 #         dsc_list.append(results['DSC'])
 #         iou_list.append(results['IoU'])
+#         hd95_list.append(results['HD95'])
+        
 #         ssim_list.append(results['SSIM'])
 #         ssim_region_list.append(results['SSIM_region'])
 #         ssim_object_list.append(results['SSIM_object'])
@@ -143,19 +148,22 @@
 
 #     # Add mean/std
 #     name_list.extend(['Avg', 'Std'])
+    
 #     dsc_list.extend([np.mean(dsc_list), np.std(dsc_list, ddof=1)])
 #     iou_list.extend([np.mean(iou_list), np.std(iou_list, ddof=1)])
+#     hd95_list.extend([np.mean(hd95_list), np.std(hd95_list, ddof=1)])
+    
 #     ssim_list.extend([np.mean(ssim_list), np.std(ssim_list, ddof=1)])
 #     ssim_region_list.extend([np.mean(ssim_region_list), np.std(ssim_region_list, ddof=1)])
 #     ssim_object_list.extend([np.mean(ssim_object_list), np.std(ssim_object_list, ddof=1)])
 #     ssim_combined_list.extend([np.mean(ssim_combined_list), np.std(ssim_combined_list, ddof=1)])
 
-#     df = pd.DataFrame({'Name': name_list, 'DSC': dsc_list, 'IoU': iou_list, 'SSIM': ssim_list,
+#     df = pd.DataFrame({'Name': name_list, 'DSC': dsc_list, 'IoU': iou_list, 'HD95': hd95_list, 'SSIM': ssim_list,
 #                        'SSIM_region': ssim_region_list, 'SSIM_object': ssim_object_list,
 #                        'SSIM_combined': ssim_combined_list})
 #     df.to_csv(csv_path, index=False)
 
-#     logging.info("DSC: {:.4f}, IOU: {:.4f}".format(dsc_list[-2], iou_list[-2]))
+#     logging.info("DSC: {:.4f}, IOU: {:.4f}, HD95: {:.2f}".format(dsc_list[-2], iou_list[-2], hd95_list[-2]))
 #     logging.info('Time Taken: %d sec' % (time.time() - epoch_start))
 #     logging.info('\n')
 
@@ -163,9 +171,8 @@
 # if __name__ == "__main__":
 #     run_validator()
 
-# # -------------------------------- End ----------------------------------#
+# -------------------------------- End ----------------------------------#
 
-# Basic Package
 import torch
 import argparse
 import numpy as np
@@ -286,10 +293,10 @@ def run_validator():
 
     for case_name in tqdm(name_list):
         # [CHANGED] --> changed from .png to .png
-        seg_pred = load_img(os.path.join(pred_path, case_name + '.png'))
+        seg_binary = load_img(os.path.join(pred_path, case_name + '.png'))
         seg_true = load_img(os.path.join(true_path, case_name + '.png'))
 
-        preds = np.array(seg_pred).reshape(-1)
+        preds = np.array(seg_binary).reshape(-1)
         gts = np.array(seg_true).reshape(-1)
 
         y_pre = np.where(preds>=0.5, 1, 0)

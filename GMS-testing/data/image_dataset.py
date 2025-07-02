@@ -111,8 +111,10 @@ class ImageDataset(Dataset):
 
         self.names:    List[str] = split_dict[stage]["name_list"]
         self.stage:    str       = stage
-        self.img_dir:  Path    = Path(pickle_file).parent / "images"
+        
+        self.img_dir:  Path   = Path(pickle_file).parent / "images"
         self.mask_dir: Path   = Path(pickle_file).parent / "masks"
+        
         self.transforms       = build_transforms(stage, img_size)
 
         logging.info(f"{stage.capitalize()} set size: {len(self.names)}")

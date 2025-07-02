@@ -76,12 +76,13 @@ def load_checkpoint(model: torch.nn.Module, path: str) -> torch.nn.Module:
         )
 
         # Load model weights
-        model.load_state_dict(state["model"])
+        model.load_state_dict(state["model"], strict = True)
         logging.info("Loaded")
+        
     else:
         model = None
         logging.info("=> no checkpoint found at '{}'".format(path))
-
+        
     return model
 
 

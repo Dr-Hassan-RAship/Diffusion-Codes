@@ -31,12 +31,12 @@ CHOSEN_STRATEGY   = 'best_valid_dice'  # 'latent_diffusion', 'diffusion', etc.
 SNAPSHOT_PATH     = f"{BASE_CKPT_DIR}/{DATASET}/{BRIEF_DESCRIPTION}"
 LOG_PATH          = f"{SNAPSHOT_PATH}/logs"
 PICKLE_FILE_PATH  = f"{BASE_DATA_DIR}/{DATASET}/{DATASET}_train_test_names.pkl"
-MODEL_WEIGHT_PATH = f"{SNAPSHOT_PATH}/checkpoints/{CHOSEN_STRATEGY}.pth"
+MODEL_WEIGHT_PATH = f'/media/ee/DATA/Talha_Nehal/Diffusion-Codes/GMS/ckpt/tiny_vae_busi/epochs_200/checkpoints/{CHOSEN_STRATEGY}.pth' #f"{SNAPSHOT_PATH}/checkpoints/{CHOSEN_STRATEGY}.pth"
 PRED_MASKS_PATH   = f"{SNAPSHOT_PATH}/predicted_masks_{CHOSEN_STRATEGY}"
 
 # --------------------------- Training settings --------------------------------#
 EPOCHS            = 200
-BATCH_SIZE        = 24
+BATCH_SIZE        = 16
 SAVE_FREQ         = 25
 LR                = 0.002
 NUM_WORKERS       = 8

@@ -18,26 +18,16 @@ from medpy import metric
 from data.image_dataset import Image_Dataset
 from utils.tools import seed_reproducer, load_checkpoint, get_cuda, print_options
 from utils.get_logger import open_log
-from utils.metrics import all_metrics
 from utils.load_ckpt import get_tiny_autoencoder
 from networks.latent_mapping_model import ResAttnUNet_DS
 from networks.models.autoencoder import AutoencoderKL
 from networks.models.distributions import DiagonalGaussianDistribution
 
-def save_binary_and_logits(x_logits, x_binary, name, save_seg_img_path, save_seg_logits_path, IMG_FORMAT = '.png'):
-    """ Saves binary and logits images to specified path."""
-
-    x_binary.save(os.path.join(save_seg_img_path, name + '_binary' + IMG_FORMAT))
-    # Save x_logits as .png
-    x_logits = (x_logits * 255).astype(np.uint8)
-    x_logits = Image.fromarray(x_logits)
-    x_logits.save(os.path.join(save_seg_logits_path, name + '_logits' + IMG_FORMAT))
-
-def load_img(path, img_size = 224, dtype_resize = np.float32):
-    """Loads and normalizes a grayscale mask image to [0,1], resizes to (img_size, img_size)."""
-
-    image = Image.open(path).convert("L").resize((img_size, img_size), resample=Image.NEAREST)
-    image = np.array(image).astype(dtype_resize) / 255.0
+def load_img(path):
+    image = Image.open(path).convert("L")
+    w, h = 224, 224
+    image = image.resize((w, h), resample=Image.NEAREST)
+    image = np.array(image).astype(np.float32) / 255.0
     return image
 
 def get_vae_encoding_mu_and_sigma(encoder_posterior, scale_factor):
@@ -64,16 +54,11 @@ def arg_parse() -> argparse.ArgumentParser.parse_args :
 def run_validator() -> None:
     args = arg_parse()
     configs = yaml.load(open(args.config), Loader=yaml.FullLoader)
-
-    save_seg_img_path    = os.path.join(configs['save_seg_img_path'], 'binary')
-    save_seg_logits_path = os.path.join(configs['save_seg_img_path'], 'logits')
-
     configs['log_path'] = os.path.join(configs['snapshot_path'], 'logs')
 
     # Output folder and save fig folder
     os.makedirs(configs['snapshot_path'], exist_ok=True)
-    os.makedirs(save_seg_img_path, exist_ok = True)
-    os.makedirs(save_seg_logits_path, exist_ok = True)
+    os.makedirs(configs['save_seg_img_path'], exist_ok=True)
     os.makedirs(configs['log_path'], exist_ok=True)
 
     # Set GPU ID
@@ -103,9 +88,7 @@ def run_validator() -> None:
     mapping_model = load_checkpoint(mapping_model, configs['model_weight'])
     mapping_model.eval()
 
-    print("Loading Tiny Autoencoder...")
     vae_model = get_tiny_autoencoder()
-    print("Loaded Tiny Autoencoder...")
     vae_model = get_cuda(vae_model)
     scale_factor = 1.0
 
@@ -130,81 +113,84 @@ def run_validator() -> None:
         name_list.append(name)
 
         with torch.no_grad():
-            img_latent_mean      = vae_model.encode(get_cuda(img_rgb)).latents
-            seg_latent_mean      = vae_model.encode(get_cuda(seg_rgb)).latents
+            img_latent_mean, seg_latent_mean = vae_model.encode(get_cuda(img_rgb)).latents, vae_model.encode(get_cuda(seg_rgb)).latents
             out_latent_mean_dict = mapping_model(img_latent_mean)
 
             loss_Rec = configs['w_rec'] * mse_loss(out_latent_mean_dict['out'], seg_latent_mean)
+
             pred_seg = vae_decode(vae_model, out_latent_mean_dict['out'], scale_factor)
-            pred_seg = pred_seg.repeat(1, 3, 1, 1)
+            pred_seg = pred_seg.repeat(1, 3, 1, 1) # [CHANGED] --> repeat to match RGB channels
 
-            x_logits = rearrange(pred_seg.squeeze().cpu().numpy(), 'c h w -> h w c')
-            x_binary = np.where(x_logits > 0.5, 1, 0) * 255.
-            x_binary = Image.fromarray(x_binary.astype(np.uint8))
-
-            # Save both logits and binary
-            save_binary_and_logits(x_logits, x_binary, name, save_seg_img_path, save_seg_logits_path)
+            x_sample = rearrange(pred_seg.squeeze().cpu().numpy(), 'c h w -> h w c')
+            x_sample = np.where(x_sample > 0.5, 1, 0)
+            x_sample = 255. * x_sample
+            img = Image.fromarray(x_sample.astype(np.uint8))
+            # [CHANGED] --> Question: Is the segmentation being saved in grayscale or RGB? Also changed png to jpg
+            img.save(os.path.join(configs['save_seg_img_path'], name + '.png'))
 
             T_loss_valid.append(loss_Rec.item())
 
     T_loss_valid = np.mean(T_loss_valid)
-    logging.info("Valid:\nloss: {:.4f}".format(T_loss_valid))
 
-    # ---- Metrics calculation ----
+    logging.info("Valid:")
+    logging.info("loss: {:.4f}".format(T_loss_valid))
+
+    ### load masks & compute dsc and iou
     csv_path  = os.path.join(configs['snapshot_path'], 'results.csv')
+    pred_path = configs['save_seg_img_path']
     true_path = os.path.join(os.path.dirname(configs['pickle_file_path']), 'masks')
 
-    pred_binary_path = save_seg_img_path
-    pred_logits_path = save_seg_logits_path
-    IMG_FORMAT       = '.png'
+    name_list = sorted(os.listdir(pred_path))
+    name_list = [x.replace('.png', '') for x in name_list] # [CHANGED] --> changed from .png to .png
+    # name_list = [x.replace('_segmentation', '') for x in name_list]
 
-    name_list = sorted(os.listdir(save_seg_img_path))
-    # Remove IMG_FORMAT from names
-    name_list = [x.replace(IMG_FORMAT, '') for x in name_list]
-    name_list = [x.replace('_binary', '') for x in name_list]
-
-    dsc_list, iou_list, hd95_list = [], [], []
-    ssim_list, ssim_region_list, ssim_object_list, ssim_combined_list = [], [], [], []
+    dsc_list = []
+    iou_list = []
+    hd95_list = []
 
     for case_name in tqdm(name_list):
-        seg_binary   = load_img(os.path.join(pred_binary_path, case_name + '_binary' +  IMG_FORMAT))
-        seg_logits   = load_img(os.path.join(pred_logits_path, case_name + '_logits' + IMG_FORMAT))
-        seg_true     = load_img(os.path.join(true_path, 'mask_' + case_name + IMG_FORMAT))
+        # [CHANGED] --> changed from .png to .png
+        seg_pred = load_img(os.path.join(pred_path, case_name + '.png'))
+        seg_true = load_img(os.path.join(true_path, 'mask_' + case_name + '.png'))
 
-        # Calculate all metrics
-        results = all_metrics(seg_binary, seg_logits, seg_true)
+        if seg_pred.sum() == 0 or seg_true.sum() == 0:
+            hd95 = 0.0
+        else:
+            hd95 = metric.binary.hd95(seg_pred, seg_true)
 
-        # Append all scores into respective list by inexing the results dict
-        dsc_list.append(results['DSC'])
-        iou_list.append(results['IoU'])
-        hd95_list.append(results['HD95'])
+        preds = np.array(seg_pred).reshape(-1)
+        gts = np.array(seg_true).reshape(-1)
 
-        ssim_list.append(results['SSIM'])
-        ssim_region_list.append(results['SSIM_region'])
-        ssim_object_list.append(results['SSIM_object'])
-        ssim_combined_list.append(results['SSIM_combined'])
+        y_pre = np.where(preds>=0.5, 1, 0)
+        y_true = np.where(gts>=0.5, 1, 0)
 
-    # Add mean/std
+        confusion = confusion_matrix(y_true, y_pre)
+        TN, FP, FN, TP = confusion[0,0], confusion[0,1], confusion[1,0], confusion[1,1]
+
+        f1_or_dsc = float(2 * TP) / float(2 * TP + FP + FN) if float(2 * TP + FP + FN) != 0 else 0
+        miou = float(TP) / float(TP + FP + FN) if float(TP + FP + FN) != 0 else 0
+
+        dsc_list.append(f1_or_dsc)
+        iou_list.append(miou)
+        hd95_list.append(hd95)
+
+    # MEAN & Std Value
     name_list.extend(['Avg', 'Std'])
-
     dsc_list.extend([np.mean(dsc_list), np.std(dsc_list, ddof=1)])
     iou_list.extend([np.mean(iou_list), np.std(iou_list, ddof=1)])
-    hd95_list.extend([np.mean(hd95_list), np.std(hd95_list, ddof=1)])
+    hd95_list.extend([np.mean(hd95_list), np.std(iou_list, ddof=1)])
 
-    ssim_list.extend([np.mean(ssim_list), np.std(ssim_list, ddof=1)])
-    ssim_region_list.extend([np.mean(ssim_region_list), np.std(ssim_region_list, ddof=1)])
-    ssim_object_list.extend([np.mean(ssim_object_list), np.std(ssim_object_list, ddof=1)])
-    ssim_combined_list.extend([np.mean(ssim_combined_list), np.std(ssim_combined_list, ddof=1)])
-
-    df = pd.DataFrame({'Name': name_list, 'DSC': dsc_list, 'IoU': iou_list, 'HD95': hd95_list, 'SSIM': ssim_list,
-                       'SSIM_region': ssim_region_list, 'SSIM_object': ssim_object_list,
-                       'SSIM_combined': ssim_combined_list})
+    df = pd.DataFrame({
+        'Name': name_list,
+        'DSC':  dsc_list,
+        'IoU': iou_list,
+        'HD95': hd95_list
+    })
     df.to_csv(csv_path, index=False)
 
-    logging.info("DSC: {:.4f}, IOU: {:.4f}, HD95: {:.2f}".format(dsc_list[-2], iou_list[-2], hd95_list[-2]))
+    logging.info("DSC: {:.4f}, IOU: {:.4f}, HD95: {:.4f}".format(dsc_list[-2], iou_list[-2], hd95_list[-2]))
     logging.info('Time Taken: %d sec' % (time.time() - epoch_start_time))
     logging.info('\n')
 
-# -----------------------------------------------------------------------#
-if __name__ == "__main__":
+if __name__ == '__main__':
     run_validator()

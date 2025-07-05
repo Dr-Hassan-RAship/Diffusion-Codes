@@ -133,6 +133,7 @@ class Image_Dataset(Dataset):
 
         with open(pickle_file_path, 'rb') as file:
             loaded_dict = pickle.load(file)
+        self.excel             = excel
         self.img_path          = os.path.join(os.path.dirname(pickle_file_path), 'images')
         self.mask_path         = os.path.join(os.path.dirname(pickle_file_path), 'masks')
         self.img_size          = 224
@@ -168,7 +169,8 @@ class Image_Dataset(Dataset):
         name = self.name_list[index]
         # load img & seg
         # [CHANGED] --> from .jpg to jpg as Kvasir-SEG has .jpg files. Also note both image and mask are being loaded as RGB
-        seg_image = Image.open(os.path.join(self.mask_path, 'mask_' + name + '.png')).convert("RGB")
+        name_ext = 'mask_' if self.excel else ''
+        seg_image = Image.open(os.path.join(self.mask_path, name_ext + name + '.png')).convert("RGB")
         seg_data  = np.array(seg_image).astype(np.float32)
         img_image = Image.open(os.path.join(self.img_path,  name + '.png')).convert("RGB")
         img_data  = np.array(img_image).astype(np.float32)

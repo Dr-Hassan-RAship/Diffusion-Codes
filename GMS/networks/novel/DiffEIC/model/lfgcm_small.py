@@ -25,15 +25,7 @@ class Encoder(nn.Module):
         )
 
         self.g_a1 = nn.Sequential(
-            ResidualBlockWithStride(in_nc, mid_nc[0]),
-            ResidualBottleneck(mid_nc[0]),
-            ResidualBottleneck(mid_nc[0]),
-            ResidualBottleneck(mid_nc[0]),
-            ResidualBlockWithStride(mid_nc[0], mid_nc[1]),
-            ResidualBottleneck(mid_nc[1]),
-            ResidualBottleneck(mid_nc[1]),
-            ResidualBottleneck(mid_nc[1]),
-            ResidualBlockWithStride(mid_nc[1], mid_nc[2]),
+            ResidualBlockWithStride(in_nc, mid_nc[2]),
             ResidualBottleneck(mid_nc[2]),
             ResidualBottleneck(mid_nc[2]),
             ResidualBottleneck(mid_nc[2]),
@@ -77,61 +69,26 @@ class Decoder(nn.Module):
     def __init__(self, N, M, out_nc, prior_nc, sft_ks):
         super().__init__()
 
-        self.sft_feature_gs1 = nn.Sequential(
-            conv3x3(M, prior_nc * 4),
-            nn.GELU(),
-            conv3x3(prior_nc * 4, prior_nc * 2),
-            nn.GELU(),
-            conv3x3(prior_nc * 2, prior_nc)
-        )
-        self.sft_feature_gs2 = nn.Sequential(
-            conv3x3(prior_nc, prior_nc),
-            nn.GELU(),
-            conv1x1(prior_nc, prior_nc)
-        )
-        self.sft_feature_gs3 = nn.Sequential(
-            deconv(prior_nc, prior_nc, 3),
-            nn.GELU(),
-            conv1x1(prior_nc, prior_nc)
-        )
-
-        self.g_s0 = SFTResblk(M, prior_nc, ks=sft_ks)
-        self.g_s1 = SFTResblk(M, prior_nc, ks=sft_ks)
-
         self.g_s2 = nn.Sequential(
             conv3x3(M,N),
             ResidualBottleneck(N),
             ResidualBottleneck(N),
             ResidualBottleneck(N))
-        self.g_s2_ref = SFT(N, prior_nc, ks=sft_ks)
-
         self.g_s3 = nn.Sequential(
             ResidualBlockUpsample(N, N),
             ResidualBottleneck(N),
             ResidualBottleneck(N),
             ResidualBottleneck(N))
-        self.g_s3_ref = SFT(N, prior_nc, ks=sft_ks)
-
         self.g_s4 = conv3x3(N, out_nc)
 
     def forward(self, x):
-        sft_feature = self.sft_feature_gs1(x)
-        x = self.g_s0(x, sft_feature)
-        x = self.g_s1(x, sft_feature)
-
-        sft_feature = self.sft_feature_gs2(sft_feature)
         x = self.g_s2(x)
-        x = self.g_s2_ref(x, sft_feature)
-
-        sft_feature = self.sft_feature_gs3(sft_feature)
         x = self.g_s3(x)
-        x = self.g_s3_ref(x, sft_feature)
-
         x = self.g_s4(x)
 
         return x
 
-class LFGCM(nn.Module):
+class LFGCM(CompressionModel):
     def __init__(self, in_nc, out_nc, enc_mid, N, M, prior_nc, sft_ks, slice_num, slice_ch):
         super().__init__()
 

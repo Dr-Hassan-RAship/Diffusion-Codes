@@ -66,7 +66,7 @@ def arg_parse() -> argparse.ArgumentParser.parse_args:
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--config",
-        default="./configs/qatar_19_train.yaml",
+        default="./configs/busi_train.yaml",
         type=str,
         help="load the config file",
     )
@@ -80,7 +80,7 @@ def run_trainer() -> None:
     # time.strftime("%Y%m%d%H%M", time.localtime(time.time()))
     configs["snapshot_path"] = os.path.join(
         configs["snapshot_path"],
-        'epoch_2000',
+        'epoch_1500',
     )
     configs["log_path"] = os.path.join(configs["snapshot_path"], "logs")
 
@@ -105,8 +105,8 @@ def run_trainer() -> None:
     ds_list = ["level2", "level1", "out"]
 
     # Get data loader
-    train_dataset = Image_Dataset(configs["pickle_file_path"], stage="train", excel = True)
-    valid_dataset = Image_Dataset(configs["pickle_file_path"], stage="val", excel = True)
+    train_dataset = Image_Dataset(configs["pickle_file_path"], stage="train", excel = False)
+    valid_dataset = Image_Dataset(configs["pickle_file_path"], stage="test", excel = False)
     train_dataloader = DataLoader(
         train_dataset,
         batch_size=configs["batch_size"],
@@ -132,11 +132,9 @@ def run_trainer() -> None:
             ch_mult=configs["ch_mult"],
         )
     )
+    # Getting tiny-vae (with residual_autoencoding) default: frozen and eval
+    vae_model = get_tiny_autoencoder(residual_autoencoding = True)
 
-    # [CHANGED] --> Trying out AutoencoderTiny from diffusers library (already on eval mode and frozen)
-    vae_model = get_tiny_autoencoder()
-
-    vae_model = get_cuda(vae_model)
     scale_factor = 1.0
 
     # Define optimizers

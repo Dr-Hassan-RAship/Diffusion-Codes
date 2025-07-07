@@ -102,11 +102,9 @@ def run_validator() -> None:
     ))
     mapping_model = load_checkpoint(mapping_model, configs['model_weight'])
     mapping_model.eval()
-
-    print("Loading Tiny Autoencoder...")
-    vae_model = get_tiny_autoencoder()
-    print("Loaded Tiny Autoencoder...")
-    vae_model = get_cuda(vae_model)
+    
+    # Getting tiny-vae (with residual_autoencoding) default: frozen and eval
+    vae_model    = get_tiny_autoencoder(residual_autoencoding = True)
     scale_factor = 1.0
 
     # Define loss functions

@@ -261,3 +261,146 @@ class DecoderTiny(nn.Module):
             x = self.layers(x)
 
         return x.mul(2).sub(1)  # rescale [0,1] → [-1,1]
+
+# import torch
+# import torch.nn as nn
+# import torch.nn.functional as F
+# from dataclasses import dataclass
+# from torch.utils.checkpoint import checkpoint
+# from diffusers.utils import BaseOutput
+# from typing import Optional, Tuple
+
+
+# # ---------------------- Activation --------------------- #
+# def get_activation(name: str):
+#     name = name.lower()
+#     if name == "relu":
+#         return nn.ReLU(inplace=True)
+#     if name == "swish":
+#         return nn.SiLU(inplace=True)
+#     if name == "mish":
+#         return nn.Mish(inplace=True)
+#     if name == "gelu":
+#         return nn.GELU()
+#     raise ValueError(f"Unknown activation {name}")
+
+# # ---------------------- Residual Shortcuts --------------------- #
+# def downsample_shortcut_nchw(x: torch.Tensor, p: int = 2) -> torch.Tensor:
+#     x = F.pixel_unshuffle(x, downscale_factor=p)
+#     B, C4, H2, W2 = x.shape
+#     x = x.view(B, 4, C4 // 4, H2, W2)
+#     return x.mean(dim=1)
+
+# def upsample_shortcut_nchw(x: torch.Tensor, p: int = 2) -> torch.Tensor:
+#     assert p == 2
+#     B, C, H2, W2 = x.shape
+#     y = F.pixel_shuffle(x, upscale_factor=p)
+#     return y.repeat(1, p * p, 1, 1)
+
+# class ResidualDownAE(nn.Module):
+#     def __init__(self, down_layer: nn.Module, p: int = 2):
+#         super().__init__()
+#         self.down = down_layer
+#         self.p = p
+
+#     def _forward_impl(self, x):
+#         return self.down(x) + downsample_shortcut_nchw(x, self.p)
+
+#     def forward(self, x):
+#         if self.training and x.requires_grad:
+#             return checkpoint(self._forward_impl, x)
+#         return self._forward_impl(x)
+
+# class ResidualUpAE(nn.Module):
+#     def __init__(self, up_layer: nn.Module, p: int = 2):
+#         super().__init__()
+#         self.up = up_layer
+#         self.p = p
+
+#     def _forward_impl(self, x):
+#         return self.up(x) + upsample_shortcut_nchw(x, self.p)
+
+#     def forward(self, x):
+#         if self.training and x.requires_grad:
+#             return checkpoint(self._forward_impl, x)
+#         return self._forward_impl(x)
+
+# # ---------------------- Blocks --------------------- #
+# class AutoencoderTinyBlock(nn.Module):
+#     def __init__(self, in_channels: int, out_channels: int, act_fn: str):
+#         super().__init__()
+#         act_fn = get_activation(act_fn)
+#         self.conv = nn.Sequential(
+#             nn.Conv2d(in_channels, out_channels,  kernel_size=3, padding=1),
+#             act_fn,
+#             nn.Conv2d(out_channels, out_channels, kernel_size=3, padding=1),
+#             act_fn,
+#             nn.Conv2d(out_channels, out_channels, kernel_size=3, padding=1),
+#         )
+#         self.skip = nn.Conv2d(in_channels, out_channels, 1, bias=False) if in_channels != out_channels else nn.Identity()
+#         self.fuse = nn.ReLU(inplace=True)
+
+#     def forward(self, x: torch.Tensor) -> torch.Tensor:
+#         return self.fuse(self.conv(x) + self.skip(x))
+
+# @dataclass
+# class DecoderOutput(BaseOutput):
+#     sample: torch.Tensor
+#     commit_loss: Optional[torch.FloatTensor] = None
+
+# # ---------------------- Encoder / Decoder --------------------- #
+# class EncoderTiny(nn.Module):
+#     def __init__(self, in_channels, out_channels, num_blocks, block_out_channels, act_fn):
+#         super().__init__()
+#         layers = []
+#         for i, num_block in enumerate(num_blocks):
+#             channels = block_out_channels[i]
+#             if i == 0:
+#                 layers.append(nn.Conv2d(in_channels, channels, kernel_size=3, padding=1))
+#             else:
+#                 layers.append(ResidualDownAE(nn.Conv2d(channels, channels, 3, 2, 1, bias=False)))
+
+#             for _ in range(num_block):
+#                 layers.append(AutoencoderTinyBlock(channels, channels, act_fn))
+
+#         layers.append(nn.Conv2d(block_out_channels[-1], out_channels, kernel_size=3, padding=1))
+#         self.layers = nn.Sequential(*layers)
+#         self.gradient_checkpointing = False
+
+#     def forward(self, x: torch.Tensor) -> torch.Tensor:
+#         x = x.add(1).div(2)  # [-1, 1] → [0, 1]
+#         if self.gradient_checkpointing and x.requires_grad:
+#             return checkpoint(self.layers, x)
+#         return self.layers(x)
+
+# class DecoderTiny(nn.Module):
+#     def __init__(self, in_channels, out_channels, num_blocks, block_out_channels, upsampling_scaling_factor, act_fn, upsample_fn):
+#         super().__init__()
+#         layers = [
+#             nn.Conv2d(in_channels, block_out_channels[0], kernel_size=3, padding=1),
+#             get_activation(act_fn),
+#         ]
+
+#         for i, num_block in enumerate(num_blocks):
+#             is_final = i == len(num_blocks) - 1
+#             channels = block_out_channels[i]
+
+#             for _ in range(num_block):
+#                 layers.append(AutoencoderTinyBlock(channels, channels, act_fn))
+
+#             if not is_final:
+#                 up_block = nn.Upsample(scale_factor=upsampling_scaling_factor, mode=upsample_fn)
+#                 layers.append(ResidualUpAE(up_block))
+
+#             conv_out = out_channels if is_final else channels
+#             layers.append(nn.Conv2d(channels, conv_out, 3, padding=1, bias=is_final))
+
+#         self.layers = nn.Sequential(*layers)
+#         self.gradient_checkpointing = False
+
+#     def forward(self, x: torch.Tensor) -> torch.Tensor:
+#         x = torch.tanh(x / 3) * 3
+#         if self.gradient_checkpointing and x.requires_grad:
+#             return checkpoint(self.layers, x)
+#         x = self.layers(x)
+#         return x.mul(2).sub(1)

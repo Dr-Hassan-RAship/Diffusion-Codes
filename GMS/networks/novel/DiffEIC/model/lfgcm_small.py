@@ -88,7 +88,7 @@ class Decoder(nn.Module):
 
         return x
 
-class LFGCM(CompressionModel):
+class LFGCM(nn.Module):
     def __init__(self, in_nc, out_nc, enc_mid, N, M, prior_nc, sft_ks, slice_num, slice_ch):
         super().__init__()
 

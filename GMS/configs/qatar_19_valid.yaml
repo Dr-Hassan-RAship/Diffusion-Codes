@@ -6,9 +6,9 @@ phase: valid
 # save_seg_img_path: ./ckpt/busi/202506201608/predicted_masks_best_model
 
 pickle_file_path: ./Dataset/QaTar-19/QaTar_19_train_val_test_names.pkl
-model_weight: ./ckpt/QaTar-19/lr_seed_loss_changed/checkpoints/best_valid_dice_124.pth
-snapshot_path: ./ckpt/QaTar-19/lr_seed_loss_changed/valid_qatar-19_best_valid_dice
-save_seg_img_path: ./ckpt/QaTar-19/lr_seed_loss_changed/predicted_masks_best_valid_dice
+model_weight: ./ckpt/QaTar-19/epoch_2000/checkpoints/best_valid_loss_rec_184.pth
+snapshot_path: ./ckpt/QaTar-19/epoch_2000/valid_qatar-19_best_valid_loss_rec
+save_seg_img_path: ./ckpt/QaTar-19/epoch_2000/predicted_masks_best_valid_loss_rec
 
 # Valid Settings
 GPUs: [0]

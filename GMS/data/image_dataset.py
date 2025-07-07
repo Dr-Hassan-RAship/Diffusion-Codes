@@ -124,9 +124,7 @@ class Image_Dataset(Dataset):
 
         if pickle_file_path is None:
            root_dir = os.path.join('Dataset', root_dir)
-           print('hellow')
            if excel:
-               print('helloww')
                pickle_file_path = generate_pickle_excel(root_dir)
            else:
                pickle_file_path = generate_pickel_default(root_dir)

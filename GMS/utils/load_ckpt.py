@@ -39,7 +39,7 @@ def get_tiny_autoencoder(device = 'cuda', train = False, freeze = True, residual
     if not residual_autoencoding:
         print('Downloading AutoencoderTiny...')
         print('Collecting AutoencoderTiny from Diffusers Library')
-        vae = HF_TinyVAE.from_pretrained("madebyollin/taesd", torch_dtype=torch.float32).to(device)
+        vae = HF_TinyVAE.from_pretrained("madebyollin/taesd", torch_dtype=torch.float32, device_map = device)
         
     else:
         vae = load_residual_tiny_vae(device="cuda")

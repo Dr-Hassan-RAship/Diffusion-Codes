@@ -133,7 +133,8 @@ def run_trainer() -> None:
         )
     )
     # Getting tiny-vae (with residual_autoencoding) default: frozen and eval
-    vae_model = get_tiny_autoencoder(residual_autoencoding = True)
+    vae_train = True
+    vae_model = get_tiny_autoencoder(train = vae_train, residual_autoencoding = True)
 
     scale_factor = 1.0
 
@@ -263,6 +264,7 @@ def run_trainer() -> None:
             name = batch_data["name"]
 
             mapping_model.eval()
+            vae_model.eval()
 
             with torch.no_grad():
                 img_latent_mean, seg_latent_mean = (

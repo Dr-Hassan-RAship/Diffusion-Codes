@@ -56,7 +56,7 @@ def vae_decode(vae_model, pred_mean, scale_factor):
 
 def arg_parse() -> argparse.ArgumentParser.parse_args :
     parser = argparse.ArgumentParser()
-    parser.add_argument('--config', default='./configs/qatar_19_valid.yaml', # [CHANGED] --> added kvasir-seg yaml
+    parser.add_argument('--config', default='./configs/busi_valid.yaml', # [CHANGED] --> added kvasir-seg yaml
                         type=str, help='load the config file')
     args = parser.parse_args()
     return args
@@ -89,7 +89,7 @@ def run_validator() -> None:
     print_options(configs)
 
     # Get data loader
-    valid_dataset    = Image_Dataset(configs['pickle_file_path'], stage='test', excel = True)
+    valid_dataset    = Image_Dataset(configs['pickle_file_path'], stage='test', excel = False)
     valid_dataloader = DataLoader(valid_dataset, batch_size=1, pin_memory=True, drop_last=False, shuffle=False)
 
     # Define networks
@@ -168,7 +168,7 @@ def run_validator() -> None:
     for case_name in tqdm(name_list):
         seg_binary   = load_img(os.path.join(pred_binary_path, case_name + '_binary' +  IMG_FORMAT))
         seg_logits   = load_img(os.path.join(pred_logits_path, case_name + '_logits' + IMG_FORMAT))
-        seg_true     = load_img(os.path.join(true_path, 'mask_' + case_name + IMG_FORMAT))
+        seg_true     = load_img(os.path.join(true_path, case_name + IMG_FORMAT))
 
         # Calculate all metrics
         results = all_metrics(seg_binary, seg_logits, seg_true)

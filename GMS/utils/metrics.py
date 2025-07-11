@@ -21,6 +21,26 @@ import numpy as np
 
 from medpy import metric
 
+# from sklearn.metrics import confusion_matrix
+
+"""
+Papers implementation of dice and iou. both give same results
+
+    preds = np.array(y_pred).reshape(-1)
+    gts   = np.array(y_true).reshape(-1)
+    
+    y_pre = np.where(preds > 0.5, 1, 0)
+    y_gt  = np.where(gts > 0.5, 1, 0)
+    
+    confusion = confusion_matrix(y_gt, y_pre)
+    TN, FP, FN, TP = confusion.ravel()
+    
+    f1_or_dsc = float(2 * TP) / float(2 * TP + FP + FN) if float(2 * TP + FP + FN) != 0 else 0
+    miou      = float(TP) / float(TP + FP + FN) if float(TP + FP + FN) != 0 else 0
+    return f1_or_dsc, miou
+
+"""
+
 # --------------------------- Dice Score (DSC) ---------------------------------#
 def dice_score(y_pred, y_true, eps = 1e-7):
     """
@@ -36,7 +56,7 @@ def dice_score(y_pred, y_true, eps = 1e-7):
     denominator  = np.sum(y_pred) + np.sum(y_true)
 
     return 2. * intersection / (denominator + eps)
-
+    
 # --------------------------- IoU Score ----------------------------------------#
 def iou_score(y_pred, y_true, eps = 1e-7):
     """
@@ -55,23 +75,6 @@ def hd95_score(y_pred, y_true):
     """
     Computes 95th percentile Hausdorff Distance (HD95) between two binary masks.
     """
-    # y_pred = (y_pred >= 0.5).astype(np.uint8)
-    # y_true = (y_true >= 0.5).astype(np.uint8)
-
-    # if y_pred.sum() == 0 or y_true.sum() == 0:
-    #     return np.nan
-
-    # dt_true = distance_transform_edt(1 - y_true)
-    # dt_pred = distance_transform_edt(1 - y_pred)
-
-    # surface_pred = (y_pred - (distance_transform_edt(1 - y_pred) > 0)).astype(bool)
-    # surface_true = (y_true - (distance_transform_edt(1 - y_true) > 0)).astype(bool)
-
-    # dist_pred_to_true = dt_true[surface_pred]
-    # dist_true_to_pred = dt_pred[surface_true]
-
-    # all_dists = np.concatenate([dist_pred_to_true, dist_true_to_pred])
-    # return np.percentile(all_dists, 95)
 
     # Check if y_pred and y_true are binary masks
     if y_pred.ndim != 2 or y_true.ndim != 2:

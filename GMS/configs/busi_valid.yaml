@@ -6,9 +6,9 @@ phase: valid
 # save_seg_img_path: ./ckpt/busi/202506201608/predicted_masks_best_model
 
 pickle_file_path: ./Dataset/busi/busi_train_test_names.pkl
-model_weight: ./ckpt/tiny_vae_busi_residual_train_lr_2e-4/epoch_1500/checkpoints/best_valid_loss_345.pth
-snapshot_path: ./ckpt/tiny_vae_busi_residual_train_lr_2e-4/epoch_1500/valid_busi_best_valid_loss
-save_seg_img_path: ./ckpt/tiny_vae_busi_residual_train_lr_2e-4/epoch_1500/predicted_masks_best_valid_loss
+model_weight: ./ckpt/tiny_vae_busi_b_12/epoch_1500/checkpoints/best_valid_loss_rec_313.pth
+snapshot_path: ./ckpt/tiny_vae_busi_b_12/epoch_1500/valid_busi_best_valid_loss_rec
+save_seg_img_path: ./ckpt/tiny_vae_busi_b_12/epoch_1500/predicted_masks_best_valid_loss_rec
 
 # Valid Settings
 GPUs: [0]
@@ -23,6 +23,6 @@ num_res_blocks: 2
 ch: 32
 ch_mult: [1, 2, 4, 4]
 
-# Loss Settings
+# loss_rec Settings
 w_rec: 1
 w_kl: 0.001

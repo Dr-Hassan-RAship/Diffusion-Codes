@@ -133,8 +133,8 @@ def run_trainer() -> None:
         )
     )
     # Getting tiny-vae (with residual_autoencoding) default: frozen and eval
-    vae_train = True
-    vae_model = get_tiny_autoencoder(train = vae_train, residual_autoencoding = True)
+    vae_train = False
+    vae_model = get_tiny_autoencoder(train = vae_train, residual_autoencoding = False)
 
     scale_factor = 1.0
 

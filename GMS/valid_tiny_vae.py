@@ -104,7 +104,7 @@ def run_validator() -> None:
     mapping_model.eval()
     
     # Getting tiny-vae (with residual_autoencoding) default: frozen and eval
-    vae_model    = get_tiny_autoencoder(residual_autoencoding = True)
+    vae_model    = get_tiny_autoencoder(residual_autoencoding = False)
     scale_factor = 1.0
 
     # Define loss functions

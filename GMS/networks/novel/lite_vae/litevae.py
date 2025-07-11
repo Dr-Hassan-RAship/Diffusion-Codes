@@ -24,7 +24,7 @@ class LiteVAE(nn.Module):
         decoder: nn.Module,
         latent_dim: int = 4,
         output_type: Literal["image", "wavelet"] = "image",
-        use_1x1_conv: bool = True,
+        use_1x1_conv: bool = False,
     ) -> None:
         super().__init__()
         assert output_type in ["image", "wavelet"]
@@ -47,11 +47,11 @@ class LiteVAE(nn.Module):
         latent = self.post_conv(latent)
 
         if self.output_type == "image":
-            image_recon = self.decoder(latent)
-            wavelet_recon = self.wavelet_fn.dwt(image_recon, level=1) / 2
+            image_recon   = self.decoder(latent)
+            wavelet_recon = self.wavelet_fn.dwt(image_recon, level = 1) / 2
         else:
             wavelet_recon = self.decoder(latent)
-            image_recon = self.wavelet_fn.idwt(wavelet_recon, level=1) * 2
+            image_recon   = self.wavelet_fn.idwt(wavelet_recon, level = 1) * 2
 
         return image_recon, wavelet_recon
 

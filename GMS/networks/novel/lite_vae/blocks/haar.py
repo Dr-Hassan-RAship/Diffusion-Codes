@@ -6,6 +6,7 @@ from typing import List, Tuple, Dict
 import matplotlib.pyplot as plt
 import re
 
+from typing import Optional
 
 class HaarTransform(nn.Module):
     """
@@ -45,22 +46,82 @@ class HaarTransform(nn.Module):
         return pywt.waverec2(coeffs, "haar")
 
     # ------------------------------------------------------------------
-    def plot_coeffs(self, coeffs_all: List[Tuple[np.ndarray, Tuple[np.ndarray, np.ndarray, np.ndarray]]]) -> None:
+    def plot_wavelet_batch(
+        self,
+        level_tensors: List[Tensor],
+        *,
+        originals: Optional[Tensor] = None,
+        reconstructed: Optional[Tensor] = None,
+        cmap: str = "gray"
+    ):
         """
-        Visualize approximation + detail bands for each level.
+        Visualize multi-level wavelet sub-bands alongside originals & reconstructions.
+
+        Parameters
+        ----------
+        level_tensors : List[Tensor]
+            • len(level_tensors)  = num_levels
+            • level_tensors[lvl]  = Tensor (B, 4, H_l, W_l)
+        
+        originals : Tensor (B, C, H, W), optional
+            Original images (only first channel shown)
+        
+        reconstructed : Tensor (B, C, H, W), optional
+            Reconstructed images (only first channel shown)
+
+        cmap : str
+            Matplotlib colormap for grayscale display.
         """
-        levels = len(coeffs_all)
-        titles = ["Approximation", "Horizontal", "Vertical", "Diagonal"]
-        fig, axes = plt.subplots(levels, 4, figsize=(14, 4 * levels))
+        originals     = originals[:, 0: 1] if originals is not None else None
+        reconstructed = reconstructed[:, 0: 1] if reconstructed is not None else None
 
-        if levels == 1:
-            axes = axes.reshape(1, -1)
+        num_levels = len(level_tensors)
+        batch_size = level_tensors[0].size(0)
+        show_recon = reconstructed is not None
+        show_orig  = originals is not None
 
-        for lvl, (LL, (LH, HL, HH)) in enumerate(coeffs_all, 1):
-            for col, band in enumerate([LL, LH, HL, HH]):
-                ax = axes[lvl - 1, col]
-                ax.imshow(band, cmap="gray", interpolation="nearest")
-                ax.set_title(f"Level {lvl} – {titles[col]}")
+        total_cols = num_levels * 4 + show_orig + show_recon
+
+        fig, axes = plt.subplots(
+            nrows=batch_size,
+            ncols=total_cols,
+            figsize=(3.5 * total_cols, 2.5 * batch_size),
+            squeeze=False
+        )
+
+        titles = ["LL", "LH", "HL", "HH"]
+
+        for b in range(batch_size):
+            col = 0
+
+            # Show Original
+            if show_orig:
+                ax = axes[b, col]
+                img = originals[b, 0].cpu().numpy()
+                ax.imshow(img, cmap=cmap)
+                if b == 0:
+                    ax.set_title("Original")
+                ax.axis("off")
+                col += 1
+
+            # Subbands
+            for lvl, tensor in enumerate(level_tensors, 1):
+                for sub in range(4):
+                    band = tensor[b, sub].cpu().numpy()
+                    ax = axes[b, col]
+                    ax.imshow(band, cmap=cmap)
+                    if b == 0:
+                        ax.set_title(f"{titles[sub]}-{lvl}")
+                    ax.axis("off")
+                    col += 1
+
+            # Show Reconstruction
+            if show_recon:
+                ax = axes[b, col]
+                img = reconstructed[b, 0].cpu().numpy()
+                ax.imshow(img, cmap=cmap)
+                if b == 0:
+                    ax.set_title("Reconstructed")
                 ax.axis("off")
 
         plt.tight_layout()
@@ -89,7 +150,7 @@ class HaarTransform(nn.Module):
         grid: List[List[np.ndarray | None]] = [
             [None] * batch_size for _ in range(num_levels)
         ]
-
+        
         # Fill the grid
         for key, arr in coeff_dict.items():
             m = _key_re.fullmatch(key)
@@ -120,35 +181,45 @@ class HaarTransform(nn.Module):
             return level_tensors
 
     # ------------------------------------------------------------------
+
     def forward(
         self,
         x: Tensor | list,
         *,
         inverse: bool = False,
         nchw: bool = True,
-        stacked_version: bool = False
+        stacked_version: bool = True,
+        visualize: bool = False
     ):
         """
         Perform Haar DWT or inverse DWT.
         """
-
-        if inverse:
-            coeffs_all = x  # type: ignore
-            recon = self.reconstruct_from_coeffs(coeffs_all)
-            return recon, coeffs_all
-
-        if not nchw:
-            raise NotImplementedError("Only NCHW tensors are supported.")
-
-        b, c, h, w = x.shape
+        batch_size, c, h, w = x.shape
+        coeffs_all = self.dwt_recursive(x)
+        # coeffs_batch = []
+        # for b in range(batch_size):
+        #     img_coeffs = []
+        #     for LL, (LH, HL, HH) in coeffs_all:
+        #         LL_b  = LL[b]   # shape (C, H, W)
+        #         LH_b  = LH[b]
+        #         HL_b  = HL[b]
+        #         HH_b  = HH[b]
+        #         img_coeffs.append((LL_b, (LH_b, HL_b, HH_b)))
+        #     coeffs_batch.append(img_coeffs)
         coeffs_batch = []
 
         # Convert to numpy outside the loop to prevent slow memory migration
         x_np = x[:, 0].detach().cpu().numpy().astype(np.float32)
 
-        for i in range(b):
-            coeffs_i = self.dwt_recursive(x_np[i])  # grayscale input
+        for i in range(batch_size):
+            coeffs_i = self.dwt_recursive(x_np[i])  # grayscale input --> [(LL, (LH, HL, HH)), ] list
             coeffs_batch.append(coeffs_i)
+
+        if inverse:
+            recon = torch.from_numpy(self.reconstruct_from_coeffs(coeffs_all)).float()
+
+        if not nchw:
+            raise NotImplementedError("Only NCHW tensors are supported.")
 
         if stacked_version:
             # Build dict in one go using nested comprehension
@@ -157,7 +228,11 @@ class HaarTransform(nn.Module):
                 for bi, coeffs_i in enumerate(coeffs_batch)
                 for li, (LL, (LH, HL, HH)) in enumerate(coeffs_i)
             }
-            return self.group_by_level_strict(dict_coeffs, batch_size=b, num_levels=self.levels)
-
+            level_tensors_lst, level_tensors_dict = self.group_by_level_strict(dict_coeffs, batch_size= batch_size, num_levels=self.levels)
+            if visualize:
+                self.plot_wavelet_batch(level_tensors_lst, originals = x if isinstance(x, Tensor) else None, reconstructed = recon if inverse else None)
+            if inverse:
+                return recon, level_tensors_lst, level_tensors_dict
+            else:
+                return level_tensors_lst, level_tensors_dict
         return coeffs_batch
-

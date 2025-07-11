@@ -44,10 +44,10 @@ class Downsample2D(nn.Module):
             self.op = nn.Conv2d(
                 channels,
                 channels,
-                kernel_size=3,
-                stride=scale_factor,
-                padding=1,
-                bias=False,
+                kernel_size = 3,
+                stride      = scale_factor,
+                padding     = 1,
+                bias        = False,
             )
         else:
             self.op = nn.AvgPool2d(kernel_size=scale_factor, stride=scale_factor)

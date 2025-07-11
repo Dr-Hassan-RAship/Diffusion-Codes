@@ -66,6 +66,9 @@ class ResBlock(nn.Module):
     norm_num_groups : int, default = 32
     scale_factor : float, default = 1
         Optionally scales the residual sum (e.g. `sqrt(2)`).
+
+    Note #1: Added padding = 1 to 3 x 3 convolutions to maintain spatial dimensions.
+    Note #2: The in_channels and out_channels should be divisible by norm_num_groups.
     """
 
     def __init__(
@@ -82,47 +85,37 @@ class ResBlock(nn.Module):
         self.in_channels = in_channels
         self.out_channels = out_channels or in_channels
 
-        self.norm_in = nn.GroupNorm(in_channels, norm_num_groups)
-        self.act_in = get_activation(activation)
-        self.conv_in = nn.Conv2d(in_channels, out_channels, kernel_size=3)
+        self.norm_in = nn.GroupNorm(norm_num_groups, in_channels)
+        self.act_in  = get_activation(activation)
+        self.conv_in = nn.Conv2d(in_channels, out_channels, kernel_size = 3, padding = 1)
 
-        self.norm_out = nn.GroupNorm(64, 32)
-        self.act_out = get_activation(activation)
-        self.dropout = nn.Dropout(dropout)
-        self.conv_out = nn.Conv2d(out_channels, out_channels, kernel_size=3)
+        self.norm_out = nn.GroupNorm(norm_num_groups, out_channels)
+        self.act_out  = get_activation(activation)
+        self.dropout  = nn.Dropout(dropout)
+        self.conv_out = nn.Conv2d(out_channels, out_channels, kernel_size = 3, padding = 1)
 
         if out_channels == in_channels:
-            self.skip = nn.Identity()
+            self.skip_connection = nn.Identity()
         elif use_conv:
-            self.skip = nn.Conv2d(in_channels, out_channels, kernel_size=3)
+            self.skip_connection = nn.Conv2d(in_channels, out_channels, kernel_size = 3, padding = 1)
         else:
-            self.skip = nn.Conv2d(in_channels, out_channels, kernel_size=1)
+            self.skip_connection = nn.Conv2d(in_channels, out_channels, kernel_size = 1)
 
         self.scale_factor = scale_factor
-
     # ------------------------------------------------------------------
     def forward(self, x: Tensor) -> Tensor:
         # check shape after each layer and print it
-        print(f"ResBlock: x.shape = {x.shape}")
         h = self.norm_in(x)
-        print(f"ResBlock: h.shape = {h.shape}")
         h = self.act_in(h)
-        print(f"ResBlock: h.shape = {h.shape}")
         h = self.conv_in(h)
-        print(f"ResBlock: h.shape = {h.shape}")
 
         # output layers
         h = self.norm_out(h)
-        print(f"ResBlock: h.shape = {h.shape}")
         h = self.act_out(h)
-        print(f"ResBlock: h.shape = {h.shape}")
         h = self.dropout(h)
-        print(f"ResBlock: h.shape = {h.shape}")
         h = self.conv_out(h)
-        print(f"ResBlock: h.shape = {h.shape}")
 
         return (self.skip_connection(x) + h) / self.scale_factor
-
 
 # -----------------------------------------------------------------------------
 # ResBlockWithSMC --------------------------------------------------------------
@@ -151,11 +144,11 @@ class ResBlockWithSMC(nn.Module):
         self.conv_out = SMC(out_channels, out_channels, 3)
 
         if out_channels == in_channels:
-            self.skip = nn.Identity()
+            self.skip_connection = nn.Identity()
         elif use_conv:
-            self.skip = nn.Conv2d(in_channels, out_channels, 3)
+            self.skip_connection = nn.Conv2d(in_channels, out_channels, 3)
         else:
-            self.skip = nn.Conv2d(in_channels, out_channels, 1)
+            self.skip_connection = nn.Conv2d(in_channels, out_channels, 1)
 
         self.scale_factor = scale_factor
 
@@ -163,4 +156,4 @@ class ResBlockWithSMC(nn.Module):
     def forward(self, x: Tensor) -> Tensor:
         h = self.conv_in(self.act(x))
         h = self.conv_out(self.dropout(self.act(h)))
-        return (self.skip(x) + h) / self.scale_factor
+        return (self.skip_connection(x) + h) / self.scale_factor

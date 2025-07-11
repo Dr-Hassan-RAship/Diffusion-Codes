@@ -23,7 +23,6 @@ __all__ = [
     "MidBlock2D",
 ]
 
-
 class MidBlock2D(nn.Module):
     """UNet Mid block with 2 residual layers."""
 
@@ -32,19 +31,19 @@ class MidBlock2D(nn.Module):
         in_channels: int,
         out_channels: int,
         dropout: float = 0.0,
-        use_smc: bool = True,
+        use_smc: bool = False,
     ) -> None:
         super().__init__()
         resblock_class = ResBlockWithSMC if use_smc else ResBlock
         self.res0 = resblock_class(
-            in_channels=in_channels,
-            out_channels=out_channels,
-            dropout=dropout,
+            in_channels  = in_channels,
+            out_channels = out_channels,
+            dropout      = dropout,
         )
         self.res1 = resblock_class(
-            in_channels=out_channels,
-            out_channels=out_channels,
-            dropout=dropout,
+            in_channels  = out_channels,
+            out_channels = out_channels,
+            dropout      = dropout,
         )
 
     def forward(self, x: Tensor) -> Tensor:

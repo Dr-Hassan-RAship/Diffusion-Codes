@@ -69,13 +69,24 @@ class DiagonalGaussianDistribution:
         Concatenated tensor `[mu, logvar]` with shape `(B, 2*C, H, W)`.
     """
 
-    def __init__(self, params: Tensor):
+    def __init__(self, params: Tensor, device = 'cuda', dtype = torch.float32, deterministic = False) -> None:
+        
         self.mu, self.logvar = torch.chunk(params, 2, dim=1)
-        self.std = torch.exp(0.5 * self.logvar)
+        self.mu     = self.mu.to(device = device, dtype = dtype)
+        self.logvar = torch.clamp(self.logvar, min=-30.0, max=20.0).to(device = device, dtype = dtype)  # Prevent extreme values
+        self.var    = torch.exp(self.logvar).to(device = device, dtype = dtype) 
+        self.std    = torch.exp(0.5 * self.logvar).to(device = device, dtype = dtype) 
+        
+        self.device = device
+        self.dtype = dtype
+        self.deterministic = deterministic
 
+        if self.deterministic:
+            self.var = self.std = torch.zeros_like(self.mu, device = self.device, dtype = self.dtype)
+        
     def sample(self) -> Tensor:
         """Reparameterised sample."""
-        eps = torch.randn_like(self.std)
+        eps = torch.randn_like(self.std).to(dtype = torch.float32, device = self.device)
         return self.mu + eps * self.std
 
     def mode(self) -> Tensor:
@@ -86,4 +97,22 @@ class DiagonalGaussianDistribution:
         """Pixel‑wise KL divergence N(mu,σ) || N(0,1).
         Returns tensor of same spatial shape (averaging up to caller).
         """
-        return 0.5 * (self.mu.pow(2) + self.std.pow(2) - 1.0 - self.logvar)
+        if self.deterministic:
+            return torch.Tensor([0.0])
+        return 0.5 * torch.sum(torch.pow(self.mu, 2) + self.var - 1.0 - self.logvar, dim=[1, 2, 3])
+
+class CharbonnierLoss(nn.Module):
+    def __init__(self, epsilon=1e-3):
+        super(CharbonnierLoss, self).__init__()
+        self.epsilon = epsilon
+
+    def forward(self, prediction, target):
+        diff = prediction - target
+        loss = torch.mean(torch.sqrt(diff * diff + self.epsilon**2))
+        return loss
+    """ 
+    Example Usage: Level 1 sub-bands compared
+    criterion = CharbonnierLoss(epsilon=1e-3)
+    loss = criterion(wavelet_recon, haar_transform_out_list[0])
+    """
+   

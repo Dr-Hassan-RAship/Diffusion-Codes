@@ -40,7 +40,7 @@ class LiteVAEUNetBlock(nn.Module):
         self,
         in_channels: int, # to be 4
         out_channels: int, 
-        model_channels: int, # [32, 64, 128]
+        model_channels: int = 32, # [32, 64, 128]
         ch_multiplies: List[int] = [1, 2, 4],
         num_res_blocks: int = 2,
         use_smc: bool = False,

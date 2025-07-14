@@ -104,7 +104,7 @@ class LiteVAEEncoder(nn.Module):
 
         # Aggregator UNet: (L1 + L2 + L3) --> 2 * out_channels or 12 fixed by paper or 8 for LMM model in GMS consistency
         aggregated_channels  = in_channels * 3
-        out_channels_agg     = 12  # [mu | logvar]
+        out_channels_agg     = 8  # [mu | logvar]
         self.feature_aggregator = LiteVAEUNetBlock(in_channels = aggregated_channels, out_channels = out_channels_agg, 
                                                    model_channels = self.model_channels_aggregator, ch_multiplies = self.ch_mult_aggregator)
         

@@ -16,10 +16,10 @@ from sklearn.metrics import confusion_matrix
 from medpy import metric
 # Own Package
 from data.image_dataset import Image_Dataset
-from utils.tools import seed_reproducer, load_checkpoint, get_cuda, print_options
+from utils.tools import *
 from utils.get_logger import open_log
 from utils.metrics import all_metrics
-from utils.load_ckpt import get_tiny_autoencoder
+from utils.load_ckpt import get_tiny_autoencoder, get_lite_vae
 from networks.latent_mapping_model import ResAttnUNet_DS
 from networks.models.autoencoder import AutoencoderKL
 from networks.models.distributions import DiagonalGaussianDistribution
@@ -100,11 +100,26 @@ def run_validator() -> None:
         ch=configs['ch'],
         ch_mult=configs['ch_mult']
     ))
-    mapping_model = load_checkpoint(mapping_model, configs['model_weight'])
+    vae_train = True
+
+    if configs['vae_model'] != 'tiny_vae':
+        vae_model = get_lite_vae(train = False, freeze = True)
+
+        tiny_vae  = get_tiny_autoencoder()
+    else:
+        vae_model = get_tiny_autoencoder()
+
+    if vae_train:
+        mapping_model, vae_model = load_checkpoint(mapping_model, configs['model_weight'], vae_model = vae_model, vae_model_load = vae_train)
+
+    else:
+        mapping_model = load_checkpoint(mapping_model, configs['model_weight'])
+
     mapping_model.eval()
-    
+    vae_model.eval()
+    tiny_vae.eval() if configs['vae_model'] != 'tiny_vae' else None
     # Getting tiny-vae (with residual_autoencoding) default: frozen and eval
-    vae_model    = get_tiny_autoencoder(residual_autoencoding = False)
+    
     scale_factor = 1.0
 
     # Define loss functions
@@ -120,7 +135,9 @@ def run_validator() -> None:
     for batch_data in tqdm(valid_dataloader, desc='Valid: '):
         img_rgb = batch_data['img']
         img_rgb = img_rgb / 255.0 # [CHANGED] V.V.V Imp!  --> SCALE CORRECTION
-        img_rgb = 2. * img_rgb - 1.
+        if configs['vae_model'] == 'tiny_vae':
+            img_rgb = 2. * img_rgb - 1.
+
         seg_raw = batch_data['seg']
         seg_raw = seg_raw.permute(0, 3, 1, 2) / 255.0
         seg_rgb = 2. * seg_raw - 1.
@@ -128,12 +145,21 @@ def run_validator() -> None:
         name_list.append(name)
 
         with torch.no_grad():
-            img_latent_mean      = vae_model.encode(get_cuda(img_rgb)).latents
-            seg_latent_mean      = vae_model.encode(get_cuda(seg_rgb)).latents
+            if configs['vae_model'] == 'tiny_vae':
+                img_latent_mean, seg_latent_mean = (
+                    vae_model.encode(get_cuda(img_rgb)).latents,
+                    vae_model.encode(get_cuda(seg_rgb)).latents,
+                )
+            else:
+                img_latent_mean, seg_latent_mean = (
+                    vae_model.encode(get_cuda(img_rgb)),
+                    tiny_vae.encode(get_cuda(seg_rgb)).latents,
+                )
+
             out_latent_mean_dict = mapping_model(img_latent_mean)
 
             loss_Rec = configs['w_rec'] * mse_loss(out_latent_mean_dict['out'], seg_latent_mean)
-            pred_seg = vae_decode(vae_model, out_latent_mean_dict['out'], scale_factor)
+            pred_seg = vae_decode(tiny_vae if configs['vae_model'] != 'tiny_vae' else vae_model, out_latent_mean_dict['out'], scale_factor)
             pred_seg = pred_seg.repeat(1, 3, 1, 1)
 
             x_logits = rearrange(pred_seg.squeeze().cpu().numpy(), 'c h w -> h w c')

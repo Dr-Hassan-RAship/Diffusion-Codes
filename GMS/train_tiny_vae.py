@@ -13,7 +13,7 @@ from monai.losses.dice import DiceLoss
 
 # Own Package
 from data.image_dataset import Image_Dataset
-from utils.tools import seed_reproducer, save_checkpoint, get_cuda, print_options
+from utils.tools import *
 from utils.get_logger import open_log
 from utils.load_ckpt import *
 from utils.lr_scheduler import LinearWarmupCosineAnnealingLR
@@ -21,6 +21,9 @@ from utils.metrics      import *
 from networks.latent_mapping_model import ResAttnUNet_DS
 from networks.models.autoencoder import AutoencoderKL
 from networks.models.distributions import DiagonalGaussianDistribution
+from networks.novel.lite_vae.encoder            import LiteVAEEncoder
+from networks.novel.lite_vae.decoder            import *  # or SDVAEDecoder
+from networks.novel.lite_vae.litevae            import LiteVAE
 
 from tensorboardX import SummaryWriter
 
@@ -133,13 +136,27 @@ def run_trainer() -> None:
         )
     )
     # Getting tiny-vae (with residual_autoencoding) default: frozen and eval
-    vae_train = False
-    vae_model = get_tiny_autoencoder(train = vae_train, residual_autoencoding = False)
+    vae_train = True
+    if configs['vae_model'] == 'tiny_vae':
+        logging.info("Initializing TinyVAE")
+        vae_model = get_tiny_autoencoder(train = vae_train, residual_autoencoding = False)
+    else:
+        logging.info("Initializing LiteVAE")
+        tiny_vae  = get_tiny_autoencoder(train = vae_train, residual_autoencoding = False) # for the segmentation latent and decoding at the end.
+        vae_model = get_lite_vae()
 
     scale_factor = 1.0
-
+    
     # Define optimizers
-    optimizer = torch.optim.AdamW(mapping_model.parameters(), lr=configs["lr"])
+    param_groups = list(mapping_model.parameters())
+    if vae_train:
+        param_groups += list(vae_model.parameters())
+        logging.info("Training both mapping model and VAE model")
+    
+    logging.info(f"Mapping model trainable params: {count_params(mapping_model)} out of {sum(p.numel() for p in mapping_model.parameters())}")
+    logging.info(f"VAE model trainable params: {count_params(vae_model)} out of {sum(p.numel() for p in vae_model.parameters())}")
+
+    optimizer = torch.optim.AdamW(param_groups, lr=configs["lr"])
     scheduler = LinearWarmupCosineAnnealingLR(
         optimizer, warmup_epochs=5, max_epochs=configs["epochs"]
     )
@@ -160,6 +177,8 @@ def run_trainer() -> None:
     for epoch in range(1, configs["epochs"] + 1):
         epoch_start_time = time.time()
         mapping_model.train()
+        vae_model.train() if vae_train else vae_model.eval()
+        tiny_vae.eval() if configs['vae_model'] != 'tiny_vae' else None
 
         T_loss = []
         T_loss_Rec = []
@@ -171,23 +190,32 @@ def run_trainer() -> None:
 
         ### Training phase
         for batch_data in tqdm(train_dataloader, desc="Train: "):
-            # [CHANGED] --> I believe the image and mask were originally in the range (0, 255)
-            # but are now bing brought in the range (-1, 1)
+            # [CHANGED] --> In case the vae model is lite_vae, the haar transform expects (0, 1) or (0, 255) so we will scale the input accordingly
+            # Note: no change needed regarding the segmentation as it is being used by tiny vae.
             img_rgb = batch_data["img"]
-            img_rgb = img_rgb / 255.0  # [CHANGED] V.V.V Imp!  --> SCALE CORRECTION
-            img_rgb = 2.0 * img_rgb - 1.0
+            img_rgb = img_rgb / 255.0
+            if configs['vae_model'] == 'tiny_vae':   
+                img_rgb = 2.0 * img_rgb - 1.0
+
             seg_raw = batch_data["seg"]
             seg_raw = seg_raw.permute(0, 3, 1, 2) / 255.0
             seg_rgb = 2.0 * seg_raw - 1.0
+
             # [CHANGED] --> Taking mean across channels dimension resulting in 1 channel which matches the channel dimension
             # of pred_seg gotten from the decoder. Same thing in Validation
             seg_img = torch.mean(seg_raw, dim=1, keepdim=True)
             name = batch_data["name"]
-
-            img_latent_mean_aug, seg_latent_mean = (
-                vae_model.encode(get_cuda(img_rgb)).latents,
-                vae_model.encode(get_cuda(seg_rgb)).latents,
-            )
+            
+            if configs['vae_model'] == 'tiny_vae':
+                img_latent_mean_aug, seg_latent_mean = (
+                    vae_model.encode(get_cuda(img_rgb)).latents,
+                    vae_model.encode(get_cuda(seg_rgb)).latents,
+                )
+            else:
+                img_latent_mean_aug, seg_latent_mean = (
+                    vae_model.encode(get_cuda(img_rgb)),
+                    tiny_vae.encode(get_cuda(seg_rgb)).latents,
+                )
 
             # latent matching [CHANGED] --> recieves the grountruth latent mask representation and predicted and computes mse loss
             out_latent_mean_dict = mapping_model(img_latent_mean_aug)
@@ -204,7 +232,7 @@ def run_trainer() -> None:
             pred_seg_dict = {}
             for level_name in ds_list:
                 pred_seg_dict[level_name] = vae_decode(
-                    vae_model, out_latent_mean_dict[level_name], scale_factor
+                    tiny_vae if configs['vae_model'] != 'tiny_vae' else vae_model, out_latent_mean_dict[level_name], scale_factor
                 )
 
             # [CHANGED] --> similar to Loss_Rec
@@ -256,7 +284,9 @@ def run_trainer() -> None:
         for batch_data in tqdm(valid_dataloader, desc="Valid: "):
             img_rgb = batch_data["img"]
             img_rgb = img_rgb / 255.0  # [CHANGED] V.V.V Imp!  --> SCALE CORRECTION
-            img_rgb = 2.0 * img_rgb - 1.0
+            if configs['vae_model'] == 'tiny_vae':
+                img_rgb = 2.0 * img_rgb - 1.0
+
             seg_raw = batch_data["seg"]
             seg_raw = seg_raw.permute(0, 3, 1, 2) / 255.0
             seg_rgb = 2.0 * seg_raw - 1.0
@@ -265,16 +295,23 @@ def run_trainer() -> None:
 
             mapping_model.eval()
             vae_model.eval()
+            tiny_vae.eval() if configs['vae_model'] != 'tiny_vae' else None
 
             with torch.no_grad():
-                img_latent_mean, seg_latent_mean = (
-                    vae_model.encode(get_cuda(img_rgb)).latents,
-                    vae_model.encode(get_cuda(seg_rgb)).latents,
-                )
+                if configs['vae_model'] == 'tiny_vae':
+                    img_latent_mean, seg_latent_mean = (
+                        vae_model.encode(get_cuda(img_rgb)).latents,
+                        vae_model.encode(get_cuda(seg_rgb)).latents,
+                    )
+                else:
+                    img_latent_mean, seg_latent_mean = (
+                        vae_model.encode(get_cuda(img_rgb)),
+                        tiny_vae.encode(get_cuda(seg_rgb)).latents,
+                    )
 
                 out_latent_mean_dict = mapping_model(img_latent_mean)
                 pred_seg = vae_decode(
-                    vae_model, out_latent_mean_dict["out"], scale_factor
+                    tiny_vae if configs['vae_model'] != 'tiny_vae' else vae_model, out_latent_mean_dict["out"], scale_factor
                 )
 
                 loss_Rec = configs["w_rec"] * mse_loss(
@@ -319,32 +356,47 @@ def run_trainer() -> None:
 
         if T_Dice_valid > best_valid_dice:
             save_name = f"best_valid_dice_{epoch}.pth"
-            save_checkpoint(mapping_model, save_name, configs["snapshot_path"])
+            if vae_train:
+                save_checkpoint(mapping_model, save_name, configs["snapshot_path"], vae_model = vae_model, vae_model_save = True)
+            else:
+                save_checkpoint(mapping_model, save_name, configs["snapshot_path"])
             best_valid_dice = T_Dice_valid
             best_valid_dice_epoch = epoch
             logging.info("Save best valid Dice !")
 
         if T_loss_valid < best_valid_loss:
             save_name = f"best_valid_loss_{epoch}.pth"
-            save_checkpoint(mapping_model, save_name, configs["snapshot_path"])
+            if vae_train:
+                save_checkpoint(mapping_model, save_name, configs["snapshot_path"], vae_model = vae_model, vae_model_save = True)
+            else:
+                save_checkpoint(mapping_model, save_name, configs["snapshot_path"])
             best_valid_loss = T_loss_valid
             logging.info("Save best valid Loss All !")
 
         if T_loss_Rec_valid < best_valid_loss_rec:
             save_name = f"best_valid_loss_rec_{epoch}.pth"
-            save_checkpoint(mapping_model, save_name, configs["snapshot_path"])
+            if vae_train:
+                save_checkpoint(mapping_model, save_name, configs["snapshot_path"], vae_model = vae_model, vae_model_save = True)
+            else:
+                save_checkpoint(mapping_model, save_name, configs["snapshot_path"])
             best_valid_loss_rec = T_loss_Rec_valid
             logging.info("Save best valid Loss Rec !")
 
         if T_loss_Dice_valid < best_valid_loss_dice:
             save_name = f"best_valid_loss_dice_{epoch}.pth"
-            save_checkpoint(mapping_model, save_name, configs["snapshot_path"])
+            if vae_train:
+                save_checkpoint(mapping_model, save_name, configs["snapshot_path"], vae_model = vae_model, vae_model_save = True)
+            else:
+                save_checkpoint(mapping_model, save_name, configs["snapshot_path"])
             best_valid_loss_dice = T_loss_Dice_valid
             logging.info("Save best valid Loss Dice !")
 
         if epoch % configs["save_freq"] == 0:
             save_name = "{}_epoch_{:0>4}.pth".format("latent_mapping_model", epoch)
-            save_checkpoint(mapping_model, save_name, configs["snapshot_path"])
+            if vae_train:
+                save_checkpoint(mapping_model, save_name, configs["snapshot_path"], vae_model = vae_model, vae_model_save = True)
+            else:
+                save_checkpoint(mapping_model, save_name, configs["snapshot_path"])
 
         logging.info("Current learning rate: {:.5f}".format(scheduler.get_last_lr()[0]))
         logging.info(

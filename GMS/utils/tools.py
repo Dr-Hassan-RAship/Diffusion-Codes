@@ -23,7 +23,7 @@ def seed_reproducer(seed=2333):
         torch.backends.cudnn.enabled = True
 
 
-def load_checkpoint(model: torch.nn.Module, path: str) -> torch.nn.Module:
+def load_checkpoint(model: torch.nn.Module, path: str, vae_model: None, vae_model_load = False) -> torch.nn.Module:
     if os.path.isfile(path):
         logging.info("=> loading checkpoint '{}'".format(path))
         
@@ -32,22 +32,48 @@ def load_checkpoint(model: torch.nn.Module, path: str) -> torch.nn.Module:
 
         # load weights
         model.load_state_dict(state['model'])
-        logging.info("Loaded")
+        logging.info("Loaded LMM model from {}".format(path))
+
+        if vae_model_load:
+            if 'vae_model' in state:
+                vae_model = state['vae_model']
+                logging.info("Loaded VAE model from {}".format(path))
+                return model, vae_model
+            else:
+                logging.warning("VAE model not found in checkpoint, returning only model and default vae_model")
+                return model, vae_model
+
     else:
         model = None
         logging.info("=> no checkpoint found at '{}'".format(path))
     return model
 
 
-def save_checkpoint(model: torch.nn.Module, save_name: str, path: str) -> None:
+def save_checkpoint(model: torch.nn.Module, save_name: str, path: str, vae_model = None, vae_model_save = False) -> None:
     model_savepath = os.path.join(path, 'checkpoints')
+
     if not os.path.exists(model_savepath):
         os.makedirs(model_savepath)
+
     file_name = os.path.join(model_savepath, save_name)
-    torch.save({
-        'model': model.state_dict(),
-    },file_name)
+
+    if vae_model_save:
+        torch.save({
+            'model': model.state_dict(),
+            'vae_model': vae_model.state_dict()
+        }, file_name)
+        logging.info("save model and vae_model to {}".format(file_name))
+
+    else:
+        torch.save({
+            'model': model.state_dict(),
+        },file_name)
+
     logging.info("save model to {}".format(file_name))
+
+
+def count_params(model):
+    return sum(p.numel() for p in model.parameters() if p.requires_grad)
 
 
 def adjust_learning_rate(optimizer, initial_lr, epoch, reduce_epoch, decay=0.5):

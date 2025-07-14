@@ -13,6 +13,10 @@ import torch
 from diffusers import AutoencoderTiny as HF_TinyVAE
 from networks.novel.tiny_vae.autoencoder_tiny import AutoencoderTiny  # your new class
 
+from networks.novel.lite_vae.encoder            import LiteVAEEncoder
+from networks.novel.lite_vae.decoder            import *  # or SDVAEDecoder
+from networks.novel.lite_vae.litevae            import LiteVAE
+
 def get_state_dict(ckpt_url = 'https://huggingface.co/stabilityai/stable-diffusion-2/blob/main/768-v-ema.ckpt',
                    repo_id  = 'stabilityai/stable-diffusion-2',
                    filename = '768-v-ema.ckpt'):
@@ -34,7 +38,7 @@ def get_state_dict(ckpt_url = 'https://huggingface.co/stabilityai/stable-diffusi
     except Exception as e:
         print(f"Error loading state dictionary: {e}")
 
-def get_tiny_autoencoder(device = 'cuda', train = False, freeze = True, residual_autoencoding = False):
+def get_tiny_autoencoder(device = 'cuda' if torch.cuda.is_available() else 'cpu', train = False, freeze = True, residual_autoencoding = False):
     
     if not residual_autoencoding:
         print('Downloading AutoencoderTiny...')
@@ -57,6 +61,22 @@ def get_tiny_autoencoder(device = 'cuda', train = False, freeze = True, residual
         print('Freezing Complete...')
         vae.eval()
         return vae
+    
+def get_lite_vae(device: str = 'cuda' if torch.cuda.is_available() else 'cpu', dtype: torch.dtype = torch.float32, train = True, freeze = False) -> LiteVAE:
+
+    base_model = LiteVAE(LiteVAEEncoder(model_version = 'litevae-s')).to(device=device, dtype=dtype).to(memory_format=torch.channels_last)
+    if train:
+        print('Training LiteVAE')
+        base_model.train()
+        return base_model
+
+    elif freeze:
+        print('Freezing All params of LiteVAE')
+        for param in base_model.parameters():
+            param.requires_grad = False
+        print('Freezing Complete...')
+        base_model.eval()
+        return base_model
 
 # ------------------------------------------------------------------
 # Adjust these imports to match your repo layout

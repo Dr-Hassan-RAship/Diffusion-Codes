@@ -1,14 +1,15 @@
 # Data Settings
 phase: train
-pickle_file_path: ./Dataset/kvasir-instrument/kvasir_train_test_names.pkl
-snapshot_path: ./ckpt/tiny_vae_kvasir-instrument
+pickle_file_path: ./Dataset/busi/busi_train_test_names.pkl
+vae_model: tiny_vae # or tiny_vae     
+snapshot_path: ./ckpt/tiny_vae_train_b_12
 
 # Training Settings
-epochs: 10000
+epochs: 2000
 GPUs: [0]
 num_workers: 8
-batch_size: 24
-save_freq: 25
+batch_size: 12 # possible due to TinyVae
+save_freq: 100
 seed: 2333
 
 # Model Settings
@@ -24,3 +25,5 @@ lr: 0.002
 # Loss Settings
 w_rec: 1
 w_dice: 1
+
+

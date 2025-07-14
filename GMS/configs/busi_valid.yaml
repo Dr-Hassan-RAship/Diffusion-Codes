@@ -1,5 +1,6 @@
 # Data Settings
 phase: valid
+vae_model: litevae-s # or tiny_vae     
 # pickle_file_path: ./Dataset/busi/busi_train_test_names.pkl
 # model_weight: ./ckpt/valid_busi/best_model.pth
 # snapshot_path: ./ckpt/busi/202506201608/valid_busi_best_model

@@ -64,7 +64,6 @@ class LiteVAEEncoder(nn.Module):
         wavelet_fn: HaarTransform = HaarTransform(),
     ):
         super().__init__()
-        print(f'Instantiating LiteVAEEncoder with model_version: {model_version}..')
         self.model_version = model_version
         self.wavelet_fn    = wavelet_fn
         self.in_channels   = in_channels
@@ -119,18 +118,14 @@ class LiteVAEEncoder(nn.Module):
         dwt_L2 = self.wavelet_fn.dwt(image, level = 2) / 4 # (B, 12, H/4, W/4)
         dwt_L3 = self.wavelet_fn.dwt(image, level = 3) / 8 # (B, 12, H/8, W/8)
 
-        print(f'DWT Done!')
         # Feature extraction (shared UNet blocks)
         feat_L1 = self.downsample_L1(self.feature_extractor_L1(dwt_L1)) # (B, 12, H/8, H/8)
         feat_L2 = self.downsample_L2(self.feature_extractor_L2(dwt_L2)) # (B, 12, H/8, H/8)
         feat_L3 = self.feature_extractor_L3(dwt_L3)
-        print(f'Feature Extraction Done!')
 
         # Concatenate and aggregate to latent (mu + logvar)
         feat_cat = torch.cat([feat_L1, feat_L2, feat_L3], dim = 1) # (B, 36, H/8, W/8)
-        print(f'Concatenation Done!')
 
         latent_out = self.feature_aggregator(feat_cat) # (B, 8, H/8, W/8) --> [mu | logvar]
-        print(f'Aggregation Done!')
-
+        
         return latent_out

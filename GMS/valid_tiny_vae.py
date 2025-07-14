@@ -152,7 +152,7 @@ def run_validator() -> None:
                 )
             else:
                 img_latent_mean, seg_latent_mean = (
-                    vae_model.encode(get_cuda(img_rgb)),
+                    vae_model(get_cuda(img_rgb)),
                     tiny_vae.encode(get_cuda(seg_rgb)).latents,
                 )
 

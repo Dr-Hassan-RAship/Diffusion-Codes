@@ -86,8 +86,7 @@ class LiteVAE(nn.Module):
                 "latent_dist": latent_dist,
             }
         else:
-            return {
-                "latent": latent
-            }
+            return latent
+           
                 
 

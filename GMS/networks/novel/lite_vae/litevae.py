@@ -20,11 +20,11 @@ from diffusers import AutoencoderTiny
 class LiteVAE(nn.Module):
     def __init__(
         self,
-        encoder: LiteVAEEncoder,
-        decoder: AutoencoderTiny,
+        encoder: LiteVAEEncoder = LiteVAEEncoder(),
+        decoder: None | AutoencoderTiny = AutoencoderTiny(),
         latent_dim: int = 4,
         output_type: Literal["image", "wavelet"] = "image",
-        use_1x1_conv: bool = True,
+        use_1x1_conv: bool = False,
         decode : bool = False,
     ) -> None:
         super().__init__()
@@ -37,10 +37,10 @@ class LiteVAE(nn.Module):
         self.decode = decode
         
         # 1x1 convs to match latent dimension
-        pre_channels = latent_dim * 2  # For [mu, logvar]
+        pre_channels  = latent_dim * 2  # For [mu, logvar]
         post_channels = latent_dim     # Actual decoded latent channels
 
-        self.pre_conv = nn.Conv2d(pre_channels, pre_channels, 1) if use_1x1_conv else nn.Identity()
+        self.pre_conv  = nn.Conv2d(pre_channels, pre_channels, 1) if use_1x1_conv else nn.Identity()
         self.post_conv = nn.Conv2d(post_channels, post_channels, 1) if use_1x1_conv else nn.Identity()
 
     def encode(self, image: torch.Tensor) -> torch.Tensor:
@@ -76,7 +76,7 @@ class LiteVAE(nn.Module):
         latent = latent_dist.sample() if sample else latent_dist.mode()
         kl_reg = latent_dist.kl().mean()
 
-        if self.decode:
+        if self.decode and self.decoder is not None:
             image_recon, wavelet_recon = self.decode(latent)
             return {
                 "sample": image_recon,

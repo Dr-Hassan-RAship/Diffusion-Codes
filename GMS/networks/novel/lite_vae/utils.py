@@ -69,7 +69,7 @@ class DiagonalGaussianDistribution:
         Concatenated tensor `[mu, logvar]` with shape `(B, 2*C, H, W)`.
     """
 
-    def __init__(self, params: Tensor, device = 'cuda', dtype = torch.float32, deterministic = False) -> None:
+    def __init__(self, params: Tensor, device = 'cuda' if torch.cuda.is_available() else 'cpu', dtype = torch.float32, deterministic = False) -> None:
         
         self.mu, self.logvar = torch.chunk(params, 2, dim=1)
         self.mu     = self.mu.to(device = device, dtype = dtype)

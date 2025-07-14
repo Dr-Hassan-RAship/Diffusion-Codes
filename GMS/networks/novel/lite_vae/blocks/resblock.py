@@ -78,7 +78,7 @@ class ResBlock(nn.Module):
         out_channels: Optional[int] = None,
         use_conv: bool = False,
         activation: str = "silu",
-        norm_num_groups: int = 32,
+        norm_num_groups: int = 8,
         scale_factor: float = 1.0,
     ) -> None:
         super().__init__()

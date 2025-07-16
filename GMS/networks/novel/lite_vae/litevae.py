@@ -16,6 +16,7 @@ from typing import Literal
 from .encoder import LiteVAEEncoder
 from .utils import DiagonalGaussianDistribution
 from diffusers import AutoencoderTiny
+from networks.novel.lite_vae.blocks.lip import LIPBlock
 
 class LiteVAE(nn.Module):
     def __init__(
@@ -35,11 +36,14 @@ class LiteVAE(nn.Module):
         self.wavelet_fn = encoder.wavelet_fn
         self.output_type = output_type
         self.decode = decode
+        self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
         
         # 1x1 convs to match latent dimension
         pre_channels  = latent_dim * 2  # For [mu, logvar]
         post_channels = latent_dim     # Actual decoded latent channels
 
+        self.lip_block = LIPBlock(in_channels = latent_dim, p = 2).to(device = self.device)
+        
         self.pre_conv  = nn.Conv2d(pre_channels, pre_channels, 1) if use_1x1_conv else nn.Identity()
         self.post_conv = nn.Conv2d(post_channels, post_channels, 1) if use_1x1_conv else nn.Identity()
 
@@ -76,6 +80,9 @@ class LiteVAE(nn.Module):
         latent = latent_dist.sample() if sample else latent_dist.mode()
         kl_reg = latent_dist.kl().mean()
 
+        # Use LIP to downsample latent from (B, C, H, W) to (B, C, H/p, W/p) where p = 2
+        latent    = self.lip_block(latent)
+        
         if self.decode and self.decoder is not None:
             image_recon, wavelet_recon = self.decode(latent)
             return {

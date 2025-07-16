@@ -8,7 +8,6 @@ import time
 import os
 from tqdm import tqdm
 from torch.utils.data import DataLoader
-from omegaconf import OmegaConf
 from monai.losses.dice import DiceLoss
 
 # Own Package
@@ -19,14 +18,9 @@ from utils.load_ckpt import *
 from utils.lr_scheduler import LinearWarmupCosineAnnealingLR
 from utils.metrics      import *
 from networks.latent_mapping_model import ResAttnUNet_DS
-from networks.models.autoencoder import AutoencoderKL
 from networks.models.distributions import DiagonalGaussianDistribution
-from networks.novel.lite_vae.encoder            import LiteVAEEncoder
-from networks.novel.lite_vae.decoder            import *  # or SDVAEDecoder
-from networks.novel.lite_vae.litevae            import LiteVAE
 
 from tensorboardX import SummaryWriter
-
 
 # Note the encoder output is AutoeencoderTinyOuput(latents = ouptut) and Decoder is DecoderOutput(sample = output)
 
@@ -143,7 +137,7 @@ def run_trainer() -> None:
     else:
         logging.info("Initializing LiteVAE")
         tiny_vae  = get_tiny_autoencoder(train = vae_train, residual_autoencoding = False) # for the segmentation latent and decoding at the end.
-        vae_model = get_lite_vae()
+        vae_model = get_lite_vae(model_version = configs['vae_model'])
 
     scale_factor = 1.0
     

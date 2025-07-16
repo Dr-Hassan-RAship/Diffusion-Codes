@@ -103,7 +103,7 @@ def run_validator() -> None:
     vae_train = True
 
     if configs['vae_model'] != 'tiny_vae':
-        vae_model = get_lite_vae(train = False, freeze = True)
+        vae_model = get_lite_vae(model_version = configs['vae_model'], train = False, freeze = True)
 
         tiny_vae  = get_tiny_autoencoder()
     else:
@@ -135,6 +135,7 @@ def run_validator() -> None:
     for batch_data in tqdm(valid_dataloader, desc='Valid: '):
         img_rgb = batch_data['img']
         img_rgb = img_rgb / 255.0 # [CHANGED] V.V.V Imp!  --> SCALE CORRECTION
+        
         if configs['vae_model'] == 'tiny_vae':
             img_rgb = 2. * img_rgb - 1.
 

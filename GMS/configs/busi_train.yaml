@@ -2,7 +2,7 @@
 phase: train
 pickle_file_path: ./Dataset/busi/busi_train_test_names.pkl
 vae_model: litevae-s # or tiny_vae     
-snapshot_path: ./ckpt/litevae-s_b_12
+snapshot_path: ./ckpt/litevae-sf2_b_12
 
 # Training Settings
 epochs: 1500

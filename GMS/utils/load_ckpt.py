@@ -62,9 +62,9 @@ def get_tiny_autoencoder(device = 'cuda' if torch.cuda.is_available() else 'cpu'
         vae.eval()
         return vae
     
-def get_lite_vae(device: str = 'cuda' if torch.cuda.is_available() else 'cpu', dtype: torch.dtype = torch.float32, train = True, freeze = False) -> LiteVAE:
+def get_lite_vae(model_version = 'litevae-s', device: str = 'cuda' if torch.cuda.is_available() else 'cpu', dtype: torch.dtype = torch.float32, train = True, freeze = False) -> LiteVAE:
 
-    base_model = LiteVAE(LiteVAEEncoder(model_version = 'litevae-s')).to(device=device, dtype=dtype).to(memory_format=torch.channels_last)
+    base_model = LiteVAE(LiteVAEEncoder(model_version = model_version)).to(device=device, dtype=dtype).to(memory_format=torch.channels_last)
     if train:
         print('Training LiteVAE')
         base_model.train()

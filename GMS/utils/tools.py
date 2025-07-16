@@ -36,7 +36,7 @@ def load_checkpoint(model: torch.nn.Module, path: str, vae_model: None, vae_mode
 
         if vae_model_load:
             if 'vae_model' in state:
-                vae_model = state['vae_model']
+                vae_model.load_state_dict(state['vae_model'])
                 logging.info("Loaded VAE model from {}".format(path))
                 return model, vae_model
             else:

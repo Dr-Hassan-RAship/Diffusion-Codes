@@ -1,15 +1,11 @@
 # Data Settings
 phase: valid
-vae_model: litevae-s # or tiny_vae     
-# pickle_file_path: ./Dataset/busi/busi_train_test_names.pkl
-# model_weight: ./ckpt/valid_busi/best_model.pth
-# snapshot_path: ./ckpt/busi/202506201608/valid_busi_best_model
-# save_seg_img_path: ./ckpt/busi/202506201608/predicted_masks_best_model
+vae_model: litevae-s # or tiny_vae
 
 pickle_file_path: ./Dataset/busi/busi_train_test_names.pkl
-model_weight: ./ckpt/tiny_vae_busi_b_12/epoch_1500/checkpoints/best_valid_loss_rec_313.pth
-snapshot_path: ./ckpt/tiny_vae_busi_b_12/epoch_1500/valid_busi_best_valid_loss_rec
-save_seg_img_path: ./ckpt/tiny_vae_busi_b_12/epoch_1500/predicted_masks_best_valid_loss_rec
+model_weight: ./ckpt/litevae-sf2_b_12/epoch_1500/checkpoints/best_valid_loss_rec_300.pth
+snapshot_path: ./ckpt/litevae-sf2_b_12/epoch_1500/valid_busi_best_valid_loss_rec
+save_seg_img_path: ./ckpt/litevae-sf2_b_12/epoch_1500/predicted_masks_best_valid_loss_rec
 
 # Valid Settings
 GPUs: [0]

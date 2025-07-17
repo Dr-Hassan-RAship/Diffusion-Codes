@@ -44,7 +44,6 @@ their implementation uses ptwt instead of pywt which takes the whole RGB image a
 
 """
 
-
 class LiteVAEEncoder(nn.Module):
     """
     LiteVAE encoder that performs:

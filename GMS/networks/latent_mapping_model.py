@@ -1,8 +1,9 @@
 import torch
 import logging
-from torch import nn
+from torch import  nn
 from einops import rearrange
 
+from networks.novel.lite_vae.blocks.lip import LIPBlock
 
 def Normalize(in_channels):
     return torch.nn.GroupNorm(num_groups=16, num_channels=in_channels, eps=1e-6, affine=True)
@@ -209,7 +210,7 @@ class ResAttnUNet_DS(nn.Module):
         self.convds0 = nn.Sequential(Normalize(ch * 1), nn.SiLU(),
                                      nn.Conv2d(ch * 1, out_channels, kernel_size=3, stride=1, padding=1, bias=False))
         
-
+        self.lip_block = LIPBlock(in_channels = in_channel, p = 2)
         self._initialize_weights()
         self._print_networks(verbose=False)
 
@@ -219,17 +220,19 @@ class ResAttnUNet_DS(nn.Module):
         x2 = self.conv2_0(x1)
         x3 = self.conv3_0(x2)
         x4 = self.conv4_0(x3)
-
+        
         x3_1 = self.conv3_1(torch.cat([x3, x4], dim=1))
         x2_2 = self.conv2_2(torch.cat([x2, x3_1], dim=1))
         x1_3 = self.conv1_3(torch.cat([x1, x2_2], dim=1))
         x0_4 = self.conv0_4(torch.cat([x0, x1_3], dim=1))
 
         out = dict()
-        out['level3'] = self.convds3(x3_1)
-        out['level2'] = self.convds2(x2_2)
-        out['level1'] = self.convds1(x1_3)
-        out['out']    = self.convds0(x0_4)
+        out['level3']   = self.lip_block(self.convds3(x3_1))
+        out['level2']   = self.lip_block(self.convds2(x2_2))
+        out['level1']   = self.lip_block(self.convds1(x1_3))
+        out['out']      = self.lip_block(self.convds0(x0_4))
+        
+        # print(f"out['level3'].shape: {out['level3'].shape}, out['level2'].shape: {out['level2'].shape}, out['level1'].shape: {out['level1'].shape}, out['out'].shape: {out['out'].shape}")
         return out
 
     def _initialize_weights(self) -> None:

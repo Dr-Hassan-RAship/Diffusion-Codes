@@ -3,7 +3,7 @@ phase: valid
 vae_model: litevae-s # or tiny_vae
 
 pickle_file_path: ./Dataset/busi/busi_train_test_names.pkl
-model_weight: ./ckpt/litevae-sf2_b_12/epoch_1500/checkpoints/best_valid_loss_rec_300.pth
+model_weight: ./ckpt/litevae-sf2_b_12/epoch_1500/checkpoints/best_valid_loss_rec_304.pth
 snapshot_path: ./ckpt/litevae-sf2_b_12/epoch_1500/valid_busi_best_valid_loss_rec
 save_seg_img_path: ./ckpt/litevae-sf2_b_12/epoch_1500/predicted_masks_best_valid_loss_rec
 

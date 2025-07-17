@@ -75,13 +75,13 @@ class LiteVAE(nn.Module):
         #                                                               Charboneir Loss(wavelet_recon, wavelet) +
         #                                                               lambda_reg * kl_reg
         # but we are feeding it as an encoder only model in the GMS pipelines
-        latents_raw = self.encode(image).to(device=image.device, dtype=image.dtype)
+        latents_raw = self.encode(image).to(device=image.device, dtype = image.dtype)
         latent_dist = DiagonalGaussianDistribution(latents_raw)
         latent = latent_dist.sample() if sample else latent_dist.mode()
         kl_reg = latent_dist.kl().mean()
 
         # Use LIP to downsample latent from (B, C, H, W) to (B, C, H/p, W/p) where p = 2
-        latent    = self.lip_block(latent)
+        # latent    = self.lip_block(latent)
         
         if self.decode and self.decoder is not None:
             image_recon, wavelet_recon = self.decode(latent)

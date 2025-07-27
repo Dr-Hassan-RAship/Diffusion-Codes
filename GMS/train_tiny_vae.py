@@ -14,7 +14,7 @@ from monai.losses.dice import DiceLoss
 from data.image_dataset import Image_Dataset
 from utils.tools import *
 from utils.get_logger import open_log
-from utils.load_ckpt import *
+from utils.load_ckpt import * # contains function save_checkpoint
 from utils.lr_scheduler import LinearWarmupCosineAnnealingLR
 from utils.metrics      import *
 from networks.latent_mapping_model import ResAttnUNet_DS

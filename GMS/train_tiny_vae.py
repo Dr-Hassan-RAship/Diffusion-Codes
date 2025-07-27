@@ -147,8 +147,8 @@ def run_trainer() -> None:
         param_groups += list(vae_model.parameters())
         logging.info("Training both mapping model and VAE model")
     
-    logging.info(f"Mapping model trainable params: {count_params(mapping_model)} out of {sum(p.numel() for p in mapping_model.parameters())}")
-    logging.info(f"VAE model trainable params: {count_params(vae_model)} out of {sum(p.numel() for p in vae_model.parameters())}")
+    logging.info(f"Mapping Model trainable params: {count_params(mapping_model)} out of {sum(p.numel() for p in mapping_model.parameters())}")
+    logging.info(f"VAE Model trainable params: {count_params(vae_model)} out of {sum(p.numel() for p in vae_model.parameters())}")
 
     optimizer = torch.optim.AdamW(param_groups, lr=configs["lr"])
     scheduler = LinearWarmupCosineAnnealingLR(

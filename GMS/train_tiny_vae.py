@@ -19,6 +19,7 @@ from utils.lr_scheduler import LinearWarmupCosineAnnealingLR
 from utils.metrics      import *
 from networks.latent_mapping_model import ResAttnUNet_DS
 from networks.models.distributions import DiagonalGaussianDistribution
+from networks.novel.sft.sft_block import SFTModule
 
 from tensorboardX import SummaryWriter
 

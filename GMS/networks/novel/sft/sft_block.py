@@ -6,8 +6,6 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from compressai.layers import conv3x3
-
 class SFT(nn.Module):
     def __init__(self, x_nc, prior_nc, ks=3, nhidden=128):
         super().__init__()
@@ -29,7 +27,6 @@ class SFT(nn.Module):
 
         return out
 
-
 class SFTResblk(nn.Module):
     def __init__(self, x_nc, prior_nc, ks=3):
         super().__init__()
@@ -48,13 +45,11 @@ class SFTResblk(nn.Module):
 
     def actvn(self, x):
         return F.leaky_relu(x, 2e-1)
-    
 
 class SFTModule(nn.Module):
-    # Incoporates the whole G and F pipeline
-    
+    def __init__(self, x_nc, prior_nc):
+        self.sftresblk = SFTResblk(x_nc, prior_nc)
 
-    pass
-
-    def forward(original, guidance):
-        pass
+    def forward(self, original, guidance):
+        original = self.sftresblk(original, guidance)
+        return original

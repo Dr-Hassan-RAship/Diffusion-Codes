@@ -30,14 +30,18 @@ class SFT(nn.Module):
         return out
 
 class SFTResblk(nn.Module):
-    def __init__(self, original_channels, guidance_channels, ks=3):
+    def __init__(self, original_channels, guidance_channels, ks=3, dtype = torch.float32, device = 'cuda'):
         super().__init__()
-        self.conv_0 = nn.Conv2d(original_channels, original_channels, kernel_size=3, padding=1)
-        self.conv_1 = nn.Conv2d(original_channels, original_channels, kernel_size=3, padding=1)
+        
+        self.conv_0 = nn.Conv2d(original_channels, original_channels, kernel_size=3, padding=1).to(dtype = dtype, device = device)
+        self.conv_1 = nn.Conv2d(original_channels, original_channels, kernel_size=3, padding=1).to(dtype = dtype, device = device)
 
-        self.norm_0 = SFT(original_channels, guidance_channels, ks=ks)
-        self.norm_1 = SFT(original_channels, guidance_channels, ks=ks)
-
+        self.norm_0 = SFT(original_channels, guidance_channels, ks=ks).to(dtype = dtype, device = device)
+        self.norm_1 = SFT(original_channels, guidance_channels, ks=ks).to(dtype = dtype, device = device)
+    
+    def actvn(self, x):
+        return F.leaky_relu(x, 2e-1)
+    
     def forward(self, x, ref):
         dx = self.conv_0(self.actvn(self.norm_0(x, ref)))
         dx = self.conv_1(self.actvn(self.norm_1(dx, ref)))
@@ -46,9 +50,9 @@ class SFTResblk(nn.Module):
         return out
 
 class SFTModule(nn.Module):
-    def __init__(self, original_channels, guidance_channels):
+    def __init__(self, original_channels, guidance_channels, dtype = torch.float32, device = 'cuda'):
         super().__init__()
-        self.sftresblk = SFTResblk(original_channels, guidance_channels)
+        self.sftresblk = SFTResblk(original_channels, guidance_channels).to(dtype = torch.float32, device = device)
 
     def forward(self, x, ref):
         x = self.sftresblk(x, ref)

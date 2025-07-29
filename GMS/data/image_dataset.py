@@ -183,7 +183,7 @@ class Image_Dataset(Dataset):
         # load img & seg
         # [CHANGED] --> from .jpg to jpg as Kvasir-SEG has .jpg files. Also note both image and mask are being loaded as RGB
         mask_name = f"mask_{name}" if self.excel else name
-        seg_image = Image.open(self.mask_path / f"{mask_name}{self.mask_ext}").convert("L") # Load as Grayscale
+        seg_image = Image.open(self.mask_path / f"{mask_name}{self.mask_ext}").convert("RGB") # Load as Grayscale
         seg_data  = np.array(seg_image).astype(np.float32)
         img_image = Image.open(self.img_path / f"{name}{self.img_ext}").convert("RGB")
         img_data  = np.array(img_image).astype(np.float32)

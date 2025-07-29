@@ -145,8 +145,8 @@ def run_trainer() -> None:
     scale_factor = 1.0
     
     if configs['patchify']:
-        patch_model = LearnablePatchify(patch_size = 28)
-        sft_model   = SFTModule(original_channels = configs['in_channel'], guidance_channels = 64)
+        patch_model = LearnablePatchify(patch_size = 28).to(dtype = torch.float32, device = 'cuda')
+        sft_model   = SFTModule(original_channels = configs['in_channel'], guidance_channels = 64).to(dtype = torch.float32, device = 'cuda')
         patch_model.train(); sft_model.train()
 
     # Define optimizers
@@ -208,7 +208,7 @@ def run_trainer() -> None:
             seg_raw = batch_data["seg"]
             seg_raw = seg_raw.permute(0, 3, 1, 2) / 255.0
             seg_rgb = 2.0 * seg_raw - 1.0
-
+                
             # [CHANGED] --> Taking mean across channels dimension resulting in 1 channel which matches the channel dimension
             # of pred_seg gotten from the decoder. Same thing in Validation
             seg_img = torch.mean(seg_raw, dim=1, keepdim=True)
@@ -226,8 +226,8 @@ def run_trainer() -> None:
                 )
 
             if configs['patchify']:
-                patched_img         = patch_model(img_rgb)
-                img_latent_mean_aug = sft_model(original = img_latent_mean_aug, ref = patched_img)
+                patched_img         = patch_model(img_rgb.to('cuda'))
+                img_latent_mean_aug = sft_model(x = img_latent_mean_aug, ref = patched_img)
 
             # latent matching [CHANGED] --> recieves the grountruth latent mask representation and predicted and computes mse loss
             out_latent_mean_dict = mapping_model(img_latent_mean_aug)
@@ -323,8 +323,8 @@ def run_trainer() -> None:
                     )
 
                 if configs['patchify']:
-                    patched_img         = patch_model(img_rgb)
-                    img_latent_mean     = sft_model(original = img_latent_mean, ref = patched_img)
+                    patched_img         = patch_model(img_rgb.to('cuda'))
+                    img_latent_mean     = sft_model(x = img_latent_mean, ref = patched_img)
 
                 out_latent_mean_dict = mapping_model(img_latent_mean)
                 pred_seg = vae_decode(

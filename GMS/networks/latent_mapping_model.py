@@ -227,10 +227,10 @@ class ResAttnUNet_DS(nn.Module):
         x0_4 = self.conv0_4(torch.cat([x0, x1_3], dim=1))
 
         out = dict()
-        out['level3']   = self.lip_block(self.convds3(x3_1))
-        out['level2']   = self.lip_block(self.convds2(x2_2))
-        out['level1']   = self.lip_block(self.convds1(x1_3))
-        out['out']      = self.lip_block(self.convds0(x0_4))
+        out['level3']   = self.convds3(x3_1)
+        out['level2']   = self.convds2(x2_2)
+        out['level1']   = self.convds1(x1_3)
+        out['out']      = self.convds0(x0_4)
         
         # print(f"out['level3'].shape: {out['level3'].shape}, out['level2'].shape: {out['level2'].shape}, out['level1'].shape: {out['level1'].shape}, out['out'].shape: {out['out'].shape}")
         return out

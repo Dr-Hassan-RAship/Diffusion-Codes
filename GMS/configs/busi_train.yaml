@@ -3,13 +3,13 @@ phase: train
 patchify: True
 vae_model: litevae-s # or tiny_vae
 pickle_file_path: ./Dataset/busi/busi_train_test_names.pkl
-snapshot_path: ./ckpt/litevae-sf2_b_12
+snapshot_path: ./ckpt/litevae-sft_patchify
 
 # Training Settings
 epochs: 1500
 GPUs: [0]
 num_workers: 8
-batch_size: 10 # possible due to TinyVae
+batch_size: 12 # possible due to TinyVae
 save_freq: 100
 seed: 2333
 

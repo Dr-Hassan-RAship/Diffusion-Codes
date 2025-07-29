@@ -29,7 +29,7 @@ class LearnablePatchify(nn.Module):
         # Upsample patches to 28x28 with 3 channels
         out = patches.reshape(B * N, 3, 1, 1)  # shape: (B*N, 3, 1, 1)
         out = nn.functional.interpolate(out, size=(self.patch_size, self.patch_size), mode='bilinear', align_corners=False)
-        out = out.reshape(B, N, 3, self.patch_size, self.patch_size).mean(dim = 2)  # shape: (B, N, 3, 28, 28)
+        out = out.reshape(B, N, 3, self.patch_size, self.patch_size).mean(dim = 2)  # shape: (B, N, 28, 28)
         return out
 
 

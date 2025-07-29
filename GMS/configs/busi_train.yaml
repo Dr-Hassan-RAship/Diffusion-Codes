@@ -1,7 +1,8 @@
 # Data Settings
 phase: train
-pickle_file_path: ./Dataset/busi/busi_train_test_names.pkl
+patchify: True
 vae_model: litevae-s # or tiny_vae
+pickle_file_path: ./Dataset/busi/busi_train_test_names.pkl
 snapshot_path: ./ckpt/litevae-sf2_b_12
 
 # Training Settings

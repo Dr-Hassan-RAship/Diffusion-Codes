@@ -19,7 +19,8 @@ from utils.lr_scheduler import LinearWarmupCosineAnnealingLR
 from utils.metrics      import *
 from networks.latent_mapping_model import ResAttnUNet_DS
 from networks.models.distributions import DiagonalGaussianDistribution
-from networks.novel.sft.sft_block import SFTModule
+from networks.novel.sft.sft_block import *
+from networks.novel.sft.patchify import *
 
 from tensorboardX import SummaryWriter
 
@@ -119,6 +120,7 @@ def run_trainer() -> None:
         drop_last=False,
         shuffle=False,
     )
+    
 
     # Define networks
     mapping_model = get_cuda(
@@ -142,15 +144,26 @@ def run_trainer() -> None:
 
     scale_factor = 1.0
     
+    if configs['patchify']:
+        patch_model = LearnablePatchify(patch_size = 28)
+        sft_model   = SFTModule(original_channels = configs['in_channel'], guidance_channels = 64)
+        patch_model.train(); sft_model.train()
+
     # Define optimizers
+
     param_groups = list(mapping_model.parameters())
     if vae_train:
         param_groups += list(vae_model.parameters())
         logging.info("Training both mapping model and VAE model")
     
+    if configs['patchify']:
+        param_groups += list(patch_model.parameters()) + list(sft_model.parameters())
+        logging.info("Training patch_model and sft_model as well")
+
     logging.info(f"Mapping Model trainable params: {count_params(mapping_model)} out of {sum(p.numel() for p in mapping_model.parameters())}")
     logging.info(f"VAE Model trainable params: {count_params(vae_model)} out of {sum(p.numel() for p in vae_model.parameters())}")
-
+    logging.info(f"Patch Model and SFT Model trainable params: {count_params(patch_model) + count_params(sft_model)}")
+    
     optimizer = torch.optim.AdamW(param_groups, lr=configs["lr"])
     scheduler = LinearWarmupCosineAnnealingLR(
         optimizer, warmup_epochs=5, max_epochs=configs["epochs"]
@@ -211,6 +224,10 @@ def run_trainer() -> None:
                     vae_model(get_cuda(img_rgb)),
                     tiny_vae.encode(get_cuda(seg_rgb)).latents,
                 )
+
+            if configs['patchify']:
+                patched_img         = patch_model(img_rgb)
+                img_latent_mean_aug = sft_model(original = img_latent_mean_aug, ref = patched_img)
 
             # latent matching [CHANGED] --> recieves the grountruth latent mask representation and predicted and computes mse loss
             out_latent_mean_dict = mapping_model(img_latent_mean_aug)
@@ -291,6 +308,7 @@ def run_trainer() -> None:
             mapping_model.eval()
             vae_model.eval()
             tiny_vae.eval() if configs['vae_model'] != 'tiny_vae' else None
+            patch_model.eval(); sft_model.eval()
 
             with torch.no_grad():
                 if configs['vae_model'] == 'tiny_vae':
@@ -303,6 +321,10 @@ def run_trainer() -> None:
                         vae_model(get_cuda(img_rgb)),
                         tiny_vae.encode(get_cuda(seg_rgb)).latents,
                     )
+
+                if configs['patchify']:
+                    patched_img         = patch_model(img_rgb)
+                    img_latent_mean     = sft_model(original = img_latent_mean, ref = patched_img)
 
                 out_latent_mean_dict = mapping_model(img_latent_mean)
                 pred_seg = vae_decode(

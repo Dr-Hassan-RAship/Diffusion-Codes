@@ -34,17 +34,17 @@ class LearnablePatchify(nn.Module):
 
 
 # Example usage
-if __name__ == "__main__":
-    B, C, H, W = 2, 3, 224, 224
-    model = LearnablePatchify(patch_size=28)
+# if __name__ == "__main__":
+#     B, C, H, W = 2, 3, 224, 224
+#     model = LearnablePatchify(patch_size=28)
 
-    x = torch.randn(B, C, H, W)
-    y = model(x)
-    print("Output shape:", y.shape)  # (2, 64, 3, 28, 28)
+#     x = torch.randn(B, C, H, W)
+#     y = model(x)
+#     print("Output shape:", y.shape)  # (2, 64, 3, 28, 28)
 
-    # check the number of learnable parameters in the class using torchinfo.summary
-    from torchinfo import summary
-    print(summary(model, input_size=(B, C, H, W), verbose=0))
+#     # check the number of learnable parameters in the class using torchinfo.summary
+#     from torchinfo import summary
+#     print(summary(model, input_size=(B, C, H, W), verbose=0))
 
 
 

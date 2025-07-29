@@ -8,7 +8,6 @@ import pandas as pd
 import albumentations as A
 from PIL import Image
 from albumentations.pytorch import ToTensorV2
-from torch.utils.data import Dataset
 from pathlib import Path
 from typing import Dict, List
 
@@ -16,6 +15,8 @@ from typing import Dict, List
 import random
 
 # [CHANGED] --> Added a function which takes the image and masks directory and generates a pickel file containing the file names
+from torch.utils.data import Dataset
+
 # train and test split (90 - 10)
 
 # --------------------------- Split helpers ----------------------------------#
@@ -67,14 +68,15 @@ def generate_pickle_excel(root_dir: str | Path, pickle_name: str = "QaTar_19_tra
 
     return pkl_path
 
-def generate_pickel_default(root_dir, split = 0.9, name = 'kvasir-seg_train_test_names.pkl'):
+def generate_pickle_default(root_dir: str | Path, split: float = 0.9, name: str = 'kvasir-seg_train_test_names.pkl') -> Path:
+    root_dir = Path(root_dir)
     # Get img and mask files
-    img_dir  = os.path.join(root_dir, 'images')
-    mask_dir = os.path.join(root_dir, 'masks')
+    img_dir  = root_dir / 'images'
+    mask_dir = root_dir / 'masks'
 
     # Get list of image and mask files
-    img_files  = [f for f in os.listdir(img_dir) if f.endswith('.png')]
-    mask_files = [f for f in os.listdir(mask_dir) if f.endswith('.png')]
+    img_files  = [p.name for p in img_dir.glob('*.png')]
+    mask_files = [p.name for p in mask_dir.glob('*.png')]
 
     # Get a random batch of indices of img_dir (for train) and its corresponding mask_file indidces and then the
     # remaining goes to test.
@@ -87,8 +89,8 @@ def generate_pickel_default(root_dir, split = 0.9, name = 'kvasir-seg_train_test
     # {'train': {'name_list': [file_name1_train.jpg, file_name2_train.jpg]}, 'test': {'name_list': [file_name1_test.jpg, file_name2_test.jpg]}}
 
     # Extract base filenames (without extension) to match pairs
-    img_bases  = [os.path.splitext(f)[0] for f in img_files]
-    mask_bases = [os.path.splitext(f)[0] for f in mask_files]
+    img_bases  = [Path(f).stem for f in img_files]
+    mask_bases = [Path(f).stem for f in mask_files]
 
     # Find common base filenames (ensure paired image-mask)
     common_bases = sorted(list(set(img_bases) & set(mask_bases)))
@@ -109,38 +111,51 @@ def generate_pickel_default(root_dir, split = 0.9, name = 'kvasir-seg_train_test
     }
 
     # Save pickle file in root_dir
-    pickle_path = os.path.join(root_dir, name)
+    pickle_path = root_dir / name
     with open(pickle_path, 'wb') as f:
         pickle.dump(pickle_dict, f)
 
-    print(f"Pickle file saved at {pickle_path}")
-    print(f"Train set: {len(train_bases)} files, Test set: {len(test_bases)} files")
+    logging.info(f"Pickle file saved at {pickle_path}")
+    logging.info(f"Train set: {len(train_bases)} files, Test set: {len(test_bases)} files")
 
     return pickle_path
 
 class Image_Dataset(Dataset):
-    def __init__(self, pickle_file_path = None, root_dir = 'QaTar-19', stage = 'train', excel = False) -> None:
+    def __init__(self,
+                 pickle_file_path: str | Path | None = None,
+                 root_dir: str | Path = 'QaTar-19',
+                 stage: str = 'train',
+                 excel: bool = False,
+                 img_size: int = 224,
+                 img_ext: str = '.png',
+                 mask_ext: str = '.png'
+                 ) -> None:
         super().__init__()
 
         if pickle_file_path is None:
-           root_dir = os.path.join('Dataset', root_dir)
+           root_dir = Path('Dataset') / root_dir
            if excel:
                pickle_file_path = generate_pickle_excel(root_dir)
            else:
-               pickle_file_path = generate_pickel_default(root_dir)
+               pickle_file_path = generate_pickle_default(root_dir)
 
         with open(pickle_file_path, 'rb') as file:
             loaded_dict = pickle.load(file)
+        
+        pickle_dir = Path(pickle_file_path).parent
         self.excel             = excel
-        self.img_path          = os.path.join(os.path.dirname(pickle_file_path), 'images')
-        self.mask_path         = os.path.join(os.path.dirname(pickle_file_path), 'masks')
-        self.img_size          = 224
+        self.img_path          = pickle_dir / 'images'
+        self.mask_path         = pickle_dir / 'masks'
+        self.img_size          = img_size
         self.stage             = stage
         self.name_list         = loaded_dict[stage]['name_list']
         self.transform         = self.get_transforms()
         logging.info('{} set num: {}'.format(stage, len(self.name_list)))
 
         del loaded_dict
+
+        self.img_ext = img_ext
+        self.mask_ext = mask_ext
 
     # [CHANGED] --> Removed always_apply=True as it is giving error or warning for ToFloat, Resize, ToTensorV2
     def get_transforms(self):
@@ -167,10 +182,10 @@ class Image_Dataset(Dataset):
         name = self.name_list[index]
         # load img & seg
         # [CHANGED] --> from .jpg to jpg as Kvasir-SEG has .jpg files. Also note both image and mask are being loaded as RGB
-        name_ext = 'mask_' if self.excel else ''
-        seg_image = Image.open(os.path.join(self.mask_path, name_ext + name + '.png')).convert("RGB")
+        mask_name = f"mask_{name}" if self.excel else name
+        seg_image = Image.open(self.mask_path / f"{mask_name}{self.mask_ext}").convert("L") # Load as Grayscale
         seg_data  = np.array(seg_image).astype(np.float32)
-        img_image = Image.open(os.path.join(self.img_path,  name + '.png')).convert("RGB")
+        img_image = Image.open(self.img_path / f"{name}{self.img_ext}").convert("RGB")
         img_data  = np.array(img_image).astype(np.float32)
 
         augmented = self.transform(image=img_data, mask=seg_data)
@@ -178,6 +193,9 @@ class Image_Dataset(Dataset):
         aug_img = augmented['image']
         aug_seg = augmented['mask']
 
+        # Add channel dimension to mask if it's missing
+        if aug_seg.ndim == 2:
+            aug_seg = aug_seg.unsqueeze(0)
         return {
             'name': name,
             'img': aug_img,

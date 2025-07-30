@@ -21,20 +21,21 @@ class SFT(nn.Module):
         self.mlp_beta = nn.Conv2d(nhidden, original_channels, kernel_size=ks, padding=pw)
 
     def forward(self, x, ref):
-        ref = F.adaptive_avg_pool2d(ref, x.size()[2:])
-        actv = self.mlp_shared(ref)
-        gamma = self.mlp_gamma(actv)
-        beta = self.mlp_beta(actv)
-        out = x * (1 + gamma) + beta
+        # Note the avg pool is no longer needed as the spatial dimensons already matched
+        # ref     = F.adaptive_avg_pool2d(ref, x.size()[2:]) # avg pool on the spatial dimensions of ref to match x
+        actv    = self.mlp_shared(ref)
+        gamma   = self.mlp_gamma(actv)
+        beta    = self.mlp_beta(actv)
+        out     = x * (1 + gamma) + beta
 
         return out
 
 class SFTResblk(nn.Module):
-    def __init__(self, original_channels, guidance_channels, ks=3, dtype = torch.float32, device = 'cuda'):
+    def __init__(self, original_channels, guidance_channels, ks=3, dtype = torch.float32, device = 'cuda' if torch.cuda.is_available() else 'cpu'):
         super().__init__()
         
-        self.conv_0 = nn.Conv2d(original_channels, original_channels, kernel_size=3, padding=1).to(dtype = dtype, device = device)
-        self.conv_1 = nn.Conv2d(original_channels, original_channels, kernel_size=3, padding=1).to(dtype = dtype, device = device)
+        self.conv_0 = nn.Conv2d(original_channels, original_channels, kernel_size=3, padding=1)
+        self.conv_1 = nn.Conv2d(original_channels, original_channels, kernel_size=3, padding=1)
 
         self.norm_0 = SFT(original_channels, guidance_channels, ks=ks).to(dtype = dtype, device = device)
         self.norm_1 = SFT(original_channels, guidance_channels, ks=ks).to(dtype = dtype, device = device)
@@ -50,7 +51,7 @@ class SFTResblk(nn.Module):
         return out
 
 class SFTModule(nn.Module):
-    def __init__(self, original_channels, guidance_channels, dtype = torch.float32, device = 'cuda'):
+    def __init__(self, original_channels, guidance_channels, dtype = torch.float32, device = 'cuda' if torch.cuda.is_available() else 'cpu'):
         super().__init__()
         self.sftresblk = SFTResblk(original_channels, guidance_channels).to(dtype = torch.float32, device = device)
 

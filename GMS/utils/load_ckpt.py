@@ -46,7 +46,7 @@ def get_tiny_autoencoder(device = 'cuda' if torch.cuda.is_available() else 'cpu'
         vae = HF_TinyVAE.from_pretrained("madebyollin/taesd", torch_dtype=torch.float32, device_map = device)
         
     else:
-        vae = load_residual_tiny_vae(device="cuda")
+        vae = load_residual_tiny_vae(device = device)
         vae = vae.to(device)
     
     if train:

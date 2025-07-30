@@ -81,6 +81,9 @@ def run_trainer() -> None:
         configs["snapshot_path"],
         'epoch_1500',
     )
+
+    device = 'cuda' if torch.cuda.is_available() else 'cpu'
+
     configs["log_path"] = os.path.join(configs["snapshot_path"], "logs")
 
     # Output folder and save fig folder
@@ -88,8 +91,9 @@ def run_trainer() -> None:
     os.makedirs(configs["log_path"], exist_ok=True)
 
     # Set GPU ID
-    gpus = ",".join([str(i) for i in configs["GPUs"]])
-    os.environ["CUDA_VISIBLE_DEVICES"] = gpus
+    if torch.cuda.is_available():
+        gpus = ",".join([str(i) for i in configs["GPUs"]])
+        os.environ["CUDA_VISIBLE_DEVICES"] = gpus
 
     # Fix seed (for repeatability)
     seed_reproducer(configs["seed"])
@@ -121,17 +125,14 @@ def run_trainer() -> None:
         shuffle=False,
     )
     
-
     # Define networks
-    mapping_model = get_cuda(
-        ResAttnUNet_DS(
+    mapping_model = ResAttnUNet_DS(
             in_channel=configs["in_channel"],
             out_channels=configs["out_channels"],
             num_res_blocks=configs["num_res_blocks"],
             ch=configs["ch"],
             ch_mult=configs["ch_mult"],
-        )
-    )
+            ).to(device)
     # Getting tiny-vae (with residual_autoencoding) default: frozen and eval
     vae_train = True
     if configs['vae_model'] == 'tiny_vae':
@@ -145,9 +146,11 @@ def run_trainer() -> None:
     scale_factor = 1.0
     
     if configs['patchify']:
-        patch_model = LearnablePatchify(patch_size = 28).to(dtype = torch.float32, device = 'cuda')
-        sft_model   = SFTModule(original_channels = configs['in_channel'], guidance_channels = 64).to(dtype = torch.float32, device = 'cuda')
-        patch_model.train(); sft_model.train()
+        if configs['learn_patch']:
+            patch_model = LearnablePatchify(patch_size = 28).to(dtype = torch.float32, device = device)
+            patch_model.train()
+        sft_model   = SFTModule(original_channels = configs['in_channel'], guidance_channels = 64).to(dtype = torch.float32, device = device)
+        sft_model.train()
 
     # Define optimizers
 
@@ -157,12 +160,19 @@ def run_trainer() -> None:
         logging.info("Training both mapping model and VAE model")
     
     if configs['patchify']:
-        param_groups += list(patch_model.parameters()) + list(sft_model.parameters())
-        logging.info("Training patch_model and sft_model as well")
+        if configs['learn_patch']:
+            param_groups += list(patch_model.parameters())
+            logging.info("Training patch_model")
+
+        param_groups += list(sft_model.parameters())
+        logging.info("Training sft_model")            
 
     logging.info(f"Mapping Model trainable params: {count_params(mapping_model)} out of {sum(p.numel() for p in mapping_model.parameters())}")
     logging.info(f"VAE Model trainable params: {count_params(vae_model)} out of {sum(p.numel() for p in vae_model.parameters())}")
-    logging.info(f"Patch Model and SFT Model trainable params: {count_params(patch_model) + count_params(sft_model)}")
+    if configs['patchify']:
+        if configs['learn_patch']:
+            logging.info(f'Patch Model trainable params: {count_params(patch_model)}')
+        logging.info(f'SFT Model trainable params: {count_params(sft_model)}')
     
     optimizer = torch.optim.AdamW(param_groups, lr=configs["lr"])
     scheduler = LinearWarmupCosineAnnealingLR(
@@ -200,12 +210,12 @@ def run_trainer() -> None:
         for batch_data in tqdm(train_dataloader, desc="Train: "):
             # [CHANGED] --> In case the vae model is lite_vae, the haar transform expects (0, 1) or (0, 255) so we will scale the input accordingly
             # Note: no change needed regarding the segmentation as it is being used by tiny vae.
-            img_rgb = batch_data["img"]
+            img_rgb = batch_data["img"].to(device)
             img_rgb = img_rgb / 255.0
             if configs['vae_model'] == 'tiny_vae':   
                 img_rgb = 2.0 * img_rgb - 1.0
 
-            seg_raw = batch_data["seg"]
+            seg_raw = batch_data["seg"].to(device)
             seg_raw = seg_raw.permute(0, 3, 1, 2) / 255.0
             seg_rgb = 2.0 * seg_raw - 1.0
                 
@@ -216,17 +226,20 @@ def run_trainer() -> None:
             
             if configs['vae_model'] == 'tiny_vae':
                 img_latent_mean_aug, seg_latent_mean = (
-                    vae_model.encode(get_cuda(img_rgb)).latents,
-                    vae_model.encode(get_cuda(seg_rgb)).latents,
+                    vae_model.encode(img_rgb).latents,
+                    vae_model.encode(seg_rgb).latents,
                 )
             else:
                 img_latent_mean_aug, seg_latent_mean = (
-                    vae_model(get_cuda(img_rgb)),
-                    tiny_vae.encode(get_cuda(seg_rgb)).latents,
+                    vae_model(img_rgb),
+                    tiny_vae.encode(seg_rgb).latents,
                 )
 
             if configs['patchify']:
-                patched_img         = patch_model(img_rgb.to('cuda'))
+                if configs['learn_patch']:
+                    patched_img         = patch_model(img_rgb)
+                else:
+                    patched_img         = extract_patches_mean(img_rgb)
                 img_latent_mean_aug = sft_model(x = img_latent_mean_aug, ref = patched_img)
 
             # latent matching [CHANGED] --> recieves the grountruth latent mask representation and predicted and computes mse loss
@@ -251,7 +264,7 @@ def run_trainer() -> None:
             loss_Dice = configs["w_dice"] * get_multi_loss(
                 dice_loss,
                 pred_seg_dict,
-                get_cuda(seg_img),
+                seg_img,
                 is_ds=True,
                 key_list=ds_list,
             )
@@ -294,12 +307,12 @@ def run_trainer() -> None:
         ### Validation phase [CHANGED] --> almost same as Train except the dice score is being calculated here as well
         ### Also note that the validation set is the same as the test set in the inference/valid.py file.
         for batch_data in tqdm(valid_dataloader, desc="Valid: "):
-            img_rgb = batch_data["img"]
+            img_rgb = batch_data["img"].to(device)
             img_rgb = img_rgb / 255.0  # [CHANGED] V.V.V Imp!  --> SCALE CORRECTION
             if configs['vae_model'] == 'tiny_vae':
                 img_rgb = 2.0 * img_rgb - 1.0
 
-            seg_raw = batch_data["seg"]
+            seg_raw = batch_data["seg"].to(device)
             seg_raw = seg_raw.permute(0, 3, 1, 2) / 255.0
             seg_rgb = 2.0 * seg_raw - 1.0
             seg_img = torch.mean(seg_raw, dim=1, keepdim=True)
@@ -308,23 +321,29 @@ def run_trainer() -> None:
             mapping_model.eval()
             vae_model.eval()
             tiny_vae.eval() if configs['vae_model'] != 'tiny_vae' else None
-            patch_model.eval(); sft_model.eval()
+            if configs['patchify']:
+                if configs['learn_patch']:
+                    patch_model.eval()
+                sft_model.eval()
 
             with torch.no_grad():
                 if configs['vae_model'] == 'tiny_vae':
                     img_latent_mean, seg_latent_mean = (
-                        vae_model.encode(get_cuda(img_rgb)).latents,
-                        vae_model.encode(get_cuda(seg_rgb)).latents,
+                        vae_model.encode(img_rgb).latents,
+                        vae_model.encode(seg_rgb).latents,
                     )
                 else:
                     img_latent_mean, seg_latent_mean = (
-                        vae_model(get_cuda(img_rgb)),
-                        tiny_vae.encode(get_cuda(seg_rgb)).latents,
+                        vae_model(img_rgb),
+                        tiny_vae.encode(seg_rgb).latents,
                     )
 
                 if configs['patchify']:
-                    patched_img         = patch_model(img_rgb.to('cuda'))
-                    img_latent_mean     = sft_model(x = img_latent_mean, ref = patched_img)
+                    if configs['learn_patch']:
+                        patched_img         = patch_model(img_rgb)
+                    else:
+                        patched_img         = extract_patches_mean(img_rgb)
+                    img_latent_mean = sft_model(x = img_latent_mean, ref = patched_img)
 
                 out_latent_mean_dict = mapping_model(img_latent_mean)
                 pred_seg = vae_decode(
@@ -334,7 +353,7 @@ def run_trainer() -> None:
                 loss_Rec = configs["w_rec"] * mse_loss(
                     out_latent_mean_dict["out"], seg_latent_mean
                 )
-                loss_Dice = configs["w_dice"] * dice_loss(pred_seg, get_cuda(seg_img))
+                loss_Dice = configs["w_dice"] * dice_loss(pred_seg, seg_img)
 
                 loss = loss_Rec + loss_Dice
 

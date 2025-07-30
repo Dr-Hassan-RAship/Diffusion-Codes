@@ -1,9 +1,10 @@
 # Data Settings
 phase: train
 patchify: True
+learn_patch: False
 vae_model: litevae-s # or tiny_vae
 pickle_file_path: ./Dataset/busi/busi_train_test_names.pkl
-snapshot_path: ./ckpt/litevae-sft_patchify
+snapshot_path: ./ckpt/litevae-sft_patchify_fixed
 
 # Training Settings
 epochs: 1500

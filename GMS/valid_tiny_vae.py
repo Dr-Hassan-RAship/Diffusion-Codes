@@ -23,6 +23,7 @@ from utils.load_ckpt import get_tiny_autoencoder, get_lite_vae
 from networks.latent_mapping_model import ResAttnUNet_DS
 from networks.models.autoencoder import AutoencoderKL
 from networks.models.distributions import DiagonalGaussianDistribution
+from networks.novel.sft import *
 
 def save_binary_and_logits(x_logits, x_binary, name, save_seg_img_path, save_seg_logits_path, IMG_FORMAT = '.png'):
     """ Saves binary and logits images to specified path."""
@@ -76,9 +77,12 @@ def run_validator() -> None:
     os.makedirs(save_seg_logits_path, exist_ok = True)
     os.makedirs(configs['log_path'], exist_ok=True)
 
+    device = 'cuda' if torch.cuda.is_available() else 'cpu'
+
     # Set GPU ID
-    gpus = ','.join([str(i) for i in configs['GPUs']])
-    os.environ["CUDA_VISIBLE_DEVICES"] = gpus
+    if torch.cuda.is_available():
+        gpus = ','.join([str(i) for i in configs['GPUs']])
+        os.environ["CUDA_VISIBLE_DEVICES"] = gpus
 
     # Fix seed (for repeatability)
     seed_reproducer(configs['seed'])
@@ -93,13 +97,14 @@ def run_validator() -> None:
     valid_dataloader = DataLoader(valid_dataset, batch_size=1, pin_memory=True, drop_last=False, shuffle=False)
 
     # Define networks
-    mapping_model = get_cuda(ResAttnUNet_DS(
+    mapping_model = ResAttnUNet_DS(
         in_channel=configs['in_channel'],
         out_channels=configs['out_channels'],
         num_res_blocks=configs['num_res_blocks'],
         ch=configs['ch'],
         ch_mult=configs['ch_mult']
-    ))
+    ).to(device)
+
     vae_train = True
 
     if configs['vae_model'] != 'tiny_vae':
@@ -114,6 +119,13 @@ def run_validator() -> None:
 
     else:
         mapping_model = load_checkpoint(mapping_model, configs['model_weight'])
+
+    if configs['patchify']:
+        if configs['learn_patch']:
+            patch_model = LearnablePatchify(patch_size = 28).to(dtype = torch.float32, device = device)
+            patch_model.eval()
+        sft_model   = SFTModule(original_channels = configs['in_channel'], guidance_channels = 64).to(dtype = torch.float32, device = device)
+        sft_model.eval()
 
     mapping_model.eval()
     vae_model.eval()
@@ -133,13 +145,13 @@ def run_validator() -> None:
 
     ### Validation phase
     for batch_data in tqdm(valid_dataloader, desc='Valid: '):
-        img_rgb = batch_data['img']
+        img_rgb = batch_data['img'].to(device)
         img_rgb = img_rgb / 255.0 # [CHANGED] V.V.V Imp!  --> SCALE CORRECTION
         
         if configs['vae_model'] == 'tiny_vae':
             img_rgb = 2. * img_rgb - 1.
 
-        seg_raw = batch_data['seg']
+        seg_raw = batch_data['seg'].to(device)
         seg_raw = seg_raw.permute(0, 3, 1, 2) / 255.0
         seg_rgb = 2. * seg_raw - 1.
         name = batch_data['name'][0]
@@ -148,13 +160,13 @@ def run_validator() -> None:
         with torch.no_grad():
             if configs['vae_model'] == 'tiny_vae':
                 img_latent_mean, seg_latent_mean = (
-                    vae_model.encode(get_cuda(img_rgb)).latents,
-                    vae_model.encode(get_cuda(seg_rgb)).latents,
+                    vae_model.encode(img_rgb).latents,
+                    vae_model.encode(seg_rgb).latents,
                 )
             else:
                 img_latent_mean, seg_latent_mean = (
-                    vae_model(get_cuda(img_rgb)),
-                    tiny_vae.encode(get_cuda(seg_rgb)).latents,
+                    vae_model(img_rgb),
+                    tiny_vae.encode(seg_rgb).latents,
                 )
 
             out_latent_mean_dict = mapping_model(img_latent_mean)

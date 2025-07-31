@@ -221,7 +221,7 @@ def run_trainer() -> None:
                 
             # [CHANGED] --> Taking mean across channels dimension resulting in 1 channel which matches the channel dimension
             # of pred_seg gotten from the decoder. Same thing in Validation
-            seg_img = torch.mean(seg_raw, dim=1, keepdim=True)
+            seg_img = torch.mean(seg_raw, dim=1, keepdim=True).to(device)
             name = batch_data["name"]
             
             if configs['vae_model'] == 'tiny_vae':
@@ -315,7 +315,7 @@ def run_trainer() -> None:
             seg_raw = batch_data["seg"].to(device)
             seg_raw = seg_raw.permute(0, 3, 1, 2) / 255.0
             seg_rgb = 2.0 * seg_raw - 1.0
-            seg_img = torch.mean(seg_raw, dim=1, keepdim=True)
+            seg_img = torch.mean(seg_raw, dim=1, keepdim=True).to(device)
             name = batch_data["name"]
 
             mapping_model.eval()
@@ -361,8 +361,8 @@ def run_trainer() -> None:
                 pred_seg = pred_seg.cpu()
                 reduce_axis = list(range(1, len(seg_img.shape)))
 
-                intersection = torch.sum(seg_img * pred_seg, dim=reduce_axis)
-                y_o = torch.sum(seg_img, dim=reduce_axis)
+                intersection = torch.sum(seg_img.cpu() * pred_seg, dim=reduce_axis)
+                y_o = torch.sum(seg_img.cpu(), dim=reduce_axis)
                 y_pred_o = torch.sum(pred_seg, dim=reduce_axis)
                 denominator = y_o + y_pred_o
                 dice_raw = (2.0 * intersection) / denominator

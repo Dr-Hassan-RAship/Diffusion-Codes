@@ -143,7 +143,7 @@ def run_trainer() -> None:
         tiny_vae  = get_tiny_autoencoder(train = vae_train, residual_autoencoding = False) # for the segmentation latent and decoding at the end.
         vae_model = get_lite_vae(model_version = configs['vae_model'])
 
-    scale_factor = 1.0
+    scale_factor = 1.0 # default
     
     if configs['patchify']:
         if configs['learn_patch']:

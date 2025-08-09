@@ -78,7 +78,7 @@ def run_trainer() -> None:
     # time.strftime("%Y%m%d%H%M", time.localtime(time.time()))
     configs["snapshot_path"] = os.path.join(
         configs["snapshot_path"],
-        'epoch_1500',
+        'epochs_' + str(configs['epochs']),
     )
 
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -123,7 +123,7 @@ def run_trainer() -> None:
         drop_last=False,
         shuffle=False,
     )
-    
+
     # Define networks
     skff_module = None
     if configs['guidance_method']:
@@ -132,7 +132,7 @@ def run_trainer() -> None:
         mapping_model = SFT_UNet_DS(in_channels       = configs['in_channel'],
                                     out_channels      = configs['out_channels'],
                                     guidance_channels = guidance_channels_dict[configs['guidance_method']]).to(device)
-        
+
         if configs['guidance_method'] == 'wavelet':
             skff_module = SKFF().to(device)
             skff_module.train()
@@ -144,7 +144,7 @@ def run_trainer() -> None:
             ch=configs["ch"],
             ch_mult=configs["ch_mult"],
             ).to(device)
-        
+
     mapping_model.train()
     param_groups = list(mapping_model.parameters())
 
@@ -159,7 +159,7 @@ def run_trainer() -> None:
         vae_model = get_lite_vae(model_version = configs['vae_model'])
 
     scale_factor = 1.0 # default
-    
+
     if configs['patchify']:
         if configs['learn_patch']:
             patch_model = LearnablePatchify(patch_size = 28).to(dtype = torch.float32, device = device)
@@ -167,27 +167,27 @@ def run_trainer() -> None:
             param_groups += list(patch_model.parameters())
             logging.info("Training patch_model")
             logging.info(f'Patch Model trainable params: {count_params(patch_model)}')
-            
+
         sft_model   = SFTModule(original_channels = configs['in_channel'], guidance_channels = 64).to(dtype = torch.float32, device = device)
         sft_model.train()
         param_groups += list(sft_model.parameters())
-        logging.info("Training sft_model")      
+        logging.info("Training sft_model")
         logging.info(f'SFT Model trainable params: {count_params(sft_model)}')
-        
+
     # Define optimizers
-    
+
     if vae_train:
         param_groups += list(vae_model.parameters())
         logging.info("Training both mapping model and VAE model")
-    
+
     if skff_module is not None:
         param_groups += list(skff_module.parameters())
-        logging.info('Training SKFF Module')  
-        logging.info(f"SKFF Module trainable params: {count_params(skff_module)} out of {sum(p.numel() for p in skff_module.parameters())}")          
+        logging.info('Training SKFF Module')
+        logging.info(f"SKFF Module trainable params: {count_params(skff_module)} out of {sum(p.numel() for p in skff_module.parameters())}")
 
     logging.info(f"Mapping Model with SFT trainable params: {count_params(mapping_model)} out of {sum(p.numel() for p in mapping_model.parameters())}")
     logging.info(f"VAE Model trainable params: {count_params(vae_model)} out of {sum(p.numel() for p in vae_model.parameters())}")
-    
+
     optimizer = torch.optim.AdamW(param_groups, lr=configs["lr"])
     scheduler = LinearWarmupCosineAnnealingLR(
         optimizer, warmup_epochs=5, max_epochs=configs["epochs"]
@@ -226,18 +226,18 @@ def run_trainer() -> None:
             # Note: no change needed regarding the segmentation as it is being used by tiny vae.
             img_rgb = batch_data["img"].to(device)
             img_rgb = img_rgb / 255.0
-            if configs['vae_model'] == 'tiny_vae':   
+            if configs['vae_model'] == 'tiny_vae':
                 img_rgb = 2.0 * img_rgb - 1.0
 
             seg_raw = batch_data["seg"].to(device)
             seg_raw = seg_raw.permute(0, 3, 1, 2) / 255.0
             seg_rgb = 2.0 * seg_raw - 1.0
-            
+
             # [CHANGED] --> Taking mean across channels dimension resulting in 1 channel which matches the channel dimension
             # of pred_seg gotten from the decoder. Same thing in Validation
             seg_img = torch.mean(seg_raw, dim=1, keepdim=True).to(device)
             name = batch_data["name"]
-            
+
             if configs['vae_model'] == 'tiny_vae':
                 img_latent_mean_aug, seg_latent_mean = (
                     vae_model.encode(img_rgb).latents,

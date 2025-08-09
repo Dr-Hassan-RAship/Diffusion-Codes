@@ -27,23 +27,23 @@ class SFT(nn.Module):
 class SFTResblk(nn.Module):
     def __init__(self, original_channels, guidance_channels, ks=3, dtype = torch.float32, device = 'cuda' if torch.cuda.is_available() else 'cpu'):
         super().__init__()
-        
+
         self.conv_0 = nn.Conv2d(original_channels, original_channels, kernel_size=3, padding=1)
         self.conv_1 = nn.Conv2d(original_channels, original_channels, kernel_size=3, padding=1)
 
         self.norm_0 = SFT(original_channels, guidance_channels, ks=ks).to(dtype = dtype, device = device)
         self.norm_1 = SFT(original_channels, guidance_channels, ks=ks).to(dtype = dtype, device = device)
-    
+
     def actvn(self, x):
         return F.leaky_relu(x, 2e-1)
-    
+
     def forward(self, x, ref):
         dx = self.conv_0(self.actvn(self.norm_0(x, ref)))
         dx = self.conv_1(self.actvn(self.norm_1(dx, ref)))
         out = x + dx
 
         return out
-    
+
 # busi
 # 573: DSC: 0.7954, IOU: 0.7011, HD95: 21.56
 # 381:  DSC: 0.7857, IOU: 0.6923, HD95: 19.97
@@ -110,7 +110,7 @@ class ResBlock(nn.Module):
             self.act1,
             nn.Conv2d(in_channels, out_channels, kernel_size=3, stride=1, padding=1, bias=True),
         )
-        
+
         self.conv2 = nn.Sequential(
             Normalize(out_channels),
             self.act2,
@@ -214,25 +214,25 @@ class SFT_UNet_DS(nn.Module):
 
 
 # # Step 1: Inputs
-B = 2  # batch size
-ZI = torch.randn(B, 4, 28, 28)        # Latent from LiteVAE
-guidance = torch.randn(B, 384, 16, 16) # Guidance input (e.g., edge maps, wavelet bands, Dino features)
-
-# Step 2: Initialize the model
-model = SFT_UNet_DS(
-    in_channels   = 4,          # Matches ZI channels
-    out_channels = 4,        # Output latent for predicted mask
-    ch           = 32,                 # Base channel width
-    ch_mult      = (1, 2, 4, 4),  # Channel growth pattern
-    guidance_channels = 384   # Matches guidance input
-)
-
-# Step 3: Forward pass
-out_dict = model(ZI, guidance)
-
-# Step 4: Output breakdown
-for level, tensor in out_dict.items():
-    print(f"{level}: {tensor.shape}")
-
-from torchinfo import summary
-print(summary(model, input_size=[(B, 4, 28, 28), (B, 384, 112, 112)]))
+# B = 2  # batch size
+# ZI = torch.randn(B, 4, 28, 28)        # Latent from LiteVAE
+# guidance = torch.randn(B, 384, 16, 16) # Guidance input (e.g., edge maps, wavelet bands, Dino features)
+# 
+# # Step 2: Initialize the model
+# model = SFT_UNet_DS(
+#     in_channels   = 4,          # Matches ZI channels
+#     out_channels = 4,        # Output latent for predicted mask
+#     ch           = 32,                 # Base channel width
+#     ch_mult      = (1, 2, 4, 4),  # Channel growth pattern
+#     guidance_channels = 384   # Matches guidance input
+# )
+#
+# # Step 3: Forward pass
+# out_dict = model(ZI, guidance)
+#
+# # Step 4: Output breakdown
+# for level, tensor in out_dict.items():
+#     print(f"{level}: {tensor.shape}")
+#
+# from torchinfo import summary
+# print(summary(model, input_size=[(B, 4, 28, 28), (B, 384, 112, 112)]))

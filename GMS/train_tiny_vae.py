@@ -12,7 +12,7 @@ from monai.losses.dice import DiceLoss
 
 
 # Own Package
-from data.image_dataset import Image_Dataset
+from data_scripts.image_dataset import Image_Dataset
 from utils.tools import *
 from utils.get_logger import open_log
 from utils.load_ckpt import * # contains function save_checkpoint

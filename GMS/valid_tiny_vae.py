@@ -15,7 +15,7 @@ from torch.utils.data import DataLoader
 from sklearn.metrics import confusion_matrix
 from medpy import metric
 # Own Package
-from data.image_dataset import Image_Dataset
+from data_scripts.image_dataset import Image_Dataset
 from utils.tools import *
 from utils.get_logger import open_log
 from utils.metrics import all_metrics

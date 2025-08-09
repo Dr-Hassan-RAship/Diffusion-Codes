@@ -1,0 +1,58 @@
+# Configuration File
+# Last Date             : June 11, 2025
+#------------------------------------------------------------------------------#
+data:
+  train_root_path       : '/media/ee/New Volume/Datasets/Kvasir-SEG/'
+  val_root_path         : '/media/ee/New Volume/Datasets/Kvasir-SEG/'
+  experiment_name       : 'Kvasir_UM-Net'
+
+  num_classes           : 1
+  input_channels        : 3
+#------------------------------------------------------------------------------#
+# Various random seeds:
+# (= 1337) used in numerous codes on Github.
+# (= 1234) used in Peng et al., Pattern Recognition, 2020 [1, 2].
+# [Ref # 1] github.com/AlanChou/Deep-Co-Training-for-Semi-Supervised-Image-Recognition/blob/master/main.py
+# [Ref # 2] twitter.com/fchollet/status/1612555896491749376
+network:
+  slice_size            : [256, 256]
+  initialization        :
+  fix_seed              : True
+  seed                  : 1337
+  batch_size            : 32
+  epochs                : 300
+  num_workers           : 6
+  deterministic         : 1
+#------------------------------------------------------------------------------#
+# optimizer             : {'SGD', 'Adam', 'AdamW', 'LARS'}
+# learning rates        : {'PolyDecay', 'PolyGrowth', 'Constant'}
+# PolyGrowth prameters  : {eta_zero = 1.0e-7, eta_N = 0.0075}
+optimization:
+  optimizer             : 'AdamW'
+  LR_policy             : 'Constant'
+
+  eta_N                 :           # 0.0075
+  eta_zero              : 0.0001    # 1.0e-7
+  LR_decay_rate         :           # 0.90
+#------------------------------------------------------------------------------#
+inference:
+  experiment_name       : 'Kvasir_UM-Net'
+  epoch_choice          :  151
+
+  input_folder          : '/media/ee/New Volume/Datasets/Kvasir-SEG/'
+  output_folder         : 'outputs_Kvasir_151'
+
+  num_workers           : 6
+  num_classes           : 1
+  input_channels        : 1
+  slice_size            : [256, 256]
+  resolution            :                                   # [1.50, 1.50]
+
+  save_FOMs_report      : True                              # save figures of merit
+  save_segmaps          : True                              # save as nii.gz
+  save_softmax_probs    : False                             # save as nii.gz
+
+  do_preprocess         : True
+  do_postprocess        : True
+  get_FOMs              : True
+#------------------------------------------------------------------------------#

@@ -57,9 +57,6 @@ env/
 # Project-specific large files
 # -------------------------
 # Ignore datasets
-Dataset/
-datasets/
-data/
 
 # Ignore checkpoints / weights
 ckpt/
@@ -72,3 +69,4 @@ weights/
 # Ignore temporary experiments
 tmp/
 temp/
+

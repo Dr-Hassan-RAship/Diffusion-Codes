@@ -18,7 +18,7 @@ class SFT(nn.Module):
         self.beta = nn.Conv2d(nhidden, in_channels, kernel_size=ks, stride=1, padding=pw)
 
     def forward(self, x, g):
-        g = F.adaptive_avg_pool2d(g, x.size()[2:]) # since the guidance is now not neccessarily of the same spatial dimensons as our ZI
+        # g = F.adaptive_avg_pool2d(g, x.size()[2:]) # since the guidance is now not neccessarily of the same spatial dimensons as our ZI. For dino with 392 spatial dimensions it matches 28 x 28
         s = self.shared(g)
         gamma = self.gamma(s)
         beta = self.beta(s)
@@ -194,7 +194,6 @@ class SFT_UNet_DS(nn.Module):
     def forward(self, x, guidance, guidance_type='wavelet'):
 
         x0 = self.input_proj(x)
-
         x1 = self.conv1_0(x0, guidance)
         x2 = self.conv2_0(x1, guidance)
         x3 = self.conv3_0(x2, guidance)
@@ -204,6 +203,11 @@ class SFT_UNet_DS(nn.Module):
         x2_2 = self.conv2_2(torch.cat([x2, x3_1], dim=1), guidance)
         x1_3 = self.conv1_3(torch.cat([x1, x2_2], dim=1), guidance)
         x0_4 = self.conv0_4(torch.cat([x0, x1_3], dim=1), guidance)
+
+        level3 = self.convds3(x3_1)
+        level2 = self.convds2(x2_2)
+        level1 = self.convds1(x1_3)
+        out    = self.convds0(x0_4)
 
         return {
             'level3': self.convds3(x3_1),
@@ -217,7 +221,6 @@ class SFT_UNet_DS(nn.Module):
 # B = 2  # batch size
 # ZI = torch.randn(B, 4, 28, 28)        # Latent from LiteVAE
 # guidance = torch.randn(B, 384, 16, 16) # Guidance input (e.g., edge maps, wavelet bands, Dino features)
-# 
 # # Step 2: Initialize the model
 # model = SFT_UNet_DS(
 #     in_channels   = 4,          # Matches ZI channels
@@ -226,13 +229,13 @@ class SFT_UNet_DS(nn.Module):
 #     ch_mult      = (1, 2, 4, 4),  # Channel growth pattern
 #     guidance_channels = 384   # Matches guidance input
 # )
-#
+
 # # Step 3: Forward pass
 # out_dict = model(ZI, guidance)
-#
+
 # # Step 4: Output breakdown
 # for level, tensor in out_dict.items():
 #     print(f"{level}: {tensor.shape}")
-#
+
 # from torchinfo import summary
 # print(summary(model, input_size=[(B, 4, 28, 28), (B, 384, 112, 112)]))

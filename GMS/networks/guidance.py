@@ -3,10 +3,14 @@ import torchvision.models as models
 from torchvision.models.feature_extraction import create_feature_extractor
 import cv2
 import numpy as np
+import math
 import pywt
 from typing import Dict
 import torch.nn.functional as F
 import torch.nn as nn
+import logging
+import contextlib
+import io
 
 from networks.novel.lite_vae.blocks.haar import HaarTransform
 
@@ -41,6 +45,24 @@ def get_wavelet_subbands(images, lv = 1):
 
     return sub_bands_filter
 
+def load_dino_silent():
+    # Suppress logging from dinov2
+    logging.getLogger().setLevel(logging.WARNING)
+
+    # Suppress torch.hub stdout
+    with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+        dino_model = torch.hub.load(
+            'facebookresearch/dinov2',
+            'dinov2_vits14',
+            verbose=False
+        )
+    f = io.StringIO()
+    return dino_model
+    # with contextlib.redirect_stdout(f):
+    #     model = torch.hub.load('facebookresearch/dinov2', 'dinov2_vits14')
+    
+    # return model
+
 def get_dino_patch_features(image: torch.Tensor) -> torch.Tensor:
     """
     Extract patch-level features using a pretrained ViT (placeholder for DINO).
@@ -51,13 +73,30 @@ def get_dino_patch_features(image: torch.Tensor) -> torch.Tensor:
     """
     
 
-    dino_model = torch.hub.load('facebookresearch/dinov2', 'dinov2_vits14')
-    
-    result = dino_model(image, is_training = True)
+    # dino_model = torch.hub.load('facebookresearch/dinov2', 'dinov2_vits14')
+    dino_model = load_dino_silent()
+    dino_model.eval()  # Set to evaluation mode
 
-    local_patch_feature = result['x_norm_patchtokens'].reshape(image.shape[0], 16, 16, 384)
+    with torch.no_grad():
+        result = dino_model(image, is_training=True)['x_norm_patchtokens']
+        B, N, C = result.shape  # N = 28*28
 
-    return local_patch_feature.permute(0, 3, 1, 2)
+        # Reshape to (B, C, H, W)
+        h = w = int(N ** 0.5)
+        dino_patch = result.reshape(B, h, w, C).permute(0, 3, 1, 2)
+
+        # 🔹 Per-channel min–max normalization
+        min_vals = dino_patch.amin(dim=(2, 3), keepdim=True)
+        max_vals = dino_patch.amax(dim=(2, 3), keepdim=True)
+        dino_patch = (dino_patch - min_vals) / (max_vals - min_vals + 1e-8)
+
+    return dino_patch
+        
+        # result = dino_model(image, is_training = True)['x_norm_patchtokens'] # (B, 784, 384)
+
+        # local_patch_feature = result.reshape(image.shape[0], int(math.sqrt(result.shape[1])), int(math.sqrt(result.shape[1])), 384) # --> reshaped to (B, 28, 28, 384)
+
+        # return local_patch_feature.permute(0, 3, 1, 2)
 
 def prepare_guidance(image: torch.Tensor, mode='edge') -> torch.Tensor:
     """

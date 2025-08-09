@@ -78,7 +78,7 @@ def run_trainer() -> None:
     # time.strftime("%Y%m%d%H%M", time.localtime(time.time()))
     configs["snapshot_path"] = os.path.join(
         configs["snapshot_path"],
-        'epochs_' + str(configs['epochs']),
+        'epochs_' + str(configs["epochs"]),
     )
 
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -107,8 +107,8 @@ def run_trainer() -> None:
     ds_list = ["level2", "level1", "out"]
 
     # Get data loader
-    train_dataset = Image_Dataset(configs["pickle_file_path"], stage="train", excel = False)
-    valid_dataset = Image_Dataset(configs["pickle_file_path"], stage="test", excel = False)
+    train_dataset = Image_Dataset(configs["pickle_file_path"], stage="train", excel = False, img_size = configs['img_size'], dino_patch = configs['dino_patch'])
+    valid_dataset = Image_Dataset(configs["pickle_file_path"], stage="test", excel = False, img_size = configs['img_size'], dino_patch  = configs['dino_patch'])
     train_dataloader = DataLoader(
         train_dataset,
         batch_size=configs["batch_size"],
@@ -225,14 +225,28 @@ def run_trainer() -> None:
             # [CHANGED] --> In case the vae model is lite_vae, the haar transform expects (0, 1) or (0, 255) so we will scale the input accordingly
             # Note: no change needed regarding the segmentation as it is being used by tiny vae.
             img_rgb = batch_data["img"].to(device)
+            # print(img_rgb.max(), img_rgb.min(), img_rgb.shape) # [CHANGED] --> Debugging
             img_rgb = img_rgb / 255.0
             if configs['vae_model'] == 'tiny_vae':
                 img_rgb = 2.0 * img_rgb - 1.0
 
+            # print(img_rgb.max(), img_rgb.min(), img_rgb.shape)
+
             seg_raw = batch_data["seg"].to(device)
-            seg_raw = seg_raw.permute(0, 3, 1, 2) / 255.0
+            # print(seg_raw.max(), seg_raw.min(), seg_raw.shape) # [CHANGED] --> Debugging
+            seg_raw = seg_raw / 255.0 #seg_raw.permute(0, 3, 1, 2) / 255.0
             seg_rgb = 2.0 * seg_raw - 1.0
 
+            # print(seg_rgb.max(), seg_rgb.min(), seg_rgb.shape)
+
+            if configs['guidance_method'] == 'dino':
+                # get dino patch from dataloader
+                dino_patch = batch_data['dino_patch'].to(device, dtype = torch.float32)
+                # print(dino_patch.shape, dino_patch.max(), dino_patch.min()) # [CHANGED] --> Debugging
+            
+            else:
+                dino_patch = None
+            
             # [CHANGED] --> Taking mean across channels dimension resulting in 1 channel which matches the channel dimension
             # of pred_seg gotten from the decoder. Same thing in Validation
             seg_img = torch.mean(seg_raw, dim=1, keepdim=True).to(device)
@@ -257,12 +271,15 @@ def run_trainer() -> None:
                 img_latent_mean_aug = sft_model(x = img_latent_mean_aug, ref = patched_img)
 
             # get guidance image for the LMM
-            if configs['guidance_method']:
+            if configs['guidance_method'] and configs['guidance_method'] != 'dino':
                 with torch.no_grad():
                     guidance_image = prepare_guidance(img_rgb, mode = configs['guidance_method'])
 
                 if configs['guidance_method'] == 'wavelet' and skff_module is not None:
                     guidance_image = skff_module(guidance_image) # (B, 3, 112, 112)
+
+            elif configs['guidance_method'] and configs['guidance_method'] == 'dino':
+                guidance_image = dino_patch
 
             # latent matching [CHANGED] --> recieves the grountruth latent mask representation and predicted and computes mse loss
             out_latent_mean_dict = mapping_model(img_latent_mean_aug, guidance_image) if configs['guidance_method'] else mapping_model(img_latent_mean_aug)
@@ -330,15 +347,27 @@ def run_trainer() -> None:
         ### Also note that the validation set is the same as the test set in the inference/valid.py file.
         for batch_data in tqdm(valid_dataloader, desc="Valid: "):
             img_rgb = batch_data["img"].to(device)
-            img_rgb = img_rgb / 255.0  # [CHANGED] V.V.V Imp!  --> SCALE CORRECTION
-            if configs['vae_model'] == 'tiny_vae':
+            # print(img_rgb.max(), img_rgb.min(), img_rgb.shape) # [CHANGED] --> Debugging
+            img_rgb = img_rgb / 255.0
+            if configs['vae_model'] == 'tiny_vae':   
                 img_rgb = 2.0 * img_rgb - 1.0
 
+            # print(img_rgb.max(), img_rgb.min(), img_rgb.shape)
+
             seg_raw = batch_data["seg"].to(device)
-            seg_raw = seg_raw.permute(0, 3, 1, 2) / 255.0
+            # print(seg_raw.max(), seg_raw.min(), seg_raw.shape) # [CHANGED] --> Debugging
+            seg_raw = seg_raw / 255.0 # seg_raw.permute(0, 3, 1, 2) / 255.0
             seg_rgb = 2.0 * seg_raw - 1.0
-            seg_img = torch.mean(seg_raw, dim=1, keepdim=True).to(device)
-            name = batch_data["name"]
+
+            # print(seg_rgb.max(), seg_rgb.min(), seg_rgb.shape)
+
+            if configs['guidance_method'] == 'dino':
+                # get dino patch from dataloader
+                dino_patch = batch_data['dino_patch'].to(device, dtype = torch.float32)
+                # print(dino_patch.shape, dino_patch.max(), dino_patch.min()) # [CHANGED] --> Debugging
+            
+            else:
+                dino_patch = None
 
             mapping_model.eval()
             vae_model.eval()
@@ -369,10 +398,17 @@ def run_trainer() -> None:
                         patched_img         = extract_patches_mean(img_rgb)
                     img_latent_mean = sft_model(x = img_latent_mean, ref = patched_img)
 
-                if configs['guidance_method']:
-                    guidance_image = prepare_guidance(img_rgb, mode = configs['guidance_method'])
+                if configs['guidance_method'] and configs['guidance_method'] != 'dino':
+                    with torch.no_grad():
+                        guidance_image = prepare_guidance(img_rgb, mode = configs['guidance_method'])
+
                     if configs['guidance_method'] == 'wavelet' and skff_module is not None:
-                        guidance_image = skff_module(guidance_image)
+                        guidance_image = skff_module(guidance_image) # (B, 3, 112, 112)
+
+                elif configs['guidance_method'] and configs['guidance_method'] == 'dino':
+                    guidance_image = dino_patch
+                else:
+                    guidance_image = None
 
                 # latent matching [CHANGED] --> recieves the grountruth latent mask representation and predicted and computes mse loss
                 out_latent_mean_dict = mapping_model(img_latent_mean, guidance_image) if configs['guidance_method'] else mapping_model(img_latent_mean)

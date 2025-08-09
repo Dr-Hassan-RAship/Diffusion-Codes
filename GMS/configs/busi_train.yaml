@@ -4,14 +4,14 @@ phase: train
 patchify: False
 learn_patch: False
 
-guidance_method: False #'wavelet'
+guidance_method: 'dino' #'wavelet'
 dilation_rates: (1, 2, 3, 4)
 
-vae_model: litevae-s # or tiny_vae
+vae_model: tiny_vae # or tiny_vae
 pickle_file_path: ./Dataset/busi/busi_train_test_names.pkl
 snapshot_path: ./ckpt/tinyvae_dino_guidance
 
-dino_patch: None # None or path to dino patch
+dino_patch: 392 # None or path to dino patch
 img_size: 224 # original224
 
 # Training Settings

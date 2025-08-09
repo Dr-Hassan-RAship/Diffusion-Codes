@@ -57,7 +57,7 @@ def load_dino_silent():
             verbose=False
         )
     f = io.StringIO()
-    return dino_model
+    return dino_model.to('cuda')
     # with contextlib.redirect_stdout(f):
     #     model = torch.hub.load('facebookresearch/dinov2', 'dinov2_vits14')
     

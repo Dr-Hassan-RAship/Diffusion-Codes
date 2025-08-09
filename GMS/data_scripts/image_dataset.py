@@ -252,7 +252,7 @@ class Image_Dataset(Dataset):
             aug_img = transforms_img(image=img_data)['image']
             aug_seg = transforms_mask(image=seg_data)['image']
 
-            dino_patch = prepare_guidance(image = (aug_img / 255.0).unsqueeze(0), mode = 'dino').squeeze() # shape: (B, 28, 28, 384)
+            dino_patch = prepare_guidance(image = (aug_img / 255.0).unsqueeze(0).to('cuda', dtype = torch.float32), mode = 'dino').squeeze().cpu() # shape: (B, 28, 28, 384)
             # aug_img = F.interpolate(aug_img.unsqueeze(0), size=(self.img_size, self.img_size), mode='bilinear', align_corners=False).squeeze(0)
             resize = A.Resize(self.img_size, self.img_size)
             aug_img = torch.from_numpy(resize(image=aug_img.permute(1, 2, 0).cpu().numpy().astype(np.uint8))['image']).permute(2, 0, 1)

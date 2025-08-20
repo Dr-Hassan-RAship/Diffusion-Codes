@@ -7,12 +7,12 @@ learn_patch: False
 guidance_method: False
 dilation_rates: (1, 2, 3, 4)
 # fj
-vae_model: tiny_vae # or tiny_vae
+vae_model: litevae-s # or tiny_vae
 pickle_file_path: ./Dataset/kvasir-instrument/kvasir-instrument_train_test_names.pkl
 
-model_weight: ./ckpt/tinyvae_baseline_kvasir-instrument_correct_transforms/epochs_1000/checkpoints/best_valid_dice_575.pth
-snapshot_path: ./ckpt/tinyvae_baseline_kvasir-instrument_correct_transforms/epochs_1000/valid_busi_best_valid_dice
-save_seg_img_path: ./ckpt/tinyvae_baseline_kvasir-instrument_correct_transforms/epochs_1000/predicted_masks_best_valid_dice
+model_weight: ./ckpt/litevae_baseline_kvasir-instrument_correct_transforms/epochs_1000/checkpoints/best_valid_loss_rec_736.pth
+snapshot_path: ./ckpt/litevae_baseline_kvasir-instrument_correct_transforms/epochs_1000/valid_busi_best_valid_loss_rec
+save_seg_img_path: ./ckpt/litevae_baseline_kvasir-instrument_correct_transforms/epochs_1000/predicted_masks_best_valid_loss_rec
 
 # Valid Settings
 GPUs: [0]
@@ -27,5 +27,5 @@ num_res_blocks: 2
 ch: 32
 ch_mult: [1, 2, 4, 4]
 
-# dice Settings
+# loss_rec Settings
 w_rec: 1

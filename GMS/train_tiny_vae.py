@@ -12,7 +12,7 @@ from monai.losses.dice import DiceLoss
 
 
 # Own Package
-from data_scripts.image_dataset import Image_Dataset
+from data.image_dataset import Image_Dataset
 from utils.tools import *
 from utils.get_logger import open_log
 from utils.load_ckpt import * # contains function save_checkpoint
@@ -65,7 +65,7 @@ def arg_parse() -> argparse.ArgumentParser.parse_args:
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--config",
-        default="./configs/kvasir-instrument_train.yaml",
+        default="./configs/busi_train.yaml",
         type=str,
         help="load the config file",
     )
@@ -107,8 +107,8 @@ def run_trainer() -> None:
     ds_list = ["level2", "level1", "out"]
 
     # Get data loader
-    train_dataset = Image_Dataset(configs["pickle_file_path"], stage="train", excel = False, img_size = configs['img_size'], dino_patch = configs['dino_patch'])
-    valid_dataset = Image_Dataset(configs["pickle_file_path"], stage="test", excel = False, img_size = configs['img_size'], dino_patch  = configs['dino_patch'])
+    train_dataset = Image_Dataset(configs["pickle_file_path"], stage="train", excel = False)
+    valid_dataset = Image_Dataset(configs["pickle_file_path"], stage="test", excel = False)
     train_dataloader = DataLoader(
         train_dataset,
         batch_size=configs["batch_size"],
@@ -224,29 +224,15 @@ def run_trainer() -> None:
         for batch_data in tqdm(train_dataloader, desc="Train: "):
             # [CHANGED] --> In case the vae model is lite_vae, the haar transform expects (0, 1) or (0, 255) so we will scale the input accordingly
             # Note: no change needed regarding the segmentation as it is being used by tiny vae.
-            img_rgb = batch_data["img"].to(device)
-            # print(img_rgb.max(), img_rgb.min(), img_rgb.shape) # [CHANGED] --> Debugging
-            img_rgb = img_rgb / 255.0
+            img_rgb = batch_data['img'].to(device)
+            img_rgb = img_rgb / 255.0 # [CHANGED] V.V.V Imp!  --> SCALE CORRECTION
+
             if configs['vae_model'] == 'tiny_vae':
-                img_rgb = 2.0 * img_rgb - 1.0
+                img_rgb = 2. * img_rgb - 1.
 
-            # print(img_rgb.max(), img_rgb.min(), img_rgb.shape)
-
-            seg_raw = batch_data["seg"].to(device)
-            # print(seg_raw.max(), seg_raw.min(), seg_raw.shape) # [CHANGED] --> Debugging
-            seg_raw = seg_raw / 255.0 #seg_raw.permute(0, 3, 1, 2) / 255.0
-            seg_rgb = 2.0 * seg_raw - 1.0
-
-            # print(seg_rgb.max(), seg_rgb.min(), seg_rgb.shape)
-
-            if configs['guidance_method'] == 'dino':
-                # get dino patch from dataloader
-                dino_patch = batch_data['dino_patch'].to(device, dtype = torch.float32)
-                # print(dino_patch.shape, dino_patch.max(), dino_patch.min()) # [CHANGED] --> Debugging
-            
-            else:
-                dino_patch = None
-            
+            seg_raw = batch_data['seg'].to(device)
+            seg_raw = seg_raw.permute(0, 3, 1, 2) / 255.0
+            seg_rgb = 2. * seg_raw - 1.
             # [CHANGED] --> Taking mean across channels dimension resulting in 1 channel which matches the channel dimension
             # of pred_seg gotten from the decoder. Same thing in Validation
             seg_img = torch.mean(seg_raw, dim=1, keepdim=True).to(device)
@@ -279,7 +265,7 @@ def run_trainer() -> None:
                     guidance_image = skff_module(guidance_image) # (B, 3, 112, 112)
 
             elif configs['guidance_method'] and configs['guidance_method'] == 'dino':
-                guidance_image = dino_patch
+                guidance_image = None
 
             # latent matching [CHANGED] --> recieves the grountruth latent mask representation and predicted and computes mse loss
             out_latent_mean_dict = mapping_model(img_latent_mean_aug, guidance_image) if configs['guidance_method'] else mapping_model(img_latent_mean_aug)
@@ -349,25 +335,16 @@ def run_trainer() -> None:
             img_rgb = batch_data["img"].to(device)
             # print(img_rgb.max(), img_rgb.min(), img_rgb.shape) # [CHANGED] --> Debugging
             img_rgb = img_rgb / 255.0
-            if configs['vae_model'] == 'tiny_vae':   
+            if configs['vae_model'] == 'tiny_vae':
                 img_rgb = 2.0 * img_rgb - 1.0
 
             # print(img_rgb.max(), img_rgb.min(), img_rgb.shape)
 
             seg_raw = batch_data["seg"].to(device)
-            # print(seg_raw.max(), seg_raw.min(), seg_raw.shape) # [CHANGED] --> Debugging
-            seg_raw = seg_raw / 255.0 # seg_raw.permute(0, 3, 1, 2) / 255.0
-            seg_rgb = 2.0 * seg_raw - 1.0
-
-            # print(seg_rgb.max(), seg_rgb.min(), seg_rgb.shape)
-
-            if configs['guidance_method'] == 'dino':
-                # get dino patch from dataloader
-                dino_patch = batch_data['dino_patch'].to(device, dtype = torch.float32)
-                # print(dino_patch.shape, dino_patch.max(), dino_patch.min()) # [CHANGED] --> Debugging
-            
-            else:
-                dino_patch = None
+            seg_raw = seg_raw.permute(0, 3, 1, 2) / 255.0
+            seg_rgb = 2. * seg_raw -1.
+            seg_img = torch.mean(seg_raw, dim = 1, keepdim = True)
+            name = batch_data['name']
 
             mapping_model.eval()
             vae_model.eval()
@@ -406,7 +383,7 @@ def run_trainer() -> None:
                         guidance_image = skff_module(guidance_image) # (B, 3, 112, 112)
 
                 elif configs['guidance_method'] and configs['guidance_method'] == 'dino':
-                    guidance_image = dino_patch
+                    guidance_image = None
                 else:
                     guidance_image = None
 

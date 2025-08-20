@@ -159,7 +159,7 @@ def run_trainer() -> None:
         vae_model = get_lite_vae(train = vae_train, model_version = configs['vae_model'])
 
     scale_factor = 1.0 # default
-
+    # f
     if configs['patchify']:
         if configs['learn_patch']:
             patch_model = LearnablePatchify(patch_size = 28).to(dtype = torch.float32, device = device)

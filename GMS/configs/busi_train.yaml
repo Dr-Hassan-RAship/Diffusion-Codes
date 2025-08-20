@@ -6,7 +6,7 @@ learn_patch: False
 
 guidance_method: 'dino' #'wavelet'
 dilation_rates: (1, 2, 3, 4)
-
+# fh
 vae_model: tiny_vae # or tiny_vae
 pickle_file_path: ./Dataset/busi/busi_train_test_names.pkl
 <<<<<<< HEAD

@@ -251,7 +251,7 @@ def run_validator() -> None:
         dsc_list.append(results['DSC'])
         iou_list.append(results['IoU'])
         hd95_list.append(results['HD95'])
-
+        # fj
         ssim_list.append(results['SSIM'])
         ssim_region_list.append(results['SSIM_region'])
         ssim_object_list.append(results['SSIM_object'])

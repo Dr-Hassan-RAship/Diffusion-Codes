@@ -178,7 +178,7 @@ class Image_Dataset(Dataset):
                 ToTensorV2(),
             ])
         return transforms
-
+        # f
     def __getitem__(self, index):
         name = self.name_list[index]
         # load img & seg

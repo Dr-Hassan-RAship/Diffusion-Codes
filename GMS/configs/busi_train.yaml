@@ -9,10 +9,14 @@ dilation_rates: (1, 2, 3, 4)
 
 vae_model: tiny_vae # or tiny_vae
 pickle_file_path: ./Dataset/busi/busi_train_test_names.pkl
+<<<<<<< HEAD
 snapshot_path: ./ckpt/tinyvae_dino_guidance
 
 dino_patch: 392 # None or path to dino patch
 img_size: 224 # original224
+=======
+snapshot_path: ./ckpt/tinyvae_baseline_busi_correct_transforms
+>>>>>>> bf6f99e (update)
 
 # Training Settings
 epochs: 1000

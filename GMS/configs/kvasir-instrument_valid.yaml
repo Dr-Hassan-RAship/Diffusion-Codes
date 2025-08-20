@@ -4,15 +4,15 @@ phase: valid
 patchify: False
 learn_patch: False
 
-guidance_method: 'wavelet'
+guidance_method: False
 dilation_rates: (1, 2, 3, 4)
 
 vae_model: tiny_vae # or tiny_vae
-pickle_file_path: ./Dataset/busi/busi_train_test_names.pkl
+pickle_file_path: ./Dataset/kvasir-instrument/kvasir-instrument_train_test_names.pkl
 
-model_weight: ./ckpt/tinyvae-sft-lmm/epoch_2000/checkpoints/best_valid_dice_242.pth
-snapshot_path: ./ckpt/tinyvae-sft-lmm/epoch_2000/valid_busi_best_valid_dice_test
-save_seg_img_path: ./ckpt/tinyvae-sft-lmm/epoch_2000/predicted_masks_best_valid_dice_test
+model_weight: ./ckpt/tinyvae_baseline_kvasir-instrument_correct_transforms/epochs_1000/checkpoints/best_valid_dice_575.pth
+snapshot_path: ./ckpt/tinyvae_baseline_kvasir-instrument_correct_transforms/epochs_1000/valid_busi_best_valid_dice
+save_seg_img_path: ./ckpt/tinyvae_baseline_kvasir-instrument_correct_transforms/epochs_1000/predicted_masks_best_valid_dice
 
 # Valid Settings
 GPUs: [0]

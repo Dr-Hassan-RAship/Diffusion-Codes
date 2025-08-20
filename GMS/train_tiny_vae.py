@@ -65,7 +65,7 @@ def arg_parse() -> argparse.ArgumentParser.parse_args:
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--config",
-        default="./configs/busi_train.yaml",
+        default="./configs/kvasir-instrument_train.yaml",
         type=str,
         help="load the config file",
     )
@@ -149,14 +149,14 @@ def run_trainer() -> None:
     param_groups = list(mapping_model.parameters())
 
     # Getting tiny-vae (with residual_autoencoding) default: frozen and eval
-    vae_train = False
+    vae_train = True
     if configs['vae_model'] == 'tiny_vae':
         logging.info("Initializing TinyVAE")
-        vae_model = get_tiny_autoencoder(train = vae_train, residual_autoencoding = False)
+        vae_model = get_tiny_autoencoder(train = False, residual_autoencoding = False)
     else:
         logging.info("Initializing LiteVAE")
-        tiny_vae  = get_tiny_autoencoder(train = vae_train, residual_autoencoding = False) # for the segmentation latent and decoding at the end.
-        vae_model = get_lite_vae(model_version = configs['vae_model'])
+        tiny_vae  = get_tiny_autoencoder(train = False, residual_autoencoding = False) # for the segmentation latent and decoding at the end.
+        vae_model = get_lite_vae(train = vae_train, model_version = configs['vae_model'])
 
     scale_factor = 1.0 # default
 
@@ -185,7 +185,7 @@ def run_trainer() -> None:
         logging.info('Training SKFF Module')
         logging.info(f"SKFF Module trainable params: {count_params(skff_module)} out of {sum(p.numel() for p in skff_module.parameters())}")
 
-    logging.info(f"Mapping Model with SFT trainable params: {count_params(mapping_model)} out of {sum(p.numel() for p in mapping_model.parameters())}")
+    logging.info(f"Mapping Model trainable params: {count_params(mapping_model)} out of {sum(p.numel() for p in mapping_model.parameters())}")
     logging.info(f"VAE Model trainable params: {count_params(vae_model)} out of {sum(p.numel() for p in vae_model.parameters())}")
 
     optimizer = torch.optim.AdamW(param_groups, lr=configs["lr"])

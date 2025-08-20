@@ -4,12 +4,17 @@ phase: train
 patchify: False
 learn_patch: False
 
-guidance_method: "wavelet"
+guidance_method: False
 dilation_rates: (1, 2, 3, 4)
 
 pickle_file_path: ./Dataset/kvasir-instrument/kvasir-instrument_train_test_names.pkl
+<<<<<<< HEAD
 vae_model: tiny_vae # or tiny_vae
 snapshot_path: ./ckpt/tinyvae-baseline-kvasir-instrument
+=======
+vae_model: litevae-s # or tiny_vae
+snapshot_path: ./ckpt/litevae_baseline_kvasir-instrument_correct_transforms
+>>>>>>> bf6f99e (update)
 
 # Training Settings
 epochs: 1000

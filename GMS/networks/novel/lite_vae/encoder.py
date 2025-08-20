@@ -29,10 +29,10 @@ their implementation uses ptwt instead of pywt which takes the whole RGB image a
     For LiteVAE-M, model_channels = 64 and ch_multiplies = [1, 2, 4]
     For LiteVAE-L, model_channels = 64 and ch_multiplies = [1, 2, 4]
 
-3) Due to similar reasoning as 1), the feature aggregation module which was previously taking in_channels as in_channels * 3 and out_channels as out_channels * 2 is now going to take 
-   in_channels = 12 * 3 = 36 but out_channels can be flexible. The paper has used 12 (page 7 of paper). We will use 8 as the mu | logvar decomposition allows us to have the latent 
+3) Due to similar reasoning as 1), the feature aggregation module which was previously taking in_channels as in_channels * 3 and out_channels as out_channels * 2 is now going to take
+   in_channels = 12 * 3 = 36 but out_channels can be flexible. The paper has used 12 (page 7 of paper). We will use 8 as the mu | logvar decomposition allows us to have the latent
    in 4 channels form which is what the LMM model expects in GMS paper
-    
+
 4) The following is the model_channels and ch_multiples configuration for each model size of the feature aggregation module
     For LiteVAE-S, model_channels = 16 and ch_multiplies = [1, 2, 2] (see unet_block.py)
     For LiteVAE-B, model_channels = 32 and ch_multiplies = [1, 2, 3]
@@ -83,7 +83,7 @@ class LiteVAEEncoder(nn.Module):
         }
 
         assert model_version in encoder_configs, f"Unknown model version: {model_version}"
-        
+
         fe_cfg = encoder_configs[model_version]
         self.model_channels_extractor = fe_cfg["model_channels"]
         self.ch_mult_extractor        = fe_cfg["ch_mult"]
@@ -93,19 +93,19 @@ class LiteVAEEncoder(nn.Module):
         self.ch_mult_aggregator        = fa_cfg["ch_mult"]
 
         # Shared UNets (1 per level)
-        self.feature_extractor_L1 = LiteVAEUNetBlock(in_channels = self.in_channels, out_channels = self.out_channels, 
+        self.feature_extractor_L1 = LiteVAEUNetBlock(in_channels = self.in_channels, out_channels = self.out_channels,
                                                      model_channels = self.model_channels_extractor, ch_multiplies = self.ch_mult_extractor) # replacing in_channels with #sub-bands
-        self.feature_extractor_L2 = LiteVAEUNetBlock(in_channels = self.in_channels, out_channels = self.out_channels, 
+        self.feature_extractor_L2 = LiteVAEUNetBlock(in_channels = self.in_channels, out_channels = self.out_channels,
                                                      model_channels = self.model_channels_extractor, ch_multiplies = self.ch_mult_extractor)
-        self.feature_extractor_L3 = LiteVAEUNetBlock(in_channels = self.in_channels, out_channels = self.out_channels, 
+        self.feature_extractor_L3 = LiteVAEUNetBlock(in_channels = self.in_channels, out_channels = self.out_channels,
                                                      model_channels = self.model_channels_extractor, ch_multiplies = self.ch_mult_extractor)
 
         # Aggregator UNet: (L1 + L2 + L3) --> 2 * out_channels or 12 fixed by paper or 8 for LMM model in GMS consistency
         aggregated_channels  = in_channels * 3
         out_channels_agg     = 8  # [mu | logvar]
-        self.feature_aggregator = LiteVAEUNetBlock(in_channels = aggregated_channels, out_channels = out_channels_agg, 
+        self.feature_aggregator = LiteVAEUNetBlock(in_channels = aggregated_channels, out_channels = out_channels_agg,
                                                    model_channels = self.model_channels_aggregator, ch_multiplies = self.ch_mult_aggregator)
-        
+
         # Downsamplers for L1 and L2 features to match L3 size
         self.downsample_L1 = Downsample2D(in_channels, scale_factor = 4)
         self.downsample_L2 = Downsample2D(in_channels, scale_factor = 2)
@@ -121,14 +121,14 @@ class LiteVAEEncoder(nn.Module):
         feat_L1 = self.downsample_L1(self.feature_extractor_L1(dwt_L1)) # (B, 12, H/8, H/8)
         feat_L2 = self.downsample_L2(self.feature_extractor_L2(dwt_L2)) # (B, 12, H/8, H/8)
         feat_L3 = self.feature_extractor_L3(dwt_L3)
-        
+
         # Concatenate and aggregate to latent (mu + logvar)
         feat_cat = torch.cat([feat_L1, feat_L2, feat_L3], dim = 1) # (B, 36, H/8, W/8)
 
         latent_out = self.feature_aggregator(feat_cat) # (B, 8, H/8, W/8) --> [mu | logvar]
-        
+
         # dwt_L2     = self.wavelet_fn.dwt(image, level = 2) / 4 # (B, 12, H/4, W/4)
-        # feat_L2    = self.feature_extractor_L2(dwt_L2) # (B, 12, H/4, W/4)
+        # feat_L2    = self.downsample_L2(self.feature_extractor_L2(dwt_L2)) # (B, 12, H/4, W/4)
         # latent_out = self.feature_aggregator(feat_L2) # (B, 8, H/4, W/4) --> [mu | logvar]
-        
+
         return latent_out

@@ -100,18 +100,18 @@ def run_validator() -> None:
     valid_dataloader = DataLoader(valid_dataset, batch_size=1, pin_memory=True, drop_last=False, shuffle=False)
 
     # Define networks
+    skff_module = None
     if configs['guidance_method']:
         guidance_channels_dict = {'edge': 3, 'wavelet': 3, 'dino': 384}
 
         mapping_model = SFT_UNet_DS(in_channels       = configs['in_channel'],
                                     out_channels      = configs['out_channels'],
                                     guidance_channels = guidance_channels_dict[configs['guidance_method']]).to(device)
-        
+
         if configs['guidance_method'] == 'wavelet':
             skff_module = SKFF().to(device)
             skff_module.eval()
-        else:
-            skff_module = None
+
     else:
         mapping_model = ResAttnUNet_DS(
             in_channel=configs["in_channel"],
@@ -120,35 +120,35 @@ def run_validator() -> None:
             ch=configs["ch"],
             ch_mult=configs["ch_mult"],
             ).to(device)
-        
+
     mapping_model.eval()
-    
+
     vae_train = False
     vae_model = None
-    
+
     if configs['vae_model'] == 'tiny_vae':
         logging.info("Initializing TinyVAE")
-        vae_model = get_tiny_autoencoder(train = vae_train, residual_autoencoding = False)
+        vae_model = get_tiny_autoencoder(train = False, residual_autoencoding = False)
     else:
         logging.info("Initializing LiteVAE")
-        tiny_vae  = get_tiny_autoencoder(train = vae_train, residual_autoencoding = False) # for the segmentation latent and decoding at the end.
+        tiny_vae  = get_tiny_autoencoder(train = False, residual_autoencoding = False) # for the segmentation latent and decoding at the end.
         vae_model = get_lite_vae(model_version = configs['vae_model'], train = False, freeze = True)
 
     scale_factor = 1.0 # default
-    
+
     if vae_train and skff_module is None:
-        mapping_model, vae_model = load_checkpoint(mapping_model, configs['model_weight'], 
+        mapping_model, vae_model, _ = load_checkpoint(mapping_model, configs['model_weight'],
                                                    vae_model = vae_model, vae_model_load = vae_train)
     elif vae_train and skff_module is not None:
-        mapping_model, vae_model, skff_module = load_checkpoint(mapping_model, configs['model_weight'], 
-                                                                vae_model = vae_model, vae_model_load = vae_train, 
+        mapping_model, vae_model, skff_module = load_checkpoint(mapping_model, configs['model_weight'],
+                                                                vae_model = vae_model, vae_model_load = vae_train,
                                                                 skff_model = skff_module, skff_model_load = True)
     elif not vae_train and skff_module is not None:
-        mapping_model, vae_model, skff_module = load_checkpoint(mapping_model, configs['model_weight'], 
-                                                                vae_model = vae_model, vae_model_load = False, 
+        mapping_model, vae_model, skff_module = load_checkpoint(mapping_model, configs['model_weight'],
+                                                                vae_model = vae_model, vae_model_load = False,
                                                                 skff_model = skff_module, skff_model_load = True)
     else:
-        mapping_model = load_checkpoint(mapping_model, configs['model_weight'])
+        mapping_model, _, _ = load_checkpoint(mapping_model, configs['model_weight'])
 
     if configs['patchify']:
         if configs['learn_patch']:
@@ -161,7 +161,7 @@ def run_validator() -> None:
     vae_model.eval()
     tiny_vae.eval() if configs['vae_model'] != 'tiny_vae' else None
     # Getting tiny-vae (with residual_autoencoding) default: frozen and eval
-    
+
     scale_factor = 1.0
 
     # Define loss functions
@@ -177,7 +177,7 @@ def run_validator() -> None:
     for batch_data in tqdm(valid_dataloader, desc='Valid: '):
         img_rgb = batch_data['img'].to(device)
         img_rgb = img_rgb / 255.0 # [CHANGED] V.V.V Imp!  --> SCALE CORRECTION
-        
+
         if configs['vae_model'] == 'tiny_vae':
             img_rgb = 2. * img_rgb - 1.
 
@@ -198,12 +198,12 @@ def run_validator() -> None:
                     vae_model(img_rgb),
                     tiny_vae.encode(seg_rgb).latents,
                 )
-            
+
             if configs['guidance_method']:
                     guidance_image = prepare_guidance(img_rgb, mode = configs['guidance_method'])
                     if configs['guidance_method'] == 'wavelet':
                         guidance_image = skff_module(guidance_image)
-                        
+
             out_latent_mean_dict = mapping_model(img_latent_mean, guidance_image) if configs['guidance_method'] else mapping_model(img_latent_mean)
 
             loss_Rec = configs['w_rec'] * mse_loss(out_latent_mean_dict['out'], seg_latent_mean)

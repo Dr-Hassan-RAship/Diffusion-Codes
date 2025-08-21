@@ -227,8 +227,7 @@ def run_trainer() -> None:
             img_rgb = batch_data['img'].to(device)
             img_rgb = img_rgb / 255.0 # [CHANGED] V.V.V Imp!  --> SCALE CORRECTION
 
-            if configs['vae_model'] == 'tiny_vae':
-                img_rgb = 2. * img_rgb - 1.
+            img_rgb = 2. * img_rgb - 1.
 
             seg_raw = batch_data['seg'].to(device)
             seg_raw = seg_raw.permute(0, 3, 1, 2) / 255.0
@@ -335,8 +334,7 @@ def run_trainer() -> None:
             img_rgb = batch_data["img"].to(device)
             # print(img_rgb.max(), img_rgb.min(), img_rgb.shape) # [CHANGED] --> Debugging
             img_rgb = img_rgb / 255.0
-            if configs['vae_model'] == 'tiny_vae':
-                img_rgb = 2.0 * img_rgb - 1.0
+            img_rgb = 2.0 * img_rgb - 1.0
 
             # print(img_rgb.max(), img_rgb.min(), img_rgb.shape)
 

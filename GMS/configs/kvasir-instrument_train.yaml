@@ -9,7 +9,7 @@ dilation_rates: (1, 2, 3, 4)
 # jg
 pickle_file_path: ./Dataset/kvasir-instrument/kvasir-instrument_train_test_names.pkl
 vae_model: litevae-s # or tiny_vae
-snapshot_path: ./ckpt/tinyvae-baseline-kvasir-instrument
+snapshot_path: ./ckpt/litevae_f2_only_baseline_kvasir-instrument_correct_transforms
 
 # Training Settings
 epochs: 1000

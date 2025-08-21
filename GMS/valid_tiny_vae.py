@@ -60,7 +60,7 @@ def vae_decode(vae_model, pred_mean, scale_factor):
 
 def arg_parse() -> argparse.ArgumentParser.parse_args :
     parser = argparse.ArgumentParser()
-    parser.add_argument('--config', default='./configs/kvasir-instrument_valid.yaml', # [CHANGED] --> added kvasir-seg yaml
+    parser.add_argument('--config', default='./configs/busi_valid.yaml', # [CHANGED] --> added kvasir-seg yaml
                         type=str, help='load the config file')
     args = parser.parse_args()
     return args

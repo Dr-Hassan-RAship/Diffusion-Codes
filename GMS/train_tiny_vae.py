@@ -60,7 +60,7 @@ def vae_decode(vae_model, pred_mean, scale_factor):
     )  # (B, 1, H, W) # [CHANGED] --> Bringing the range to (0, 1) as per Kvasir-SEG dataset
     return pred_seg
 
-# [CHANGED] --> added the path to the Kvasir-SEG config file
+# [CHANGED] --> added the path to the Kvasir-SEG config file f
 def arg_parse() -> argparse.ArgumentParser.parse_args:
     parser = argparse.ArgumentParser()
     parser.add_argument(

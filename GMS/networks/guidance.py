@@ -114,7 +114,7 @@ def prepare_guidance(image: torch.Tensor, mode='edge') -> torch.Tensor:
 class SKFF(nn.Module):
     def __init__(self, channels=3, reduction=8):
         super(SKFF, self).__init__()
-        reduced_channels = max(1, channels // reduction)
+        reduced_channels = max(1, channels // reduction) # f
 
         self.global_pool = nn.AdaptiveAvgPool2d(1)
 

@@ -10,7 +10,7 @@ snapshot_path: ./ckpt/tinyvae_baseline_bus_sft_wavelet_no_approx_no_init
 
 # Training Settings
 epochs: 1000
-GPUs: [0]
+GPUs: [0] # f
 num_workers: 8
 batch_size: 12 # possible due to TinyVae
 save_freq: 100

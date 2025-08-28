@@ -110,7 +110,7 @@ class LiteVAEEncoder(nn.Module):
         # self.downsample_L1 = Downsample2D(in_channels, scale_factor = 4)
         self.downsample_L2 = Downsample2D(in_channels, scale_factor = 2)
 
-    def forward(self, image: Tensor) -> Tensor:
+    def forward(self, image: Tensor) -> Tensor: # fg
         # Get all sub-bands from DWT for each level
 # fh
         # dwt_L1 = self.wavelet_fn.dwt(image, level = 1) / 2 # (B, 12, H/2, W/2)

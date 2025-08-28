@@ -150,7 +150,7 @@ class ResAttnUNet_DS(nn.Module):
         x0 = self.input_blocks(x)  # x0.shape: (1, 32, 28, 28)
         x1 = self.conv1_0(x0)      # x1.shape: (1, 32, 28, 28)
         x2 = self.conv2_0(x1)      # x2.shape: (1, 64, 28, 28)
-        x3 = self.conv3_0(x2)      # x3.shape: (1, 128, 28, 28)
+        x3 = self.conv3_0(x2)      # x3.shape: (1, 128, 28, 28)f
         x4 = self.conv4_0(x3)      # x4.shape: (1, 128, 28, 28)
 
         x3_1 = self.conv3_1(torch.cat([x3, x4], dim=1))   # x3_1.shape: (1, 128, 28, 28)
@@ -160,7 +160,7 @@ class ResAttnUNet_DS(nn.Module):
 
         out = dict()
         out['level3']   = self.convds3(x3_1)
-        out['level2']   = self.convds2(x2_2)
+        out['level2']   = self.convds2(x2_2) # fg
         out['level1']   = self.convds1(x1_3)
         out['out']      = self.convds0(x0_4)
         

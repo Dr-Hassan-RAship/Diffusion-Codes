@@ -144,7 +144,7 @@ class SFT_UNet_DS(nn.Module):
 
         self.conv3_1 = ResAttBlock(ch * (ch_mult[2]+ch_mult[3]), ch * ch_mult[2], guidance_channels)
         self.conv2_2 = ResAttBlock(ch * (ch_mult[1]+ch_mult[2]), ch * ch_mult[1], guidance_channels)
-        self.conv1_3 = ResAttBlock(ch * (ch_mult[0]+ch_mult[1]), ch * ch_mult[0], guidance_channels)
+        self.conv1_3 = ResAttBlock(ch * (ch_mult[0]+ch_mult[1]), ch * ch_mult[0], guidance_channels) # d
         self.conv0_4 = ResAttBlock(ch * (1 + ch_mult[0]),        ch,              guidance_channels)
 
         self.convds3 = nn.Sequential(Normalize(ch * ch_mult[2]), nn.SiLU(), nn.Conv2d(ch * ch_mult[2], out_channels, 3, 1, 1, bias = True))

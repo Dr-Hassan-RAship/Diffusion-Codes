@@ -149,7 +149,7 @@ def run_trainer() -> None:
     param_groups = list(mapping_model.parameters())
 
     # Getting tiny-vae (with residual_autoencoding) default: frozen and eval
-    vae_train = True
+    vae_train = False
     if configs['vae_model'] == 'tiny_vae':
         logging.info("Initializing TinyVAE")
         vae_model = get_tiny_autoencoder(train = False, residual_autoencoding = False)
@@ -159,20 +159,6 @@ def run_trainer() -> None:
         vae_model = get_lite_vae(train = vae_train, model_version = configs['vae_model'])
 
     scale_factor = 1.0 # default
-    # f
-    if configs['patchify']:
-        if configs['learn_patch']:
-            patch_model = LearnablePatchify(patch_size = 28).to(dtype = torch.float32, device = device)
-            patch_model.train()
-            param_groups += list(patch_model.parameters())
-            logging.info("Training patch_model")
-            logging.info(f'Patch Model trainable params: {count_params(patch_model)}')
-
-        sft_model   = SFTModule(original_channels = configs['in_channel'], guidance_channels = 64).to(dtype = torch.float32, device = device)
-        sft_model.train()
-        param_groups += list(sft_model.parameters())
-        logging.info("Training sft_model")
-        logging.info(f'SFT Model trainable params: {count_params(sft_model)}')
 
     # Define optimizers
 
@@ -227,7 +213,8 @@ def run_trainer() -> None:
             img_rgb = batch_data['img'].to(device)
             img_rgb = img_rgb / 255.0 # [CHANGED] V.V.V Imp!  --> SCALE CORRECTION
 
-            img_rgb = 2. * img_rgb - 1.
+            if configs['vae_model'] == 'tiny_vae':
+                img_rgb = 2. * img_rgb - 1.
 
             seg_raw = batch_data['seg'].to(device)
             seg_raw = seg_raw.permute(0, 3, 1, 2) / 255.0
@@ -247,13 +234,6 @@ def run_trainer() -> None:
                     vae_model(img_rgb),
                     tiny_vae.encode(seg_rgb).latents,
                 )
-
-            if configs['patchify']:
-                if configs['learn_patch']:
-                    patched_img         = patch_model(img_rgb)
-                else:
-                    patched_img         = extract_patches_mean(img_rgb)
-                img_latent_mean_aug = sft_model(x = img_latent_mean_aug, ref = patched_img)
 
             # get guidance image for the LMM
             if configs['guidance_method'] and configs['guidance_method'] != 'dino':
@@ -334,7 +314,8 @@ def run_trainer() -> None:
             img_rgb = batch_data["img"].to(device)
             # print(img_rgb.max(), img_rgb.min(), img_rgb.shape) # [CHANGED] --> Debugging
             img_rgb = img_rgb / 255.0
-            img_rgb = 2.0 * img_rgb - 1.0
+            if configs['vae_model'] == 'tiny_vae':
+                img_rgb = 2.0 * img_rgb - 1.0
 
             # print(img_rgb.max(), img_rgb.min(), img_rgb.shape)
 
@@ -349,11 +330,6 @@ def run_trainer() -> None:
             tiny_vae.eval() if configs['vae_model'] != 'tiny_vae' else None
             if skff_module is not None: skff_module.eval()
 
-            if configs['patchify']:
-                if configs['learn_patch']:
-                    patch_model.eval()
-                sft_model.eval()
-
             with torch.no_grad():
                 if configs['vae_model'] == 'tiny_vae':
                     img_latent_mean, seg_latent_mean = (
@@ -365,13 +341,6 @@ def run_trainer() -> None:
                         vae_model(img_rgb),
                         tiny_vae.encode(seg_rgb).latents,
                     )
-
-                if configs['patchify']:
-                    if configs['learn_patch']:
-                        patched_img         = patch_model(img_rgb)
-                    else:
-                        patched_img         = extract_patches_mean(img_rgb)
-                    img_latent_mean = sft_model(x = img_latent_mean, ref = patched_img)
 
                 if configs['guidance_method'] and configs['guidance_method'] != 'dino':
                     with torch.no_grad():

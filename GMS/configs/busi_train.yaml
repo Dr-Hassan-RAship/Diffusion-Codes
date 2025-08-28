@@ -4,13 +4,12 @@ phase: train
 patchify: False
 learn_patch: False
 
-guidance_method: False #'wavelet'
+guidance_method: 'wavelet' #'wavelet'
 dilation_rates: (1, 2, 3, 4)
 # fh
-vae_model: litevae-s # or tiny_vae
+vae_model: tiny_vae # or tiny_vae
 pickle_file_path: ./Dataset/busi/busi_train_test_names.pkl
-snapshot_path: ./ckpt/litevae_baseline_busi_correct_transforms
-
+snapshot_path: ./ckpt/tinyvae_baseline_busi_sft_wavelet_no_approx
 # Training Settings
 epochs: 1000
 GPUs: [0]

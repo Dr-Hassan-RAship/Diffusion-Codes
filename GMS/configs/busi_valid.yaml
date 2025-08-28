@@ -10,9 +10,9 @@ dilation_rates: (1, 2, 3, 4)
 vae_model: litevae-s # or tiny_vae
 pickle_file_path: ./Dataset/busi/busi_train_test_names.pkl
 
-model_weight: ./ckpt/litevae_baseline_busi_correct_transforms/epochs_1000/checkpoints/best_valid_loss_rec_349.pth
-snapshot_path: ./ckpt/litevae_baseline_busi_correct_transforms/epochs_1000/valid_busi_best_valid_loss_rec
-save_seg_img_path: ./ckpt/litevae_baseline_busi_correct_transforms/epochs_1000/predicted_masks_best_valid_loss_rec
+model_weight: ./ckpt/litevae_baseline_f2_only_busi_correct_scaling/epochs_1000/checkpoints/best_valid_loss_rec_393.pth
+snapshot_path: ./ckpt/litevae_baseline_f2_only_busi_correct_scaling/epochs_1000/valid_busi_best_valid_loss_rec
+save_seg_img_path: ./ckpt/litevae_baseline_f2_only_busi_correct_scaling/epochs_1000/predicted_masks_best_valid_loss_rec
 
 # Valid Settings
 GPUs: [0]
@@ -27,5 +27,5 @@ num_res_blocks: 2
 ch: 32
 ch_mult: [1, 2, 4, 4]
 
-# loss Settings
+# dice Settings
 w_rec: 1

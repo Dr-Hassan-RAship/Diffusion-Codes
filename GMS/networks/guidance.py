@@ -38,12 +38,12 @@ def get_edge_map(image: torch.Tensor, rgb = True) -> torch.Tensor:
 
 def get_wavelet_subbands(images, lv = 1):
     wavelet_fn = HaarTransform()
-    sub_bands  = wavelet_fn.dwt(images, level = lv) / 2 # (B, 12, H / 2, W / 2)
+    sub_bands  = wavelet_fn.dwt(images, level = lv) / (2 ** lv) # (B, 12, H / 2, W / 2)
 
     # Remove the approximation coefficient
-    sub_bands_filter = sub_bands[:, 3:, :, :]
+    sub_bands = sub_bands[:, 3:, :, :]
 
-    return sub_bands_filter
+    return sub_bands
 
 def load_dino_silent():
     # Suppress logging from dinov2

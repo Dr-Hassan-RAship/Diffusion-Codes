@@ -11,11 +11,11 @@ class SFT(nn.Module):
         super().__init__()
         pw = ks // 2
         self.shared = nn.Sequential(
-            nn.Conv2d(guidance_channels, nhidden, kernel_size=ks, stride=1, padding=pw),
+            nn.Conv2d(guidance_channels, nhidden, kernel_size=ks, stride=2, padding=pw),
             nn.LeakyReLU(0.2, True)
         )
-        self.gamma = nn.Conv2d(nhidden, in_channels, kernel_size=ks, stride=1, padding=pw)
-        self.beta = nn.Conv2d(nhidden, in_channels, kernel_size=ks, stride=1, padding=pw)
+        self.gamma = nn.Conv2d(nhidden, in_channels, kernel_size=ks, stride=2, padding=pw)
+        self.beta = nn.Conv2d(nhidden, in_channels, kernel_size=ks, stride=2, padding=pw)
 
     def forward(self, x, g):
         # g = F.adaptive_avg_pool2d(g, x.size()[2:]) # since the guidance is now not neccessarily of the same spatial dimensons as our ZI. For dino with 392 spatial dimensions it matches 28 x 28
@@ -43,22 +43,6 @@ class SFTResblk(nn.Module):
         out = x + dx
 
         return out
-
-# busi
-# 573: DSC: 0.7954, IOU: 0.7011, HD95: 21.56
-# 381:  DSC: 0.7857, IOU: 0.6923, HD95: 19.97
-# 215: DSC: 0.7830, IOU: 0.6874, HD95: 21.69
-# 573: DSC: 0.7954, IOU: 0.7011, HD95: 21.56
-# kvasir-instrument
-# 490: DSC: 0.9243, IOU: 0.8799, HD95: 11.50
-# 490: DSC: 0.9243, IOU: 0.8799, HD95: 11.50
-# 568: DSC: 0.9207, IOU: 0.8707, HD95: 11.65
-# 490: DSC: 0.9243, IOU: 0.8799, HD95: 11.50
-# busi no avg
-# 514: DSC: 0.8020, IOU: 0.7149, HD95: 20.65
-# 506: DSC: 0.7929, IOU: 0.7018, HD95: 20.14
-# 506: DSC: 0.7929, IOU: 0.7018, HD95: 20.14
-# 514: DSC: 0.8020, IOU: 0.7149, HD95: 20.65
 
 
 class SFTModule(nn.Module):
@@ -147,29 +131,6 @@ class ResAttBlock(nn.Module):
         return h
 
 
-# class ResAttBlock(nn.Module):
-#     def __init__(self, in_channels, out_channels, guidance_channels, dilation_rates=(1,2,3,4)):
-#         super().__init__()
-#         self.norm1 = Normalize(in_channels)
-#         self.act   = nn.PReLU()
-#         self.sft   = SFTModule(original_channels = in_channels, guidance_channels = guidance_channels)
-
-#         self.dilated_convs = nn.ModuleList([
-#             nn.Conv2d(in_channels, out_channels // len(dilation_rates), 3, 1, padding=d, dilation=d) # out_channels is / 4 so when concatenated gives output channels see page 3 of the paper and page 4 which states 3 x 3 kernels and dilation rates of 1, 2, 3, 4 with ReLU and each outputs the same output channels and then concatenation
-#             for d in dilation_rates
-#         ])
-#         self.fuse = nn.Conv2d(out_channels, out_channels, 1)
-
-#         self.skip = nn.Conv2d(in_channels, out_channels, 1) if in_channels != out_channels else nn.Identity()
-#         self.attn = SpatialSelfAttention(out_channels)
-
-#     def forward(self, x, g):
-#         h = self.act(self.sft(self.norm1(x), g))
-#         feats = [conv(h) for conv in self.dilated_convs]
-#         fused = self.fuse(torch.cat(feats, dim=1))
-#         out = fused + self.skip(x)
-#         return self.attn(out)
-
 class SFT_UNet_DS(nn.Module):
     def __init__(self, in_channels=4, out_channels=4, ch=32, ch_mult=(1,2,4,4), guidance_channels=64):
         super().__init__()
@@ -186,11 +147,26 @@ class SFT_UNet_DS(nn.Module):
         self.conv1_3 = ResAttBlock(ch * (ch_mult[0]+ch_mult[1]), ch * ch_mult[0], guidance_channels)
         self.conv0_4 = ResAttBlock(ch * (1 + ch_mult[0]),        ch,              guidance_channels)
 
-        self.convds3 = nn.Sequential(Normalize(ch * ch_mult[2]), nn.SiLU(), nn.Conv2d(ch * ch_mult[2], out_channels, 3, 1, 1))
-        self.convds2 = nn.Sequential(Normalize(ch * ch_mult[1]), nn.SiLU(), nn.Conv2d(ch * ch_mult[1], out_channels, 3, 1, 1))
-        self.convds1 = nn.Sequential(Normalize(ch * ch_mult[0]), nn.SiLU(), nn.Conv2d(ch * ch_mult[0], out_channels, 3, 1, 1))
-        self.convds0 = nn.Sequential(Normalize(ch),              nn.SiLU(), nn.Conv2d(ch, out_channels, 3, 1, 1))
+        self.convds3 = nn.Sequential(Normalize(ch * ch_mult[2]), nn.SiLU(), nn.Conv2d(ch * ch_mult[2], out_channels, 3, 1, 1, bias = True))
+        self.convds2 = nn.Sequential(Normalize(ch * ch_mult[1]), nn.SiLU(), nn.Conv2d(ch * ch_mult[1], out_channels, 3, 1, 1, bias = True))
+        self.convds1 = nn.Sequential(Normalize(ch * ch_mult[0]), nn.SiLU(), nn.Conv2d(ch * ch_mult[0], out_channels, 3, 1, 1, bias = True))
+        self.convds0 = nn.Sequential(Normalize(ch),              nn.SiLU(), nn.Conv2d(ch, out_channels, 3, 1, 1, bias = True))
 
+        # self._initialize_weights()
+        
+    def _initialize_weights(self) -> None:
+        for m in self.modules():
+            if isinstance(m, (nn.Conv2d, nn.ConvTranspose2d)):
+                nn.init.kaiming_normal_(m.weight, mode="fan_out", nonlinearity="leaky_relu")
+                if m.bias is not None:
+                    nn.init.constant_(m.bias, 0)
+            elif isinstance(m, nn.BatchNorm2d):
+                nn.init.constant_(m.weight, 1)
+                nn.init.constant_(m.bias, 0)
+            elif isinstance(m, nn.Linear):
+                nn.init.normal_(m.weight, 0, 0.01)
+                nn.init.constant_(m.bias, 0)
+    
     def forward(self, x, guidance, guidance_type='wavelet'):
 
         x0 = self.input_proj(x)

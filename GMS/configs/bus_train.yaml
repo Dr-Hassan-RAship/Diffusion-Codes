@@ -1,0 +1,31 @@
+# Data Settings
+phase: train
+
+guidance_method: 'wavelet' #'wavelet'
+dilation_rates: (1, 2, 3, 4)
+# fh
+vae_model: tiny_vae # or tiny_vae
+pickle_file_path: ./Dataset/bus/bus_train_test_names.pkl
+snapshot_path: ./ckpt/tinyvae_baseline_bus_sft_wavelet_no_approx_no_init
+
+# Training Settings
+epochs: 1000
+GPUs: [0]
+num_workers: 8
+batch_size: 12 # possible due to TinyVae
+save_freq: 100
+seed: 2333
+
+# Model Settings
+in_channel: 4
+out_channels: 4
+num_res_blocks: 2
+ch: 32
+ch_mult: [1, 2, 4, 4]
+
+# Optimizer Settings
+lr: 0.002
+
+# Loss Settings
+w_rec: 1
+w_dice: 1

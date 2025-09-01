@@ -60,7 +60,7 @@ def vae_decode(vae_model, pred_mean, scale_factor):
 
 def arg_parse() -> argparse.ArgumentParser.parse_args :
     parser = argparse.ArgumentParser()
-    parser.add_argument('--config', default='./configs/kvasir-instrument_valid.yaml', # [CHANGED] --> added kvasir-seg yaml
+    parser.add_argument('--config', default='./configs/bus_valid.yaml', # [CHANGED] --> added kvasir-seg yaml
                         type=str, help='load the config file')
     args = parser.parse_args()
     return args
@@ -149,13 +149,6 @@ def run_validator() -> None:
                                                                 skff_model = skff_module, skff_model_load = True)
     else:
         mapping_model, _, _ = load_checkpoint(mapping_model, configs['model_weight'])
-
-    if configs['patchify']:
-        if configs['learn_patch']:
-            patch_model = LearnablePatchify(patch_size = 28).to(dtype = torch.float32, device = device)
-            patch_model.eval()
-        sft_model   = SFTModule(original_channels = configs['in_channel'], guidance_channels = 64).to(dtype = torch.float32, device = device)
-        sft_model.eval()
 
     mapping_model.eval()
     vae_model.eval()

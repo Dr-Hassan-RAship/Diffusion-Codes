@@ -1,18 +1,15 @@
 # Data Settings
 phase: valid
 
-patchify: False
-learn_patch: False
-
-guidance_method: False
+guidance_method: 'wavelet'
 dilation_rates: (1, 2, 3, 4)
 # fj
-vae_model: litevae-s # or tiny_vae
+vae_model: tiny_vae # or tiny_vae
 pickle_file_path: ./Dataset/kvasir-instrument/kvasir-instrument_train_test_names.pkl
 
-model_weight: ./ckpt/litevae_f2_only_baseline_kvasir-instrument_correct_transforms/epochs_1000/checkpoints/best_valid_dice_883.pth
-snapshot_path: ./ckpt/litevae_f2_only_baseline_kvasir-instrument_correct_transforms/epochs_1000/valid_busi_best_valid_dice
-save_seg_img_path: ./ckpt/litevae_f2_only_baseline_kvasir-instrument_correct_transforms/epochs_1000/predicted_masks_best_valid_dice
+model_weight: ./ckpt/tiny_vae_baseline_kvasir-instrument_sft_wavelet_28_x_28_original_settings/epochs_1000/checkpoints/best_valid_dice_620.pth
+snapshot_path: ./ckpt/tiny_vae_baseline_kvasir-instrument_sft_wavelet_28_x_28_original_settings/epochs_1000/valid_best_valid_dice
+save_seg_img_path: ./ckpt/tiny_vae_baseline_kvasir-instrument_sft_wavelet_28_x_28_original_settings/epochs_1000/predicted_masks_best_valid_dice
 
 # Valid Settings
 GPUs: [0]

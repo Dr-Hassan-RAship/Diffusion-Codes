@@ -1,12 +1,14 @@
 # Data Settings
 phase: train
 
-guidance_method: False
+guidance_method: False #'wavelet'
 dilation_rates: (1, 2, 3, 4)
-# jg
-pickle_file_path: ./Dataset/kvasir-instrument/kvasir-instrument_train_test_names.pkl
-vae_model: litevae-s # or tiny_vae
-snapshot_path: ./ckpt/litevae_baseline_kvasir-instruments_align_loss
+# fh
+vae_model: litevae-s # or tiny_va
+align_loss: True
+pickle_file_path: ./Dataset/bus/bus_train_test_names.pkl
+snapshot_path: ./ckpt/litevae_baseline_bus_align_loss
+
 # Training Settings
 epochs: 1000
 GPUs: [0]

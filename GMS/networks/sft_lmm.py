@@ -44,23 +44,6 @@ class SFTResblk(nn.Module):
 
         return out
 
-# busi
-# 573: DSC: 0.7954, IOU: 0.7011, HD95: 21.56
-# 381:  DSC: 0.7857, IOU: 0.6923, HD95: 19.97
-# 215: DSC: 0.7830, IOU: 0.6874, HD95: 21.69
-# 573: DSC: 0.7954, IOU: 0.7011, HD95: 21.56
-# kvasir-instrument
-# 490: DSC: 0.9243, IOU: 0.8799, HD95: 11.50
-# 490: DSC: 0.9243, IOU: 0.8799, HD95: 11.50
-# 568: DSC: 0.9207, IOU: 0.8707, HD95: 11.65
-# 490: DSC: 0.9243, IOU: 0.8799, HD95: 11.50
-# busi no avg
-# 514: DSC: 0.8020, IOU: 0.7149, HD95: 20.65
-# 506: DSC: 0.7929, IOU: 0.7018, HD95: 20.14
-# 506: DSC: 0.7929, IOU: 0.7018, HD95: 20.14
-# 514: DSC: 0.8020, IOU: 0.7149, HD95: 20.65
-
-
 class SFTModule(nn.Module):
     def __init__(self, original_channels, guidance_channels, dtype = torch.float32, device = 'cuda' if torch.cuda.is_available() else 'cpu'):
         super().__init__()
@@ -131,65 +114,80 @@ class ResBlock(nn.Module):
 
 class ResAttBlock(nn.Module):
     """
-    Convolutional blocks
+    Residual + optional SFT + spatial self-attention.
+    If order == 0:  x -> ResBlock -> SFT -> Attn
+    If order == 1:  x -> SFT -> ResBlock -> Attn
+    If identity is True, SFT becomes Identity (no guidance used).
     """
-    def __init__(self, in_channels, out_channels, guidance_channels):
+    def __init__(self, in_channels, out_channels, guidance_channels, identity=False, order=0):
         super().__init__()
+        assert order in (0, 1), "order must be 0 or 1"
 
-        self.resblock  = ResBlock(in_channels = in_channels, out_channels = out_channels)
-        self.sft       = SFT(in_channels = out_channels, guidance_channels = guidance_channels)
+        self.identity = identity
+        self.order = order
+
+        self.resblock = ResBlock(in_channels=in_channels, out_channels=out_channels)
+
+        if identity:
+            self.sft = nn.Identity()
+            # Note: Identity() accepts only (x), so we'll branch in forward.
+        else:
+            if order == 0:
+                # after resblock -> channels are out_channels
+                self.sft = SFT(in_channels=out_channels, guidance_channels=guidance_channels)
+            else:  # order == 1
+                # before resblock -> channels are in_channels
+                self.sft = SFT(in_channels=in_channels, guidance_channels=guidance_channels)
+
         self.attention = SpatialSelfAttention(out_channels)
 
     def forward(self, x, guidance):
-        h = self.resblock(x)
-        h = self.sft(h, guidance)
-        h = self.attention(h)
-        return h
-
-
-# class ResAttBlock(nn.Module):
-#     def __init__(self, in_channels, out_channels, guidance_channels, dilation_rates=(1,2,3,4)):
-#         super().__init__()
-#         self.norm1 = Normalize(in_channels)
-#         self.act   = nn.PReLU()
-#         self.sft   = SFTModule(original_channels = in_channels, guidance_channels = guidance_channels)
-
-#         self.dilated_convs = nn.ModuleList([
-#             nn.Conv2d(in_channels, out_channels // len(dilation_rates), 3, 1, padding=d, dilation=d) # out_channels is / 4 so when concatenated gives output channels see page 3 of the paper and page 4 which states 3 x 3 kernels and dilation rates of 1, 2, 3, 4 with ReLU and each outputs the same output channels and then concatenation
-#             for d in dilation_rates
-#         ])
-#         self.fuse = nn.Conv2d(out_channels, out_channels, 1)
-
-#         self.skip = nn.Conv2d(in_channels, out_channels, 1) if in_channels != out_channels else nn.Identity()
-#         self.attn = SpatialSelfAttention(out_channels)
-
-#     def forward(self, x, g):
-#         h = self.act(self.sft(self.norm1(x), g))
-#         feats = [conv(h) for conv in self.dilated_convs]
-#         fused = self.fuse(torch.cat(feats, dim=1))
-#         out = fused + self.skip(x)
-#         return self.attn(out)
+        if self.order == 0:
+            h = self.resblock(x)
+            h = h if self.identity else self.sft(h, guidance)
+            h = self.attention(h)
+            return h
+        else:  # order == 1
+            h = x if self.identity else self.sft(x, guidance)
+            h = self.resblock(h)
+            h = self.attention(h)
+            return h
 
 class SFT_UNet_DS(nn.Module):
-    def __init__(self, in_channels=4, out_channels=4, ch=32, ch_mult=(1,2,4,4), guidance_channels=64):
+    def __init__(self, in_channels=4, out_channels=4, ch=32, ch_mult=(1, 2, 4, 4), guidance_channels=64):
         super().__init__()
         self.ch = ch
-        self.input_proj = nn.Conv2d(in_channels, ch, kernel_size = 3 , stride = 1, padding = 1, bias = True)
+        self.input_proj = nn.Conv2d(in_channels, ch, kernel_size=3, stride=1, padding=1, bias=True)
 
-        self.conv1_0 = ResAttBlock(ch,              ch * ch_mult[0], guidance_channels)
-        self.conv2_0 = ResAttBlock(ch * ch_mult[0], ch * ch_mult[1], guidance_channels)
-        self.conv3_0 = ResAttBlock(ch * ch_mult[1], ch * ch_mult[2], guidance_channels)
-        self.conv4_0 = ResAttBlock(ch * ch_mult[2], ch * ch_mult[3], guidance_channels)
+        self.conv1_0 = ResAttBlock(ch, ch * ch_mult[0], guidance_channels, identity = False, order = 0)
+        self.conv2_0 = ResAttBlock(ch * ch_mult[0], ch * ch_mult[1], guidance_channels, identity = False, order = 0)
+        self.conv3_0 = ResAttBlock(ch * ch_mult[1], ch * ch_mult[2], guidance_channels, identity = False, order = 0)
+        self.conv4_0 = ResAttBlock(ch * ch_mult[2], ch * ch_mult[3], guidance_channels, identity = False, order = 0)
 
-        self.conv3_1 = ResAttBlock(ch * (ch_mult[2]+ch_mult[3]), ch * ch_mult[2], guidance_channels)
-        self.conv2_2 = ResAttBlock(ch * (ch_mult[1]+ch_mult[2]), ch * ch_mult[1], guidance_channels)
-        self.conv1_3 = ResAttBlock(ch * (ch_mult[0]+ch_mult[1]), ch * ch_mult[0], guidance_channels)
-        self.conv0_4 = ResAttBlock(ch * (1 + ch_mult[0]),        ch,              guidance_channels)
+        self.conv3_1 = ResAttBlock(ch * (ch_mult[2]+ch_mult[3]), ch * ch_mult[2], guidance_channels, identity = False, order = 0)
+        self.conv2_2 = ResAttBlock(ch * (ch_mult[1]+ch_mult[2]), ch * ch_mult[1], guidance_channels, identity = False, order = 0)
+        self.conv1_3 = ResAttBlock(ch * (ch_mult[0]+ch_mult[1]), ch * ch_mult[0], guidance_channels, identity = False, order = 0)
+        self.conv0_4 = ResAttBlock(ch * (1 + ch_mult[0]), ch, guidance_channels, identity = False, order = 0)
 
-        self.convds3 = nn.Sequential(Normalize(ch * ch_mult[2]), nn.SiLU(), nn.Conv2d(ch * ch_mult[2], out_channels, 3, 1, 1))
-        self.convds2 = nn.Sequential(Normalize(ch * ch_mult[1]), nn.SiLU(), nn.Conv2d(ch * ch_mult[1], out_channels, 3, 1, 1))
-        self.convds1 = nn.Sequential(Normalize(ch * ch_mult[0]), nn.SiLU(), nn.Conv2d(ch * ch_mult[0], out_channels, 3, 1, 1))
-        self.convds0 = nn.Sequential(Normalize(ch),              nn.SiLU(), nn.Conv2d(ch, out_channels, 3, 1, 1))
+        self.convds3 = nn.Sequential(Normalize(ch * ch_mult[2]), nn.SiLU(), nn.Conv2d(ch * ch_mult[2], out_channels, 3, 1, 1, bias=True))
+        self.convds2 = nn.Sequential(Normalize(ch * ch_mult[1]), nn.SiLU(), nn.Conv2d(ch * ch_mult[1], out_channels, 3, 1, 1, bias=True))
+        self.convds1 = nn.Sequential(Normalize(ch * ch_mult[0]), nn.SiLU(), nn.Conv2d(ch * ch_mult[0], out_channels, 3, 1, 1, bias=True))
+        self.convds0 = nn.Sequential(Normalize(ch), nn.SiLU(), nn.Conv2d(ch, out_channels, 3, 1, 1, bias=True))
+
+        # self._initialize_weights()
+
+    def _initialize_weights(self) -> None:
+        for m in self.modules():
+            if isinstance(m, (nn.Conv2d, nn.ConvTranspose2d)):
+                nn.init.kaiming_normal_(m.weight, mode="fan_out", nonlinearity="leaky_relu")
+                if m.bias is not None:
+                    nn.init.constant_(m.bias, 0)
+            elif isinstance(m, nn.BatchNorm2d):
+                nn.init.constant_(m.weight, 1)
+                nn.init.constant_(m.bias, 0)
+            elif isinstance(m, nn.Linear):
+                nn.init.normal_(m.weight, 0, 0.01)
+                nn.init.constant_(m.bias, 0)
 
     def forward(self, x, guidance, guidance_type='wavelet'):
 
@@ -217,25 +215,25 @@ class SFT_UNet_DS(nn.Module):
         }
 
 
-# # Step 1: Inputs
+# Step 1: Inputs
 # B = 2  # batch size
 # ZI = torch.randn(B, 4, 28, 28)        # Latent from LiteVAE
-# guidance = torch.randn(B, 384, 16, 16) # Guidance input (e.g., edge maps, wavelet bands, Dino features)
+# guidance = torch.randn(B, 3, 112, 112) # Guidance input (e.g., edge maps, wavelet bands, Dino features)
 # # Step 2: Initialize the model
 # model = SFT_UNet_DS(
 #     in_channels   = 4,          # Matches ZI channels
 #     out_channels = 4,        # Output latent for predicted mask
 #     ch           = 32,                 # Base channel width
 #     ch_mult      = (1, 2, 4, 4),  # Channel growth pattern
-#     guidance_channels = 384   # Matches guidance input
+#     guidance_channels = 3   # Matches guidance input
 # )
-
+#
 # # Step 3: Forward pass
 # out_dict = model(ZI, guidance)
-
+#
 # # Step 4: Output breakdown
 # for level, tensor in out_dict.items():
 #     print(f"{level}: {tensor.shape}")
-
+#
 # from torchinfo import summary
-# print(summary(model, input_size=[(B, 4, 28, 28), (B, 384, 112, 112)]))
+# print(summary(model, input_size=[(B, 4, 28, 28), (B, 3, 112, 112)]))

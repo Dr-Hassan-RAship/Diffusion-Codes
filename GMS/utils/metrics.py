@@ -28,13 +28,13 @@ Papers implementation of dice and iou. both give same results
 
     preds = np.array(y_pred).reshape(-1)
     gts   = np.array(y_true).reshape(-1)
-    
+
     y_pre = np.where(preds > 0.5, 1, 0)
     y_gt  = np.where(gts > 0.5, 1, 0)
-    
+
     confusion = confusion_matrix(y_gt, y_pre)
     TN, FP, FN, TP = confusion.ravel()
-    
+
     f1_or_dsc = float(2 * TP) / float(2 * TP + FP + FN) if float(2 * TP + FP + FN) != 0 else 0
     miou      = float(TP) / float(TP + FP + FN) if float(TP + FP + FN) != 0 else 0
     return f1_or_dsc, miou
@@ -56,7 +56,7 @@ def dice_score(y_pred, y_true, eps = 1e-7):
     denominator  = np.sum(y_pred) + np.sum(y_true)
 
     return 2. * intersection / (denominator + eps)
-    
+
 # --------------------------- IoU Score ----------------------------------------#
 def iou_score(y_pred, y_true, eps = 1e-7):
     """
@@ -130,7 +130,7 @@ def ssim_region(pred, gt, eps=1e-7):
         return 0.0
     if pred.max() > 1.0 or pred.min() < 0.0:
         raise ValueError("pred should be in the range [0, 1]")
-    
+
     # Convert gt to binary (threshold at 0.5 if not binary)
     gt = (gt > 0.5).astype(bool)
 
@@ -202,7 +202,7 @@ def ssim_region(pred, gt, eps=1e-7):
     # Divide GT and prediction into 4 regions
     GT_1, GT_2, GT_3, GT_4, w1, w2, w3, w4 = divideGT(gt, X, Y)
     pred_1, pred_2, pred_3, pred_4         = divide_prediction(pred, X, Y)
-    
+
     # Compute SSIM for each region
     Q1 = ssim_calculate(pred_1, GT_1)
     Q2 = ssim_calculate(pred_2, GT_2)
@@ -225,14 +225,14 @@ def ssim_object(pred, gt, eps=1e-7):
     # Input validation
     pred = np.asarray(pred, dtype = np.float64)
     gt   = np.asarray(gt, dtype = np.float64)
-    
+
     if pred.shape != gt.shape:
         raise ValueError(f"Shapes must match: {pred.shape}, {gt.shape}")
     if pred.size == 0:
         return 0.0
     if pred.max() > 1.0 or pred.min() < 0.0:
         raise ValueError("pred should be in the range [0, 1]")
-    
+
     # Convert gt to binary (threshold at 0.5 if not binary)
     gt = (gt > 0.5).astype(bool)
 
@@ -240,11 +240,11 @@ def ssim_object(pred, gt, eps=1e-7):
         """Helper function to compute object similarity for a region."""
         if not np.any(mask):
             return 0.0
-        
+
         # Compute mean and std of prediction in the masked region
         x       = np.mean(prediction[mask])
         sigma_x = np.std(prediction[mask])
-        
+
         # Compute object similarity: 2 * mean / (mean^2 + 1 + std + eps)
         score = (2.0 * x) / (x**2 + 1.0 + sigma_x + eps)
         return score
@@ -283,7 +283,7 @@ def ssim_combined(pred, gt, alpha=0.5, eps=1e-7):
         return 0.0
     if pred.max() > 1.0 or pred.min() < 0.0:
         raise ValueError("pred should be in the range [0, 1]")
-    
+
     # Convert gt to binary (threshold at 0.5 if not binary)
     gt = (gt > 0.5).astype(bool)
 

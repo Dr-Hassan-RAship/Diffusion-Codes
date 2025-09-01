@@ -79,7 +79,7 @@ class ResBlock(nn.Module):
             self.act1,
             nn.Conv2d(in_channels, out_channels, kernel_size=3, stride=1, padding=1, bias=True),
         )
-        
+
         self.conv2 = nn.Sequential(
             Normalize(out_channels),
             self.act2,
@@ -140,7 +140,7 @@ class ResAttnUNet_DS(nn.Module):
                                      nn.Conv2d(ch * ch_mult[0], out_channels, kernel_size=3, stride=1, padding=1, bias=False))
         self.convds0 = nn.Sequential(Normalize(ch * 1), nn.SiLU(),
                                      nn.Conv2d(ch * 1, out_channels, kernel_size=3, stride=1, padding=1, bias=False))
-        
+
         # self.lip_block = LIPBlock(in_channels = in_channel, p = 2)
         self._initialize_weights()
         self._print_networks(verbose=False)
@@ -163,7 +163,7 @@ class ResAttnUNet_DS(nn.Module):
         out['level2']   = self.convds2(x2_2)
         out['level1']   = self.convds1(x1_3)
         out['out']      = self.convds0(x0_4)
-        
+
         # print(f"out['level3'].shape: {out['level3'].shape}, out['level2'].shape: {out['level2'].shape}, out['level1'].shape: {out['level1'].shape}, out['out'].shape: {out['out'].shape}")
         return out
 
@@ -191,20 +191,18 @@ class ResAttnUNet_DS(nn.Module):
         logging.info('-----------------------------------------------')
 
 if __name__ == '__main__':
-    # Get UNet shape 
+    # Get UNet shape
     model = ResAttnUNet_DS(
-        in_channel=4, 
-        out_channels=4, 
-        num_res_blocks=2, 
-        ch=32, 
+        in_channel=4,
+        out_channels=4,
+        num_res_blocks=2,
+        ch=32,
         ch_mult=(1,2,4,4)
     )
-    
+
     out_dict = model(torch.ones(2, 4, 64, 64))
     for key in out_dict.keys():
         print('{}, shape: {}'.format(
             key,
             out_dict[key].shape
         ))
-
-   

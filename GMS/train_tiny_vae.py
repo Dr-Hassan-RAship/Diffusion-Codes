@@ -65,7 +65,7 @@ def arg_parse() -> argparse.ArgumentParser.parse_args:
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--config",
-        default="./configs/kvasir-instrument_train.yaml",
+        default="./configs/busi_train.yaml",
         type=str,
         help="load the config file",
     )
@@ -159,20 +159,6 @@ def run_trainer() -> None:
         vae_model = get_lite_vae(train = vae_train, model_version = configs['vae_model'])
 
     scale_factor = 1.0 # default
-    # f
-    if configs['patchify']:
-        if configs['learn_patch']:
-            patch_model = LearnablePatchify(patch_size = 28).to(dtype = torch.float32, device = device)
-            patch_model.train()
-            param_groups += list(patch_model.parameters())
-            logging.info("Training patch_model")
-            logging.info(f'Patch Model trainable params: {count_params(patch_model)}')
-
-        sft_model   = SFTModule(original_channels = configs['in_channel'], guidance_channels = 64).to(dtype = torch.float32, device = device)
-        sft_model.train()
-        param_groups += list(sft_model.parameters())
-        logging.info("Training sft_model")
-        logging.info(f'SFT Model trainable params: {count_params(sft_model)}')
 
     # Define optimizers
 
@@ -195,7 +181,15 @@ def run_trainer() -> None:
 
     # Define loss functions
     mse_loss = torch.nn.MSELoss(reduction="mean")
-    dice_loss = DiceLoss() # for the final predicted mask
+    dice_loss = DiceLoss()
+
+    if configs['align_loss']:
+        cosine_crit   = nn.CosineEmbeddingLoss(margin=0.0, reduction='mean')
+        smoothl1_crit = nn.SmoothL1Loss(reduction='mean')
+
+        align_lambda1 = float(0.9)
+        align_lambda2 = float(0.1)
+        w_teacher     = 1.0
 
     # For Tensorboard Visualization
     iter_num = 0
@@ -215,6 +209,9 @@ def run_trainer() -> None:
         T_loss = []
         T_loss_Rec = []
         T_loss_Dice = []
+
+        T_loss_Align = []
+
         T_loss_valid = []
         T_loss_Rec_valid = []
         T_loss_Dice_valid = []
@@ -227,7 +224,9 @@ def run_trainer() -> None:
             img_rgb = batch_data['img'].to(device)
             img_rgb = img_rgb / 255.0 # [CHANGED] V.V.V Imp!  --> SCALE CORRECTION
 
-            img_rgb = 2. * img_rgb - 1.
+            if configs['vae_model'] == 'tiny_vae':
+                img_rgb = 2. * img_rgb - 1.
+            # img_rgb = 2. * img_rgb - 1.
 
             seg_raw = batch_data['seg'].to(device)
             seg_raw = seg_raw.permute(0, 3, 1, 2) / 255.0
@@ -247,13 +246,6 @@ def run_trainer() -> None:
                     vae_model(img_rgb),
                     tiny_vae.encode(seg_rgb).latents,
                 )
-
-            if configs['patchify']:
-                if configs['learn_patch']:
-                    patched_img         = patch_model(img_rgb)
-                else:
-                    patched_img         = extract_patches_mean(img_rgb)
-                img_latent_mean_aug = sft_model(x = img_latent_mean_aug, ref = patched_img)
 
             # get guidance image for the LMM
             if configs['guidance_method'] and configs['guidance_method'] != 'dino':
@@ -292,9 +284,26 @@ def run_trainer() -> None:
                 is_ds=True,
                 key_list=ds_list,
             )
+            loss_Align = torch.tensor(0.0).to(device)
+            if configs['align_loss'] and configs['vae_model'] != 'tiny_vae':
+                with torch.no_grad():
+                    img_for_align = 2. * img_rgb - 1.0
+                    z_teacher     = tiny_vae.encode(img_for_align).latents
 
-            loss = loss_Rec + loss_Dice
+                z_student = img_latent_mean_aug
 
+                # CosineEmbeddingLoss expects (N,D) + targets in {+1,-1}
+                B, C, H, W = z_student.shape
+                z_s_flat = z_student.permute(0, 2, 3, 1).reshape(B*H*W, C)
+                z_t_flat = z_teacher.permute(0, 2, 3, 1).reshape(B*H*W, C)
+                target   = torch.ones(B*H*W, device=device)                  # +1 for “similar”
+
+                loss_cos    = cosine_crit(z_s_flat, z_t_flat, target)       # mean over all positions
+                loss_smooth = smoothl1_crit(z_student, z_teacher)          # elementwise SmoothL1, mean
+
+                loss_Align = w_teacher * (align_lambda1 * loss_cos + align_lambda2 * loss_smooth)
+
+            loss = loss_Rec + loss_Dice + loss_Align
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
@@ -304,10 +313,14 @@ def run_trainer() -> None:
                 writer.add_scalar("loss/loss", loss, iter_num)
                 writer.add_scalar("loss/loss_Rec", loss_Rec, iter_num)
                 writer.add_scalar("loss/loss_Dice", loss_Dice, iter_num)
+                if configs['align_loss'] and configs['vae_model'] != 'tiny_vae':
+                    writer.add_scalar("loss/loss_Align", loss_Align, iter_num)
 
             T_loss.append(loss.item())
             T_loss_Rec.append(loss_Rec.item())
             T_loss_Dice.append(loss_Dice.item())
+            if configs['align_loss'] and configs['vae_model'] != 'tiny_vae':
+                T_loss_Align.append(loss_Align.item())
 
         scheduler.step()
         writer.add_scalar("lr", scheduler.get_last_lr()[0], epoch)
@@ -315,11 +328,12 @@ def run_trainer() -> None:
         T_loss = np.mean(T_loss)
         T_loss_Rec = np.mean(T_loss_Rec)
         T_loss_Dice = np.mean(T_loss_Dice)
+        T_loss_Align = np.mean(T_loss_Align)
 
         logging.info("Train:")
         logging.info(
-            "loss: {:.4f}, loss_Rec: {:.4f}, loss_Dice: {:.4f}".format(
-                T_loss, T_loss_Rec, T_loss_Dice
+            "loss: {:.4f}, loss_Rec: {:.4f}, loss_Dice: {:.4f}, loss_Align: {:.4f}".format(
+                T_loss, T_loss_Rec, T_loss_Dice, T_loss_Align
             )
         )
 
@@ -327,6 +341,8 @@ def run_trainer() -> None:
         writer.add_scalar("train/loss", T_loss, epoch)
         writer.add_scalar("train/loss_Rec", T_loss_Rec, epoch)
         writer.add_scalar("train/loss_Dice", T_loss_Dice, epoch)
+        if configs['align_loss'] and configs['vae_model'] != 'tiny_vae':
+            writer.add_scalar("train/loss_Align", T_loss_Align, epoch)
 
         ### Validation phase [CHANGED] --> almost same as Train except the dice score is being calculated here as well
         ### Also note that the validation set is the same as the test set in the inference/valid.py file.
@@ -334,13 +350,16 @@ def run_trainer() -> None:
             img_rgb = batch_data["img"].to(device)
             # print(img_rgb.max(), img_rgb.min(), img_rgb.shape) # [CHANGED] --> Debugging
             img_rgb = img_rgb / 255.0
-            img_rgb = 2.0 * img_rgb - 1.0
+
+            if configs['vae_model'] == 'tiny_vae':
+                img_rgb = 2. * img_rgb - 1.
 
             # print(img_rgb.max(), img_rgb.min(), img_rgb.shape)
 
             seg_raw = batch_data["seg"].to(device)
             seg_raw = seg_raw.permute(0, 3, 1, 2) / 255.0
             seg_rgb = 2. * seg_raw -1.
+
             seg_img = torch.mean(seg_raw, dim = 1, keepdim = True)
             name = batch_data['name']
 
@@ -348,11 +367,6 @@ def run_trainer() -> None:
             vae_model.eval()
             tiny_vae.eval() if configs['vae_model'] != 'tiny_vae' else None
             if skff_module is not None: skff_module.eval()
-
-            if configs['patchify']:
-                if configs['learn_patch']:
-                    patch_model.eval()
-                sft_model.eval()
 
             with torch.no_grad():
                 if configs['vae_model'] == 'tiny_vae':
@@ -365,13 +379,6 @@ def run_trainer() -> None:
                         vae_model(img_rgb),
                         tiny_vae.encode(seg_rgb).latents,
                     )
-
-                if configs['patchify']:
-                    if configs['learn_patch']:
-                        patched_img         = patch_model(img_rgb)
-                    else:
-                        patched_img         = extract_patches_mean(img_rgb)
-                    img_latent_mean = sft_model(x = img_latent_mean, ref = patched_img)
 
                 if configs['guidance_method'] and configs['guidance_method'] != 'dino':
                     with torch.no_grad():

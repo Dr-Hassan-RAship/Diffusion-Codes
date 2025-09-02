@@ -41,9 +41,9 @@ def get_wavelet_subbands(images, lv = 3):
     sub_bands  = wavelet_fn.dwt(images, level = lv) / (2 ** lv) # (B, 12, H / 2, W / 2)
 
     # Remove the approximation coefficient
-    sub_bands_filter = sub_bands[:, 3:, :, :]
+    sub_bands = sub_bands[:, 3:, :, :]
 
-    return sub_bands_filter
+    return sub_bands
 
 def load_dino_silent():
     # Suppress logging from dinov2
@@ -114,7 +114,7 @@ def prepare_guidance(image: torch.Tensor, mode='edge') -> torch.Tensor:
 class SKFF(nn.Module):
     def __init__(self, channels=3, reduction=8):
         super(SKFF, self).__init__()
-        reduced_channels = max(1, channels // reduction)
+        reduced_channels = max(1, channels // reduction) # f
 
         self.global_pool = nn.AdaptiveAvgPool2d(1)
 

@@ -52,7 +52,7 @@ def get_vae_encoding_mu_and_sigma(encoder_posterior, scale_factor):
     return scale_factor * mean, logvar
 
 def vae_decode(vae_model, pred_mean, scale_factor):
-    z = 1.0 / scale_factor * pred_mean
+    z = 1.0 / scale_factor * pred_mean #f
     pred_seg = vae_model.decode(z).sample # [CHANGED] --> has channels = 3 according to config
     pred_seg = torch.mean(pred_seg, dim=1, keepdim=True) # [CHANGED] --> Taking mean across channels dimension resulting in 1 channel
     pred_seg = torch.clamp((pred_seg + 1.0) / 2.0, min=0.0, max=1.0)  # (B, 1, H, W) # [CHANGED] --> Bringing the range to (0, 1) as per Kvasir-SEG dataset
@@ -123,7 +123,7 @@ def run_validator() -> None:
 
     mapping_model.eval()
 
-    vae_train = True
+    vae_train = False
     vae_model = None
 
     if configs['vae_model'] == 'tiny_vae':

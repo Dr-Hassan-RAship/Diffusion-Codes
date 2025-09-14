@@ -1,0 +1,28 @@
+# Data Settings
+phase: valid
+
+guidance_method: False
+dilation_rates: (1, 2, 3, 4)
+# dj
+vae_model: litevae-s # or tiny_vae
+pickle_file_path: ./Dataset/ham10000/ham10000_train_test_names.pkl
+
+model_weight: ./ckpt/litevae_baseline_ham10000_align_loss_epoch_1000/epochs_1000/checkpoints/best_valid_dice_205.pth # ./ckpt/litevae_baseline_bus_align_loss_batch_size_8/epochs_1000/checkpoints/best_valid_dice_780.pth
+snapshot_path: ./ckpt/litevae_baseline_ham10000_align_loss_epoch_1000/epochs_1000/valid_busi_best_valid_dice
+save_seg_img_path: ./ckpt/litevae_baseline_ham10000_align_loss_epoch_1000/epochs_1000/predicted_masks_best_valid_dice
+
+# Valid Settings
+GPUs: [0]
+num_workers: 4
+batch_size: 1
+seed: 2333
+
+# Model Settings
+in_channel: 4
+out_channels: 4
+num_res_blocks: 2
+ch: 32
+ch_mult: [1, 2, 4, 4]
+
+# loss Settings
+w_rec: 1

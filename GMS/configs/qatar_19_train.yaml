@@ -1,15 +1,21 @@
 # Data Settings
 phase: train
+
+guidance_method: False #'wavelet'
+dilation_rates: (1, 2, 3, 4)
+# fh
+vae_model: litevae-s # or tiny_va
+tiny_mode: 'tiny'
 pickle_file_path: ./Dataset/QaTar-19/QaTar_19_train_val_test_names.pkl
-snapshot_path: ./ckpt/QaTar-19
+snapshot_path: ./ckpt/litevae_baseline_qatar_align_loss_new_settings
 
 # Training Settings
-epochs: 2000
+epochs: 500
 GPUs: [0]
 num_workers: 8
-batch_size: 24
-save_freq: 25
-seed: 2333
+batch_size: 12 # possible due to TinyVae
+save_freq: 100
+seed: 666
 
 # Model Settings
 in_channel: 4
@@ -19,8 +25,9 @@ ch: 32
 ch_mult: [1, 2, 4, 4]
 
 # Optimizer Settings
-lr: 0.002
+lr: 0.0002
 
 # Loss Settings
 w_rec: 1
 w_dice: 1
+align_loss: True

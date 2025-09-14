@@ -60,12 +60,12 @@ def vae_decode(vae_model, pred_mean, scale_factor):
     )  # (B, 1, H, W) # [CHANGED] --> Bringing the range to (0, 1) as per Kvasir-SEG dataset
     return pred_seg
 
-# [CHANGED] --> added the path to the Kvasir-SEG config file
+# [CHANGED] --> added the path to the Kvasir-SEG config file f
 def arg_parse() -> argparse.ArgumentParser.parse_args:
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--config",
-        default="./configs/busi_train.yaml",
+        default="./configs/ham10000_train.yaml",
         type=str,
         help="load the config file",
     )
@@ -107,8 +107,8 @@ def run_trainer() -> None:
     ds_list = ["level2", "level1", "out"]
 
     # Get data loader
-    train_dataset = Image_Dataset(configs["pickle_file_path"], stage="train", excel = False)
-    valid_dataset = Image_Dataset(configs["pickle_file_path"], stage="test", excel = False)
+    train_dataset = Image_Dataset(configs["pickle_file_path"], stage="train", ham = True, excel = False, img_ext = '.jpg', mask_ext = '.png')
+    valid_dataset = Image_Dataset(configs["pickle_file_path"], stage="test", ham = True, excel = False, img_ext = '.jpg', mask_ext = '.png')
     train_dataloader = DataLoader(
         train_dataset,
         batch_size=configs["batch_size"],
@@ -152,10 +152,10 @@ def run_trainer() -> None:
     vae_train = True
     if configs['vae_model'] == 'tiny_vae':
         logging.info("Initializing TinyVAE")
-        vae_model = get_tiny_autoencoder(train = False, residual_autoencoding = False)
+        vae_model = get_tiny_autoencoder(train = False, mode = configs['tiny_mode'], residual_autoencoding = False)
     else:
         logging.info("Initializing LiteVAE")
-        tiny_vae  = get_tiny_autoencoder(train = False, residual_autoencoding = False) # for the segmentation latent and decoding at the end.
+        tiny_vae  = get_tiny_autoencoder(train = False, mode = configs['tiny_mode'], residual_autoencoding = False) # for the segmentation latent and decoding at the end.
         vae_model = get_lite_vae(train = vae_train, model_version = configs['vae_model'])
 
     scale_factor = 1.0 # default
@@ -323,12 +323,12 @@ def run_trainer() -> None:
                 T_loss_Align.append(loss_Align.item())
 
         scheduler.step()
-        writer.add_scalar("lr", scheduler.get_last_lr()[0], epoch)
+        writer.add_scalar("lr", scheduler.get_last_lr()[0], epoch) # scheduler.get_last_lr()[0]
 
         T_loss = np.mean(T_loss)
         T_loss_Rec = np.mean(T_loss_Rec)
         T_loss_Dice = np.mean(T_loss_Dice)
-        T_loss_Align = np.mean(T_loss_Align)
+        T_loss_Align = np.mean(T_loss_Align) if configs['align_loss'] else 0.0
 
         logging.info("Train:")
         logging.info(
@@ -353,6 +353,7 @@ def run_trainer() -> None:
 
             if configs['vae_model'] == 'tiny_vae':
                 img_rgb = 2. * img_rgb - 1.
+
 
             # print(img_rgb.max(), img_rgb.min(), img_rgb.shape)
 
@@ -483,7 +484,7 @@ def run_trainer() -> None:
             else:
                 save_checkpoint(mapping_model, save_name, configs["snapshot_path"], skff_model = skff_module, skff_model_save = skff_module is not None)
 
-        logging.info("Current learning rate: {:.5f}".format(scheduler.get_last_lr()[0]))
+        logging.info("Current learning rate: {:.5f}".format(scheduler.get_last_lr()[0])) # scheduler.get_last_lr()[0]
         logging.info(
             "epoch %d / %d \t Time Taken: %d sec"
             % (epoch, configs["epochs"], time.time() - epoch_start_time)

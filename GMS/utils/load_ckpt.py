@@ -38,22 +38,28 @@ def get_state_dict(ckpt_url = 'https://huggingface.co/stabilityai/stable-diffusi
     except Exception as e:
         print(f"Error loading state dictionary: {e}")
 
-def get_tiny_autoencoder(device = 'cuda' if torch.cuda.is_available() else 'cpu', train = False, freeze = True, residual_autoencoding = False):
-    
+def get_tiny_autoencoder(device = 'cuda' if torch.cuda.is_available() else 'cpu',
+                         mode = 'tiny', train = False, freeze = True,
+                         residual_autoencoding = False):
+
     if not residual_autoencoding:
-        print('Downloading AutoencoderTiny...')
-        print('Collecting AutoencoderTiny from Diffusers Library')
-        vae = HF_TinyVAE.from_pretrained("madebyollin/taesd", torch_dtype=torch.float32, device_map = device)
-        
+        print(f'Collecting AutoencoderTiny of mode {mode} from Diffusers Library')
+        if mode == 'tiny':
+            print('Downloading AutoencoderTiny Original')
+            vae = HF_TinyVAE.from_pretrained("madebyollin/taesd", torch_dtype=torch.float32, device_map = device)
+        elif mode == 'hybrid':
+            print('Downloading AutoencoderTiny Hybrid...')
+            vae = HF_TinyVAE.from_pretrained("cqyan/hybrid-sd-tinyvae", torch_dtype=torch.float32, device_map = device)
+
     else:
         vae = load_residual_tiny_vae(device = device)
         vae = vae.to(device)
-    
+
     if train:
         print('Training AutoencoderTiny')
         vae.train()
         return vae
-    
+
     elif freeze:
         print('Freezing All params of AutoencoderTiny')
         for param in vae.parameters():
@@ -61,7 +67,7 @@ def get_tiny_autoencoder(device = 'cuda' if torch.cuda.is_available() else 'cpu'
         print('Freezing Complete...')
         vae.eval()
         return vae
-    
+
 def get_lite_vae(model_version = 'litevae-s', device: str = 'cuda' if torch.cuda.is_available() else 'cpu', dtype: torch.dtype = torch.float32, train = True, freeze = False) -> LiteVAE:
 
     base_model = LiteVAE(LiteVAEEncoder(model_version = model_version)).to(device=device, dtype=dtype).to(memory_format=torch.channels_last)

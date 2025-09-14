@@ -93,42 +93,42 @@ class LiteVAEEncoder(nn.Module):
         self.ch_mult_aggregator        = fa_cfg["ch_mult"]
 
         # Shared UNets (1 per level)
-        # self.feature_extractor_L1 = LiteVAEUNetBlock(in_channels = self.in_channels, out_channels = self.out_channels,
-        #                                              model_channels = self.model_channels_extractor, ch_multiplies = self.ch_mult_extractor) # replacing in_channels with #sub-bands
+        self.feature_extractor_L1 = LiteVAEUNetBlock(in_channels = self.in_channels, out_channels = self.out_channels,
+                                                     model_channels = self.model_channels_extractor, ch_multiplies = self.ch_mult_extractor) # replacing in_channels with #sub-bands
         self.feature_extractor_L2 = LiteVAEUNetBlock(in_channels = self.in_channels, out_channels = self.out_channels,
                                                      model_channels = self.model_channels_extractor, ch_multiplies = self.ch_mult_extractor)
-        # self.feature_extractor_L3 = LiteVAEUNetBlock(in_channels = self.in_channels, out_channels = self.out_channels,
-        #                                              model_channels = self.model_channels_extractor, ch_multiplies = self.ch_mult_extractor)
+        self.feature_extractor_L3 = LiteVAEUNetBlock(in_channels = self.in_channels, out_channels = self.out_channels,
+                                                     model_channels = self.model_channels_extractor, ch_multiplies = self.ch_mult_extractor)
 
         # Aggregator UNet: (L1 + L2 + L3) --> 2 * out_channels or 12 fixed by paper or 8 for LMM model in GMS consistency
-        aggregated_channels  = in_channels * 1
+        aggregated_channels  = in_channels * 3
         out_channels_agg     = 8  # [mu | logvar]
         self.feature_aggregator = LiteVAEUNetBlock(in_channels = aggregated_channels, out_channels = out_channels_agg,
                                                    model_channels = self.model_channels_aggregator, ch_multiplies = self.ch_mult_aggregator)
 
         # Downsamplers for L1 and L2 features to match L3 size
-        # self.downsample_L1 = Downsample2D(in_channels, scale_factor = 4)
+        self.downsample_L1 = Downsample2D(in_channels, scale_factor = 4)
         self.downsample_L2 = Downsample2D(in_channels, scale_factor = 2)
 
-    def forward(self, image: Tensor) -> Tensor: # fg
+    def forward(self, image: Tensor) -> Tensor:
         # Get all sub-bands from DWT for each level
 # fh
-        # dwt_L1 = self.wavelet_fn.dwt(image, level = 1) / 2 # (B, 12, H/2, W/2)
-        # dwt_L2 = self.wavelet_fn.dwt(image, level = 2) / 4 # (B, 12, H/4, W/4)
-        # dwt_L3 = self.wavelet_fn.dwt(image, level = 3) / 8 # (B, 12, H/8, W/8)
+        dwt_L1 = self.wavelet_fn.dwt(image, level = 1) / 2 # (B, 12, H/2, W/2)
+        dwt_L2 = self.wavelet_fn.dwt(image, level = 2) / 4 # (B, 12, H/4, W/4)
+        dwt_L3 = self.wavelet_fn.dwt(image, level = 3) / 8 # (B, 12, H/8, W/8)
 
-        # # Feature extraction (shared UNet blocks)
-        # feat_L1 = self.downsample_L1(self.feature_extractor_L1(dwt_L1)) # (B, 12, H/8, H/8)
-        # feat_L2 = self.downsample_L2(self.feature_extractor_L2(dwt_L2)) # (B, 12, H/8, H/8)
-        # feat_L3 = self.feature_extractor_L3(dwt_L3)
+        # Feature extraction (shared UNet blocks)
+        feat_L1 = self.downsample_L1(self.feature_extractor_L1(dwt_L1)) # (B, 12, H/8, H/8)
+        feat_L2 = self.downsample_L2(self.feature_extractor_L2(dwt_L2)) # (B, 12, H/8, H/8)
+        feat_L3 = self.feature_extractor_L3(dwt_L3)
 
-        # # Concatenate and aggregate to latent (mu + logvar)
-        # feat_cat = torch.cat([feat_L1, feat_L2, feat_L3], dim = 1) # (B, 36, H/8, W/8)
+        # Concatenate and aggregate to latent (mu + logvar)
+        feat_cat = torch.cat([feat_L1, feat_L2, feat_L3], dim = 1) # (B, 36, H/8, W/8)
 
-        # latent_out = self.feature_aggregator(feat_cat) # (B, 8, H/8, W/8) --> [mu | logvar]
+        latent_out = self.feature_aggregator(feat_cat) # (B, 8, H/8, W/8) --> [mu | logvar]
 
-        dwt_L2     = self.wavelet_fn.dwt(image, level = 2) / 4 # (B, 12, H/4, W/4)
-        feat_L2    = self.downsample_L2(self.feature_extractor_L2(dwt_L2)) # (B, 12, H/4, W/4)
-        latent_out = self.feature_aggregator(feat_L2) # (B, 8, H/4, W/4) --> [mu | logvar]
+        # dwt_L2     = self.wavelet_fn.dwt(image, level = 2) / 4 # (B, 12, H/4, W/4)
+        # feat_L2    = self.downsample_L2(self.feature_extractor_L2(dwt_L2)) # (B, 12, H/4, W/4)
+        # latent_out = self.feature_aggregator(feat_L2) # (B, 8, H/4, W/4) --> [mu | logvar]
 
         return latent_out

@@ -126,6 +126,7 @@ class Image_Dataset(Dataset):
                  root_dir: str | Path = 'QaTar-19',
                  stage: str = 'train',
                  excel: bool = False,
+                 ham: bool = False,
                  img_size: int = 224,
                  img_ext: str = '.png',
                  mask_ext: str = '.png'
@@ -144,6 +145,7 @@ class Image_Dataset(Dataset):
 
         pickle_dir = Path(pickle_file_path).parent
         self.excel             = excel
+        self.ham               = ham
         self.img_path          = pickle_dir / 'images'
         self.mask_path         = pickle_dir / 'masks'
         self.img_size          = img_size
@@ -182,8 +184,14 @@ class Image_Dataset(Dataset):
     def __getitem__(self, index):
         name = self.name_list[index]
         # load img & seg
-        # [CHANGED] --> from .jpg to jpg as Kvasir-SEG has .jpg files. Also note both image and mask are being loaded as RGB
-        mask_name = f"mask_{name}" if self.excel else name
+        # [CHANGED] --> from .jpg to jpg as Kvasir-SEG has .jpg files. Also note both image and
+        # mask are being loaded as RGB
+        if self.excel:
+            mask_name = f"mask_{name}"
+        elif self.ham:
+            mask_name = f'{name}_segmentation'
+        else:
+            mask_name = name
         seg_image = Image.open(self.mask_path / f"{mask_name}{self.mask_ext}").convert("RGB") # Load as Grayscale
         seg_data  = np.array(seg_image).astype(np.float32)
         img_image = Image.open(self.img_path / f"{name}{self.img_ext}").convert("RGB")

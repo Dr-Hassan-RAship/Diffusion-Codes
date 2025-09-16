@@ -152,12 +152,22 @@ def run_validator() -> None:
 
     mapping_model.eval()
 
-    vae_train = True
+    vae_train = False
     vae_model = None
 
     if configs["vae_model"] == "tiny_vae":
         logging.info("Initializing TinyVAE")
         vae_model = get_tiny_autoencoder(train=False, residual_autoencoding=False)
+    elif configs["vae_model"] == "sd-vae":
+        vae_path = './configs/v2-inference-v-first-stage-VAE.yaml'
+        vae_config = OmegaConf.load(f"{vae_path}")
+        vae_model = AutoencoderKL(**vae_config.first_stage_config.get("params", dict()))
+
+        pl_sd = torch.load("SD-VAE-weights/768-v-ema-first-stage-VAE.ckpt", weights_only = True, map_location="cpu")
+        sd = pl_sd["state_dict"]
+        vae_model.load_state_dict(sd, strict=True)
+        vae_model.freeze()
+        vae_model.to(device)
     else:
         logging.info("Initializing LiteVAE")
         tiny_vae = get_tiny_autoencoder(
@@ -199,10 +209,10 @@ def run_validator() -> None:
 
     mapping_model.eval()
     vae_model.eval()
-    tiny_vae.eval() if configs["vae_model"] != "tiny_vae" else None
+    # tiny_vae.eval() if configs["vae_model"] != "tiny_vae" else None
     # Getting tiny-vae (with residual_autoencoding) default: frozen and eval
 
-    scale_factor = 1.0
+    scale_factor = vae_config.first_stage_config.scale_factor
 
     # Define loss functions
     mse_loss = torch.nn.MSELoss(reduction="mean")
@@ -217,7 +227,7 @@ def run_validator() -> None:
         img_rgb = batch_data["img"].to(device)
         img_rgb = img_rgb / 255.0  # [CHANGED] V.V.V Imp!  --> SCALE CORRECTION
 
-        if configs["vae_model"] == "tiny_vae":
+        if configs["vae_model"] == "tiny_vae" or configs['vae_model'] == 'sd-vae':
             img_rgb = 2.0 * img_rgb - 1.0
 
         seg_raw = batch_data["seg"].to(device)
@@ -232,6 +242,9 @@ def run_validator() -> None:
                     vae_model.encode(img_rgb).latents,
                     vae_model.encode(seg_rgb).latents,
                 )
+            elif configs['vae_model'] == 'sd-vae':
+                img_latent_mean, _ = get_vae_encoding_mu_and_sigma(vae_model.encode(get_cuda(img_rgb.to(dtype = torch.float32))), scale_factor)
+                seg_latent_mean, _ = get_vae_encoding_mu_and_sigma(vae_model.encode(get_cuda(seg_rgb.to(dtype = torch.float32))), scale_factor)
             else:
                 img_latent_mean, seg_latent_mean = (
                     vae_model(img_rgb),
@@ -281,7 +294,7 @@ def run_validator() -> None:
     pred_binary_path = save_seg_img_path
     pred_logits_path = save_seg_logits_path
     IMG_FORMAT = ".png"
-    true_seg_prefix = '_segmentation'# 'mask_' if excel else ''
+    true_seg_prefix = ''# 'mask_' if excel else ''
 
     name_list = sorted(os.listdir(save_seg_img_path))
     # Remove IMG_FORMAT from names

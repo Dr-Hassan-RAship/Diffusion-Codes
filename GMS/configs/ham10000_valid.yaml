@@ -4,12 +4,12 @@ phase: valid
 guidance_method: False
 dilation_rates: (1, 2, 3, 4)
 # dj
-vae_model: litevae-s # or tiny_vae
+vae_model: sd-vae # or tiny_vae
 pickle_file_path: ./Dataset/ham10000/ham10000_train_test_names.pkl
 
-model_weight: ./ckpt/litevae_baseline_ham10000_align_loss_epoch_1000/epochs_1000/checkpoints/best_valid_dice_205.pth # ./ckpt/litevae_baseline_bus_align_loss_batch_size_8/epochs_1000/checkpoints/best_valid_dice_780.pth
-snapshot_path: ./ckpt/litevae_baseline_ham10000_align_loss_epoch_1000/epochs_1000/valid_busi_best_valid_dice
-save_seg_img_path: ./ckpt/litevae_baseline_ham10000_align_loss_epoch_1000/epochs_1000/predicted_masks_best_valid_dice
+model_weight:  ./ckpt/sd-vae-inference-experiment-01/best_model.pth # ./ckpt/litevae_baseline_bus_align_loss_batch_size_8/epochs_300/checkpoints/best_valid_dice_780.pth
+snapshot_path: ./ckpt/sd-vae-inference-experiment-01/valid_busi_best_valid_dice
+save_seg_img_path: ./ckpt/sd-vae-inference-experiment-01/predicted_masks_best_valid_dice
 
 # Valid Settings
 GPUs: [0]

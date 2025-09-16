@@ -5,8 +5,9 @@ guidance_method: False
 dilation_rates: (1, 2, 3, 4)
 # jg
 pickle_file_path: ./Dataset/kvasir-instrument/kvasir-instrument_train_test_names.pkl
+tiny_mode: 'tiny'
 vae_model: litevae-s # or tiny_vae
-snapshot_path: ./ckpt/litevae_baseline_kvasir-instruments_align_loss
+snapshot_path: ./ckpt/litevae_baseline_kvasir-instruments_align_loss_repeated_original_settings
 # Training Settings
 epochs: 1000
 GPUs: [0]

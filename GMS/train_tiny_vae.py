@@ -65,7 +65,7 @@ def arg_parse() -> argparse.ArgumentParser.parse_args:
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--config",
-        default="./configs/ham10000_train.yaml",
+        default="./configs/kvasir-instrument_train.yaml",
         type=str,
         help="load the config file",
     )
@@ -107,8 +107,8 @@ def run_trainer() -> None:
     ds_list = ["level2", "level1", "out"]
 
     # Get data loader
-    train_dataset = Image_Dataset(configs["pickle_file_path"], stage="train", ham = True, excel = False, img_ext = '.jpg', mask_ext = '.png')
-    valid_dataset = Image_Dataset(configs["pickle_file_path"], stage="test", ham = True, excel = False, img_ext = '.jpg', mask_ext = '.png')
+    train_dataset = Image_Dataset(configs["pickle_file_path"], stage="train", excel = False, img_ext = '.png', mask_ext = '.png')
+    valid_dataset = Image_Dataset(configs["pickle_file_path"], stage="test", excel = False, img_ext = '.png', mask_ext = '.png')
     train_dataloader = DataLoader(
         train_dataset,
         batch_size=configs["batch_size"],

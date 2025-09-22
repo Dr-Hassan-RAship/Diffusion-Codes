@@ -7,9 +7,9 @@ dilation_rates: (1, 2, 3, 4)
 vae_model: litevae-s # or tiny_vae
 pickle_file_path: ./Dataset/bus/bus_train_test_names.pkl
 
-model_weight: ./ckpt/litevae_baseline_bus_align_loss_original_settings_repeated/epochs_1000/checkpoints/best_valid_dice_614.pth # ./ckpt/litevae_baseline_bus_align_loss_batch_size_8/epochs_1000/checkpoints/best_valid_dice_780.pth
-snapshot_path: ./ckpt/litevae_baseline_bus_align_loss_original_settings_repeated/epochs_1000/valid_busi_best_valid_dice
-save_seg_img_path: ./ckpt/litevae_baseline_bus_align_loss_original_settings_repeated/epochs_1000/predicted_masks_best_valid_dice
+model_weight: ./ckpt/after_icassp/bus/litevae_baseline_bus_align_loss_batch_size_4/epochs_1000/checkpoints/best_valid_dice_839.pth # ./ckpt/litevae_baseline_bus_align_loss_batch_size_8/epochs_1000/checkpoints/best_valid_dice_780.pth
+snapshot_path: ./ckpt/after_icassp/bus/litevae_baseline_bus_align_loss_batch_size_4/epochs_1000/valid_bus_best_valid_dice
+save_seg_img_path: ./ckpt/after_icassp/bus/litevae_baseline_bus_align_loss_batch_size_4/epochs_1000/predicted_masks_bus_best_valid_dice
 
 # Valid Settings
 GPUs: [0]

@@ -7,13 +7,13 @@ dilation_rates: (1, 2, 3, 4)
 vae_model: litevae-s # or tiny_va
 tiny_mode: 'tiny'
 pickle_file_path: ./Dataset/bus/bus_train_test_names.pkl
-snapshot_path: ./ckpt/litevae_baseline_bus_align_loss_original_settings_repeated
+snapshot_path: ./ckpt/after_icassp/bus/wave_gms_bus_align_loss_batch_size_4_repeat_1
 
 # Training Settings
 epochs: 1000
 GPUs: [0]
 num_workers: 8
-batch_size: 12 # possible due to TinyVae
+batch_size: 4 # possible due to TinyVae
 save_freq: 100
 seed: 2333
 

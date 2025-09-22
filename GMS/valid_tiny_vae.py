@@ -80,7 +80,7 @@ def arg_parse() -> argparse.ArgumentParser.parse_args:
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--config",
-        default="./configs/ham10000_valid.yaml",  # [CHANGED] --> added kvasir-seg yaml
+        default="./configs/kvasir-instrument_valid.yaml",  # [CHANGED] --> added kvasir-seg yaml
         type=str,
         help="load the config file",
     )
@@ -120,7 +120,7 @@ def run_validator() -> None:
     # Get data loader
     excel = False
     valid_dataset = Image_Dataset(
-        configs["pickle_file_path"], ham = True, stage="test", excel=excel, img_ext = '.jpg', mask_ext = '.png'
+        configs["pickle_file_path"], ham = False, stage="test", excel=excel, img_ext = '.png', mask_ext = '.png'
     )
     valid_dataloader = DataLoader(
         valid_dataset, batch_size=1, pin_memory=True, drop_last=False, shuffle=False
@@ -152,7 +152,7 @@ def run_validator() -> None:
 
     mapping_model.eval()
 
-    vae_train = False
+    vae_train = True
     vae_model = None
 
     if configs["vae_model"] == "tiny_vae":
@@ -209,20 +209,20 @@ def run_validator() -> None:
 
     mapping_model.eval()
     vae_model.eval()
-    # tiny_vae.eval() if configs["vae_model"] != "tiny_vae" else None
-    # Getting tiny-vae (with residual_autoencoding) default: frozen and eval
-
-    scale_factor = vae_config.first_stage_config.scale_factor
-
+    tiny_vae.eval() if configs["vae_model"] != "tiny_vae" else None
+    # # Getting tiny-vae (with residual_autoencoding) default: frozen and eval
+    #
+    # scale_factor = vae_config.first_stage_config.scale_factor
+    #
     # Define loss functions
     mse_loss = torch.nn.MSELoss(reduction="mean")
 
     epoch_start_time = time.time()
 
     name_list = []
-
+    #
     T_loss_valid = []
-    ### Validation phase
+    # ### Validation phase
     for batch_data in tqdm(valid_dataloader, desc="Valid: "):
         img_rgb = batch_data["img"].to(device)
         img_rgb = img_rgb / 255.0  # [CHANGED] V.V.V Imp!  --> SCALE CORRECTION
@@ -268,7 +268,7 @@ def run_validator() -> None:
                 out_latent_mean_dict["out"], seg_latent_mean
             )
             pred_seg = vae_decode(
-                tiny_vae if configs["vae_model"] != "tiny_vae" else vae_model,
+                tiny_vae if configs['vae_model'] != 'tiny_vae' else vae_model,
                 out_latent_mean_dict["out"],
                 scale_factor,
             )
@@ -294,7 +294,7 @@ def run_validator() -> None:
     pred_binary_path = save_seg_img_path
     pred_logits_path = save_seg_logits_path
     IMG_FORMAT = ".png"
-    true_seg_prefix = ''# 'mask_' if excel else ''
+    # true_seg_prefix = ''# 'mask_' if excel else ''
 
     name_list = sorted(os.listdir(save_seg_img_path))
     # Remove IMG_FORMAT from names
@@ -315,7 +315,7 @@ def run_validator() -> None:
         seg_logits = load_img(
             os.path.join(pred_logits_path, case_name + "_logits" + IMG_FORMAT)
         )
-        seg_true = load_img(os.path.join(true_path, case_name + true_seg_prefix + IMG_FORMAT))
+        seg_true = load_img(os.path.join(true_path, case_name + IMG_FORMAT))
 
         # Calculate all metrics
         results = all_metrics(seg_binary, seg_logits, seg_true)

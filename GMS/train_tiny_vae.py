@@ -65,7 +65,7 @@ def arg_parse() -> argparse.ArgumentParser.parse_args:
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--config",
-        default="./configs/kvasir-instrument_train.yaml",
+        default="./configs/bus_train.yaml",
         type=str,
         help="load the config file",
     )

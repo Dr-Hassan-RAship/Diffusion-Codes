@@ -5,8 +5,9 @@ guidance_method: False #'wavelet'
 dilation_rates: (1, 2, 3, 4)
 
 vae_model: litevae-s # or tiny_vae
+tiny_mode: 'tiny'
 pickle_file_path: ./Dataset/busi/busi_train_test_names.pkl
-snapshot_path: ./ckpt/litevae_baseline_busi_align_loss
+snapshot_path: ./ckpt/litevae_baseline_busi_align_loss_original settings_sir_machine
 
 # Training Settings
 epochs: 1000

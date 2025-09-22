@@ -7,12 +7,12 @@ dilation_rates: (1, 2, 3, 4)
 pickle_file_path: ./Dataset/kvasir-instrument/kvasir-instrument_train_test_names.pkl
 tiny_mode: 'tiny'
 vae_model: litevae-s # or tiny_vae
-snapshot_path: ./ckpt/litevae_baseline_kvasir-instruments_align_loss_repeated_original_settings
+snapshot_path: ./ckpt/after_icassp/kvasir-instrument/litevae_baseline_kvasir-instrument_align_loss_batch_size_2
 # Training Settings
 epochs: 1000
 GPUs: [0]
 num_workers: 8
-batch_size: 12 # possible due to TinyVae
+batch_size: 2 # possible due to TinyVae
 save_freq: 100
 seed: 2333
 
